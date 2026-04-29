@@ -742,6 +742,7 @@ static glslang_stage_t getGLSLangShaderStage(lvk::ShaderStage stage) {
 lvk::Result lvk::compileShaderGlslang(lvk::ShaderStage stage,
                                       const char* code,
                                       std::vector<uint8_t>* outSPIRV,
+                                      bool generateDebugInfo,
                                       const glslang_resource_t* glslLangResource) {
   LVK_PROFILER_FUNCTION();
 
@@ -804,8 +805,8 @@ lvk::Result lvk::compileShaderGlslang(lvk::ShaderStage stage,
   }
 
   glslang_spv_options_t options = {
-      .generate_debug_info = true,
-      .strip_debug_info = false,
+      .generate_debug_info = generateDebugInfo,
+      .strip_debug_info = !generateDebugInfo,
       .disable_optimizer = false,
       .optimize_size = true,
       .disassemble = false,

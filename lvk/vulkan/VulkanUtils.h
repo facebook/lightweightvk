@@ -86,6 +86,7 @@ glslang_resource_t getGlslangResource(const VkPhysicalDeviceLimits& limits);
 Result compileShaderGlslang(lvk::ShaderStage stage,
                             const char* code,
                             std::vector<uint8_t>* outSPIRV,
+                            bool generateDebugInfo,
                             const glslang_resource_t* glslLangResource = nullptr);
 Result compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
                           lvk::ShaderStage stage,
