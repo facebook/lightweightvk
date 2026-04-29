@@ -130,7 +130,7 @@ jobs:
               cc: "clang-18",
               cxx: "clang++-18",
               generators: "Unix Makefiles",
-              cmake_args: "-DLVK_WITH_GLFW=ON -DLVK_WITH_SDL3=OFF -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
+              cmake_args: "-DLVK_WITH_GLFW=ON -DLVK_WITH_SDL3=OFF -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF -DLVK_WITH_SPIRV_OPT=ON"
             }
           - {
               name: "Ubuntu - Clang (SDL3)",
@@ -139,7 +139,7 @@ jobs:
               cc: "clang-18",
               cxx: "clang++-18",
               generators: "Unix Makefiles",
-              cmake_args: "-DLVK_WITH_GLFW=OFF -DLVK_WITH_SDL3=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
+              cmake_args: "-DLVK_WITH_GLFW=OFF -DLVK_WITH_SDL3=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF -DLVK_WITH_SPIRV_OPT=ON"
             }
           - {
               name: "Ubuntu - Clang (Wayland)",

@@ -7,6 +7,10 @@
 
 #include <glslang/Include/glslang_c_interface.h>
 
+#if defined(LVK_WITH_SPIRV_OPT)
+#include <spirv-tools/optimizer.hpp>
+#endif // LVK_WITH_SPIRV_OPT
+
 #if defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
 #include <slang.h>
 #include <slang-com-helper.h>
@@ -820,6 +824,27 @@ lvk::Result lvk::compileShaderGlslang(lvk::ShaderStage stage,
   const size_t numBytes = glslang_program_SPIRV_get_size(program) * sizeof(uint32_t);
 
   *outSPIRV = std::vector(spirv, spirv + numBytes);
+
+  return Result();
+}
+
+lvk::Result lvk::optimizeSPIRV(std::vector<uint8_t>& inoutSPIRV) {
+#if defined(LVK_WITH_SPIRV_OPT)
+  spvtools::Optimizer optimizer(SPV_ENV_VULKAN_1_3);
+  optimizer.RegisterPerformancePasses();
+  optimizer.SetMessageConsumer([](spv_message_level_t level, const char*, const spv_position_t&, const char* msg) {
+    if (level <= SPV_MSG_WARNING)
+      LLOGW("SPIRV-Opt: %s\n", msg);
+  });
+  std::vector<uint32_t> optimized;
+  if (!optimizer.Run(reinterpret_cast<const uint32_t*>(inoutSPIRV.data()), inoutSPIRV.size() / sizeof(uint32_t), &optimized)) {
+    return Result(Result::Code::RuntimeError, "spirv-opt failed");
+  }
+  const uint8_t* p = reinterpret_cast<const uint8_t*>(optimized.data());
+  inoutSPIRV.assign(p, p + optimized.size() * sizeof(uint32_t));
+#else
+  (void)inoutSPIRV;
+#endif // LVK_WITH_SPIRV_OPT
 
   return Result();
 }

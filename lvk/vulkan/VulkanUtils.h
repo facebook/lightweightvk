@@ -92,6 +92,7 @@ Result compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
                           const char* code,
                           const char* entryPointName,
                           std::vector<uint8_t>* outSPIRV);
+Result optimizeSPIRV(std::vector<uint8_t>& inoutSPIRV);
 void destroySlangGlobalSession(slang::IGlobalSession* slangGlobalSession);
 
 VkSamplerCreateInfo samplerStateDescToVkSamplerCreateInfo(const lvk::SamplerStateDesc& desc, const VkPhysicalDeviceLimits& limits);
