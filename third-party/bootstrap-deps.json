@@ -16,6 +16,22 @@
     }
 },
 {
+    "name": "SPIRV-Headers",
+    "source": {
+        "type": "git",
+        "url": "https://github.com/KhronosGroup/SPIRV-Headers.git",
+        "revision": "vulkan-sdk-1.4.341.0"
+    }
+},
+{
+    "name": "SPIRV-Tools",
+    "source": {
+        "type": "git",
+        "url": "https://github.com/KhronosGroup/SPIRV-Tools.git",
+        "revision": "v2026.1"
+    }
+},
+{
     "name": "SPIRV-Reflect",
     "source": {
         "type": "git",

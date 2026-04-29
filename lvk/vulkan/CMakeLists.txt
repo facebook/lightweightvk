@@ -22,12 +22,48 @@ lvk_set_folder(LVKVulkan "LVK")
 lvk_setup_groups("${SRC_FILES}")
 lvk_setup_groups("${HEADER_FILES}")
 
+# SPIRV-Headers and SPIRV-Tools are added before glslang so its `if(NOT TARGET SPIRV-Tools-opt)` check skips its bundled External/ path.
+# cmake-format: off
+set(SPIRV_SKIP_TESTS        ON  CACHE BOOL "")
+set(SPIRV_SKIP_EXECUTABLES  ON  CACHE BOOL "")
+set(SPIRV_WERROR            OFF CACHE BOOL "")
+add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/SPIRV-Headers "SPIRV-Headers")
+add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/SPIRV-Tools   "SPIRV-Tools")
+foreach(t IN ITEMS
+    SPIRV-Headers
+    SPIRV-Tools-static
+    SPIRV-Tools-shared
+    SPIRV-Tools-opt
+    SPIRV-Tools-link
+    SPIRV-Tools-lint
+    SPIRV-Tools-reduce
+    SPIRV-Tools-diff
+    core_tables
+    extinst_tables
+    spirv-tools-tables
+    spirv-tools-build-version
+    spirv-tools-pkg-config
+    spirv-tools-vimsyntax
+    spirv-tools-header-DebugInfo
+    spirv-tools-header-OpenCLDebugInfo100
+    spirv-tools-header-NonSemanticShaderDebugInfo100
+    spirv-tools-check-python-types
+    spirv-tools-check-python-tests)
+  if(TARGET ${t})
+    lvk_set_folder(${t} "third-party/SPIRV-Tools")
+  endif()
+endforeach()
+if(TARGET spirv-tools-check-python-tests)
+  set_target_properties(spirv-tools-check-python-tests PROPERTIES EXCLUDE_FROM_ALL ON)
+endif()
+# cmake-format: on
+
 # glslang
 # cmake-format: off
 set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "")
 set(ENABLE_HLSL             OFF CACHE BOOL "")
 set(ENABLE_CTEST            OFF CACHE BOOL "")
-set(ENABLE_OPT              OFF CACHE BOOL "")
+set(ENABLE_OPT              ON  CACHE BOOL "")
 set(ENABLE_SPVREMAPPER      OFF CACHE BOOL "")
 set(SKIP_GLSLANG_INSTALL    ON  CACHE BOOL "")
 add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/glslang "glslang")
@@ -98,6 +134,11 @@ add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/SPIRV-Reflect "SPIRV-Refle
 lvk_set_folder(spirv-reflect-static "third-party")
 
 find_package(Vulkan REQUIRED)
+
+if(LVK_WITH_SPIRV_OPT)
+  target_compile_definitions(LVKVulkan PRIVATE LVK_WITH_SPIRV_OPT)
+  target_link_libraries(LVKVulkan PRIVATE SPIRV-Tools-opt)
+endif()
 
 target_link_libraries(LVKVulkan INTERFACE LVKLibrary)
 target_link_libraries(LVKVulkan PRIVATE glslang SPIRV glslang-default-resource-limits)
