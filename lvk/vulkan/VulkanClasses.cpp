@@ -6093,10 +6093,11 @@ lvk::Holder<lvk::ShaderModuleHandle> lvk::VulkanContext::createShaderModule(cons
       return false;
     return strstr(code, "[shader(\"") != nullptr;
   };
-  ShaderModuleState sm = desc.dataSize ? createShaderModuleFromSPIRV(desc.data, desc.dataSize, desc.debugName, &result) // binary
-                         : isSlang(desc.data) // text
-                             ? createShaderModuleFromSlang(desc.stage, desc.data, desc.entryPointName, desc.debugName, &result)
-                             : createShaderModuleFromGLSL(desc.stage, desc.data, desc.debugName, &result);
+  ShaderModuleState sm =
+      desc.dataSize ? createShaderModuleFromSPIRV(desc.data, desc.dataSize, desc.debugName, &result) // binary
+      : isSlang(desc.data) // text
+          ? createShaderModuleFromSlang(desc.stage, desc.data, desc.entryPointName, desc.optimizeSPIRV, desc.debugName, &result)
+          : createShaderModuleFromGLSL(desc.stage, desc.data, desc.optimizeSPIRV, desc.debugName, &result);
 
   if (!result.isOk()) {
     Result::setResult(outResult, result);
@@ -6148,6 +6149,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSPIRV(const voi
 
 lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStage stage,
                                                                       const char* source,
+                                                                      bool optimizeSPIRV,
                                                                       const char* debugName,
                                                                       Result* outResult) const {
   const VkShaderStageFlagBits vkStage = shaderStageToVkShaderStage(stage);
@@ -6279,6 +6281,9 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
 
   std::vector<uint8_t> spirv;
   lvk::Result::setResult(outResult, lvk::compileShaderGlslang(stage, source, &spirv, &glslangResource));
+  if (optimizeSPIRV) {
+    lvk::optimizeSPIRV(spirv);
+  }
 
   return createShaderModuleFromSPIRV(spirv.data(), spirv.size(), debugName, outResult);
 }
@@ -6286,6 +6291,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
 lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderStage stage,
                                                                        const char* source,
                                                                        const char* entryPointName,
+                                                                       bool optimizeSPIRV,
                                                                        const char* debugName,
                                                                        Result* outResult) const {
   std::string sourcePatched;
@@ -6374,6 +6380,9 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
 
   std::vector<uint8_t> spirv;
   lvk::Result::setResult(outResult, lvk::compileShaderSlang(pimpl_->slangGlobalSession_, stage, source, entryPointName, &spirv));
+  if (optimizeSPIRV) {
+    lvk::optimizeSPIRV(spirv);
+  }
 
   return createShaderModuleFromSPIRV(spirv.data(), spirv.size(), debugName, outResult);
 }
@@ -7091,7 +7100,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
       .pNext = config_.extensionsDeviceFeatures,
       .storageBuffer16BitAccess = VK_TRUE,
-      .storageInputOutput16 = vkFeatures11_.storageInputOutput16, // enable if supported (lets the driver use 16-bit storage for `mediump` varyings)
+      .storageInputOutput16 = vkFeatures11_.storageInputOutput16, // enable if supported
       .multiview = vkFeatures11_.multiview, // enable if supported
       .samplerYcbcrConversion = vkFeatures11_.samplerYcbcrConversion, // enable if supported
       .shaderDrawParameters = VK_TRUE,

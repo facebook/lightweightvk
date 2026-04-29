@@ -717,6 +717,7 @@ struct ShaderModuleDesc {
   ShaderStage stage = Stage_Frag;
   const char* data = nullptr;
   size_t dataSize = 0; // if `dataSize` is non-zero, interpret `data` as binary SPIR-V shader data
+  bool optimizeSPIRV = true;
   const char* entryPointName = nullptr;
   const char* debugName = "";
 
