@@ -7078,7 +7078,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .independentBlend = vkFeatures10_.features.independentBlend, // enable if supported
       .geometryShader = vkFeatures10_.features.geometryShader, // enable if supported
       .tessellationShader = vkFeatures10_.features.tessellationShader, // enable if supported
-      .sampleRateShading = vkFeatures10_.features.sampleRateShading, // enable if supported
+      .sampleRateShading = VK_TRUE,
       .multiDrawIndirect = VK_TRUE,
       .drawIndirectFirstInstance = VK_TRUE,
       .depthClamp = VK_TRUE,
