@@ -7083,7 +7083,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .multiDrawIndirect = VK_TRUE,
       .drawIndirectFirstInstance = VK_TRUE,
       .depthClamp = VK_TRUE,
-      .depthBiasClamp = vkFeatures10_.features.depthBiasClamp, // enable if supported,
+      .depthBiasClamp = VK_TRUE,
       .fillModeNonSolid = vkFeatures10_.features.fillModeNonSolid, // enable if supported
       .samplerAnisotropy = VK_TRUE,
       .textureCompressionBC = vkFeatures10_.features.textureCompressionBC, // enable if supported
