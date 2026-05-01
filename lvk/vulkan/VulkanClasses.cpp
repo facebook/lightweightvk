@@ -7093,6 +7093,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .shaderStorageImageMultisample = vkFeatures10_.features.shaderStorageImageMultisample,
       .shaderStorageImageReadWithoutFormat = vkFeatures10_.features.shaderStorageImageReadWithoutFormat,
       .shaderStorageImageWriteWithoutFormat = VK_TRUE,
+      .shaderUniformBufferArrayDynamicIndexing = VK_TRUE,
+      .shaderSampledImageArrayDynamicIndexing = VK_TRUE,
+      .shaderStorageBufferArrayDynamicIndexing = VK_TRUE,
+      .shaderStorageImageArrayDynamicIndexing = VK_TRUE,
       .shaderInt64 = vkFeatures10_.features.shaderInt64, // enable if supported
       .shaderInt16 = vkFeatures10_.features.shaderInt16, // enable if supported
   };
