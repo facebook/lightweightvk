@@ -7119,6 +7119,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .shaderFloat16 = VK_TRUE,
       .shaderInt8 = vkFeatures12_.shaderInt8, // enable if supported
       .descriptorIndexing = VK_TRUE,
+      .shaderInputAttachmentArrayDynamicIndexing = VK_TRUE,
+      .shaderUniformTexelBufferArrayDynamicIndexing = VK_TRUE,
+      .shaderStorageTexelBufferArrayDynamicIndexing = VK_TRUE,
       .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
       .descriptorBindingSampledImageUpdateAfterBind = VK_TRUE,
       .descriptorBindingStorageImageUpdateAfterBind = VK_TRUE,
