@@ -7144,6 +7144,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
       .pNext = &deviceFeatures12,
       .shaderDemoteToHelperInvocation = vkFeatures13_.shaderDemoteToHelperInvocation, // enable if supported
+      .shaderTerminateInvocation = vkFeatures13_.shaderTerminateInvocation, // enable if supported
       .subgroupSizeControl = VK_TRUE,
       .synchronization2 = VK_TRUE,
       .dynamicRendering = VK_TRUE,
