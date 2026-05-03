@@ -7147,6 +7147,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .shaderTerminateInvocation = vkFeatures13_.shaderTerminateInvocation, // enable if supported
       .subgroupSizeControl = VK_TRUE,
       .synchronization2 = VK_TRUE,
+      .textureCompressionASTC_HDR = vkFeatures13_.textureCompressionASTC_HDR, // enable if supported
       .dynamicRendering = VK_TRUE,
       .maintenance4 = VK_TRUE,
   };
