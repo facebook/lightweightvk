@@ -669,11 +669,12 @@ VULKAN_APP_MAIN {
 
     lvk::ICommandBuffer& buffer = ctx_->acquireCommandBuffer();
 
-    buffer.cmdUpdateBuffer(res.ubPerFrame_,
-                           UniformsPerFrame{
-                               .viewInverse = glm::inverse(app.camera_.getViewMatrix()),
-                               .projInverse = glm::inverse(glm::perspective(float(45.0f * (M_PI / 180.0f)), views[0].aspectRatio, 0.5f, 500.0f)),
-                           });
+    buffer.cmdUpdateBuffer(
+        res.ubPerFrame_,
+        UniformsPerFrame{
+            .viewInverse = glm::inverse(app.camera_.getViewMatrix()),
+            .projInverse = glm::inverse(glm::perspective(float(45.0f * (M_PI / 180.0f)), views[0].aspectRatio, 0.5f, 500.0f)),
+        });
 
     // Pass 1: ray-trace the scene
     {

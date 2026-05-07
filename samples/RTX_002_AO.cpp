@@ -1501,7 +1501,8 @@ VULKAN_APP_MAIN {
           const float buttonWidth = screenWidth * 0.1f;
           const float buttonHeight = buttonWidth * 0.5f;
           ImGui::SetNextWindowPos(ImVec2(10.0f, screenHeight - 2.0f * buttonHeight - 30.0f), ImGuiCond_Always);
-          ImGui::Begin("##movement", nullptr,
+          ImGui::Begin("##movement",
+                       nullptr,
                        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize |
                            ImGuiWindowFlags_NoNavInputs);
           ImGui::Button("Forward", ImVec2(buttonWidth, buttonHeight));

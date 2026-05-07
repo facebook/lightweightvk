@@ -125,7 +125,6 @@ void main() {
 }
 )";
 
-
 const char* kCodeFullscreenVS = R"(
 layout (location=0) out vec2 uv;
 void main() {

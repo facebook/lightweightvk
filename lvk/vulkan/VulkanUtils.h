@@ -25,10 +25,11 @@
 #include <cstdio>
 #include <vector>
 
-#include <volk.h>
-#include <vk_mem_alloc.h>
 #include <lvk/LVK.h>
+#include <vk_mem_alloc.h>
+#include <volk.h>
 
+// clang-format off
 #define VK_ASSERT(func)                                            \
   {                                                                \
     const VkResult vk_assert_result = func;                        \
@@ -55,6 +56,7 @@
       return getResultFromVkResult(vk_assert_result);              \
     }                                                              \
   }
+// clang-format on
 
 // forward declarations
 namespace slang {

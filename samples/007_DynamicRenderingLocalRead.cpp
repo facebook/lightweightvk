@@ -635,10 +635,9 @@ VULKAN_APP_MAIN {
       const lvk::Framebuffer framebufferGUI = {
           .color = {{.texture = ctx->getCurrentSwapchainTexture()}},
       };
-      buffer.cmdBeginRendering(
-          {.color = {{.loadOp = lvk::LoadOp_Load, .storeOp = lvk::StoreOp_Store}}},
-          framebufferGUI,
-          {.sampledImages = {texAlbedo, texNormal, texWorldPos}});
+      buffer.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_Load, .storeOp = lvk::StoreOp_Store}}},
+                               framebufferGUI,
+                               {.sampledImages = {texAlbedo, texNormal, texWorldPos}});
       app.imgui_->beginFrame(framebufferGUI);
       const ImGuiViewport* v = ImGui::GetMainViewport();
       const float size = 0.175f * v->WorkSize.x;

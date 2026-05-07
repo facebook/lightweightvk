@@ -12,16 +12,16 @@
 #endif // LVK_WITH_SPIRV_OPT
 
 #if defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
-#include <slang.h>
+#include <core/slang-basic.h>
 #include <slang-com-helper.h>
 #include <slang-com-ptr.h>
-#include <core/slang-basic.h>
+#include <slang.h>
 #endif // defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
 
 #include "VulkanUtils.h"
 
-#include <lvk/vulkan/VulkanClasses.h>
 #include <ldrutils/lutils/ScopeExit.h>
+#include <lvk/vulkan/VulkanClasses.h>
 
 const char* lvk::getVulkanResultString(VkResult result) {
 #define RESULT_CASE(res) \
@@ -903,7 +903,8 @@ lvk::Result lvk::compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
   // Descriptor aliasing (multiple variables sharing the same binding) is valid SPIR-V and Vulkan with PARTIALLY_BOUND.
   // https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#interfaces-resources-descset
   // Slang has to remove this warning completely: https://github.com/shader-slang/slang/issues/3330
-  const slang::CompilerOptionEntry sessionOptions[] = { // const-correctness https://github.com/shader-slang/slang/pull/10282
+  const slang::CompilerOptionEntry sessionOptions[] = {
+      // const-correctness https://github.com/shader-slang/slang/pull/10282
       {.name = slang::CompilerOptionName::DisableWarnings,
        .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "39001"}},
   };

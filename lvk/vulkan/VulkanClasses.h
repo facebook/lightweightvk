@@ -682,10 +682,7 @@ class VulkanContext final : public IContext {
   void waitDeferredTasks();
   void generateMipmap(TextureHandle handle) const;
   lvk::Result growDescriptorPool(VulkanContext::DescriptorSet& dset, uint32_t maxTextures, uint32_t maxSamplers, uint32_t maxAccelStructs);
-  ShaderModuleState createShaderModuleFromSPIRV(const void* spirv,
-                                                size_t numBytes,
-                                                const char* debugName,
-                                                Result* outResult) const;
+  ShaderModuleState createShaderModuleFromSPIRV(const void* spirv, size_t numBytes, const char* debugName, Result* outResult) const;
   ShaderModuleState createShaderModuleFromGLSL(ShaderStage stage,
                                                const char* source,
                                                bool optimizeSPIRV,
@@ -792,7 +789,7 @@ class VulkanContext final : public IContext {
   lvk::ContextConfig config_;
   // Adreno GPUs do not support unbounded arrays of acceleration structures (kTLAS[]) - use a fixed-size array declaration in shaders
   bool workaround_fixedSizeAccelStructArray_ = false;
-  // Adreno GPUs do not support arrays (of any size) of combined image samplers with YCbCr immutable samplers - use a single non-array sampler
+  // Adreno GPUs do not support arrays (of any size) of combined image samplers with YCbCr immutable samplers - use one non-array sampler
   bool workaround_noYcbcrSamplerArray_ = false;
 
   bool has_KHR_acceleration_structure_ = false;

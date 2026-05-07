@@ -1,9 +1,9 @@
 /*
-* LightweightVK
-*
-* This source code is licensed under the MIT license found in the
-* LICENSE file in the root directory of this source tree.
-*/
+ * LightweightVK
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
 
 #include "HelpersImGui.h"
 
@@ -126,7 +126,9 @@ lvk::Holder<lvk::RenderPipelineHandle> ImGuiRenderer::createNewPipelineState(con
 }
 
 ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const char* defaultFontTTF, float fontSizePixels)
-:  ctx_(device), pimpl_(new ImGuiRendererImpl), window_(window) {
+: ctx_(device)
+, pimpl_(new ImGuiRendererImpl)
+, window_(window) {
   ImGui::CreateContext();
 #if defined(LVK_WITH_IMPLOT)
   ImPlot::CreateContext();
