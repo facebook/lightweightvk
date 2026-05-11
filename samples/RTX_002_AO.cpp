@@ -30,9 +30,9 @@ constexpr int kFramebufferScalar = 1;
 #endif // ANDROID
 
 #if defined(ANDROID)
-constexpr uint32_t kHashMapSize = 2 * 1024 * 1024; // 2M entries on mobile (24 MB across 3 buffers)
+constexpr uint32_t kHashMapSize = 16 * 1024 * 1024; // 16M entries on mobile (128 MB)
 #else
-constexpr uint32_t kHashMapSize = 8 * 1024 * 1024; // 8M entries on desktop (96 MB across 3 buffers)
+constexpr uint32_t kHashMapSize = 32 * 1024 * 1024; // 32M entries on desktop (256 MB)
 #endif
 
 const char* codeFullscreenSlang = R"(
