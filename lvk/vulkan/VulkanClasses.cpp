@@ -7159,6 +7159,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .indexTypeUint8 = VK_TRUE,
       .dynamicRenderingLocalRead = VK_TRUE,
       .maintenance5 = VK_TRUE,
+      .pushDescriptor = VK_TRUE,
   };
 
   void* createInfoNext = config_.vulkanVersion >= VulkanVersion_1_4 ? (void*)&deviceFeatures14 : (void*)&deviceFeatures13;
