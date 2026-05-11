@@ -889,6 +889,8 @@ lvk::Result lvk::compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
        .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvRayTracingPositionFetchKHR"}},
       {.name = slang::CompilerOptionName::Capability,
        .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvRayQueryKHR"}},
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvInt64Atomics"}},
   };
 
   const slang::TargetDesc targetDesc = {

@@ -6200,7 +6200,9 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
           "#extension GL_EXT_debug_printf : enable\n"
           "#extension GL_EXT_nonuniform_qualifier : require\n"
           "#extension GL_EXT_samplerless_texture_functions : require\n"
-          "#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n";
+          "#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n"
+          "#extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable\n"
+          "#extension GL_EXT_shader_atomic_int64 : enable\n";
       addCode("kTLAS[",
               "#extension GL_EXT_buffer_reference : require\n"
               "#extension GL_EXT_ray_query : require\n"
