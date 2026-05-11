@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Source Control Rules
+
+- **NEVER** commit, amend, or submit diffs unless explicitly asked to do so.
+
 ## Project Overview
 
 LightweightVK is a bindless-only fork of IGL designed to run on Vulkan 1.3+ with optional mesh shaders and ray tracing support. It serves as a modern, minimalistic graphics API wrapper focused on rapid prototyping of Vulkan-based renderers.
