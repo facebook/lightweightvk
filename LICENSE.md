@@ -1,10 +1,4 @@
-## LightweightVK
-
-MIT License
-
-Copyright (c) Sergey Kosarevsky, 2023-2026
-
-## Based on https://github.com/facebook/igl/
+## LightweightVK at Meta
 
 MIT License
 
@@ -27,6 +21,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Based on https://github.com/corporateshark/lightweightvk/
+
+Copyright (c) 2023-2026 Sergey Kosarevsky and contributors.
+
+## Based on https://github.com/facebook/igl/
+
+Copyright (c) Meta Platforms, Inc. and affiliates.
+
 
 ## Dependencies
 
@@ -81,6 +84,9 @@ https://github.com/leetal/ios-cmake/blob/master/LICENSE.md
 
 ldrutils
 https://github.com/corporateshark/ldrutils/blob/master/LICENSE.md
+
+LightweightVK
+https://github.com/corporateshark/lightweightvk/blob/master/LICENSE.md
 
 Meshoptimizer
 https://github.com/zeux/meshoptimizer/blob/master/LICENSE.md

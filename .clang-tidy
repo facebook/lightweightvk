@@ -1,4 +1,7 @@
+InheritParentConfig: true
 Checks: '
+-facebook-hte-CArray,
+-facebook-arfx-enum-containers-check,
 -bugprone-easily-swappable-parameters,
 -misc-misplaced-const,
 -modernize-use-using,

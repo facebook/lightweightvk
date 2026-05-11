@@ -3,6 +3,9 @@ LightweightVK [![Build Status](https://github.com/corporateshark/lightweightvk/a
 
 LightweightVK is a deeply refactored **bindless-only** fork of [IGL](https://github.com/facebook/igl) which is designed to run on top of **Vulkan 1.3** with optional **mesh shaders** and **ray tracing** support.
 
+Meta's version is a fork of [the upstream LightweightVK](https://github.com/corporateshark/lightweightvk),
+**tailored for better compatibility with current and upcoming Meta products**.
+
 The main goals of LightweightVK:
 
 1. **Lean.** Minimalistic API without bloat (no `std::vector`, `std::unordered_map` etc in the API).
@@ -12,7 +15,7 @@ The main goals of LightweightVK:
 
 Designed for rapid prototyping of modern Vulkan-based renderers.
 
-There are **no plans to keep this fork in sync with upstream**, since the **API was completely redesigned** in a *bindless* manner.
+There are **no plans to keep this fork in sync with the IGL upstream**, since the **API was completely redesigned** in a *bindless* manner.
 
 Discord: https://discord.com/invite/bEyHyKCrvq
 
