@@ -9,8 +9,8 @@ import android.provider.Settings;
 import android.window.OnBackInvokedDispatcher;
 
 /**
- * Trampoline activity that requests storage permissions before launching the NativeActivity.
- * This avoids starting the native thread before permissions are granted.
+ * Trampoline activity that requests storage permissions before launching the NativeActivity. This
+ * avoids starting the native thread before permissions are granted.
  */
 public class LvkLauncherActivity extends Activity {
   private boolean waitingForPermission = false;
@@ -21,11 +21,13 @@ public class LvkLauncherActivity extends Activity {
 
     // Ensure the process exits cleanly if the user presses Back here, otherwise
     // the native thread from a previous NativeActivity may linger and cause ANR on next launch.
-    getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-        OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> {
-          System.gc();
-          System.exit(0);
-        });
+    getOnBackInvokedDispatcher()
+        .registerOnBackInvokedCallback(
+            OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+            () -> {
+              System.gc();
+              System.exit(0);
+            });
 
     if (!Environment.isExternalStorageManager()) {
       waitingForPermission = true;

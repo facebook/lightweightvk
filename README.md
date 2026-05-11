@@ -109,7 +109,7 @@ Before running demo apps on your device, connect the device to a desktop machine
 python3 deploy_content_android.py
 ```
 
-> NOTE: To run demos on an Android device, it should support Vulkan 1.3. Please check https://vulkan.gpuinfo.org/listdevices.php?platform=android 
+> NOTE: To run demos on an Android device, it should support Vulkan 1.3. Please check https://vulkan.gpuinfo.org/listdevices.php?platform=android
 
 > NOTE: At the moment, demo apps do not support touch input on Android.
 
