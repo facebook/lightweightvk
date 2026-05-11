@@ -200,7 +200,7 @@ jobs:
             cmake ${{ env.CMAKE_GENERATOR }} -S "${{ github.workspace }}" -B build ${{ matrix.config.cmake_args }}
             cd build
             cmake --build . --parallel ${{ steps.cpu-cores.outputs.count }}
-  
+
   cmake-build-macos:
       strategy:
         fail-fast: false
