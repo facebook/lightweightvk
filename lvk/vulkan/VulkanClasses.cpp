@@ -7153,21 +7153,16 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .dynamicRendering = VK_TRUE,
       .maintenance4 = VK_TRUE,
   };
-#if defined(VK_API_VERSION_1_4)
   VkPhysicalDeviceVulkan14Features deviceFeatures14 = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
       .pNext = &deviceFeatures13,
-      .indexTypeUint8 = vkFeatures14_.indexTypeUint8,
+      .indexTypeUint8 = VK_TRUE,
       .dynamicRenderingLocalRead = VK_TRUE,
       .maintenance5 = VK_TRUE,
   };
-#endif // VK_API_VERSION_1_4
 
-#if defined(VK_API_VERSION_1_4)
   void* createInfoNext = config_.vulkanVersion >= VulkanVersion_1_4 ? (void*)&deviceFeatures14 : (void*)&deviceFeatures13;
-#else
-  void* createInfoNext = &deviceFeatures13;
-#endif
+
   VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
       .accelerationStructure = VK_TRUE,
