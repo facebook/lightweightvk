@@ -1,0 +1,6 @@
+Checks: '
+-bugprone-easily-swappable-parameters,
+-misc-misplaced-const,
+-modernize-use-using,
+-bugprone-exception-escape,
+'
