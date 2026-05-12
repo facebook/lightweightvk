@@ -144,6 +144,7 @@ class VulkanApp {
  public:
   std::string folderThirdParty_;
   std::string folderContentRoot_;
+  std::string folderRepoRoot_;
   int width_ = 0;
   int height_ = 0;
 #if defined(ANDROID)

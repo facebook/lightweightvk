@@ -41,6 +41,10 @@
 #include <malloc.h>
 #endif
 
+#if defined(LVK_WITH_LAVAPIPE_STATIC)
+extern "C" VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL lvp_GetInstanceProcAddr(VkInstance instance, const char* pName);
+#endif // LVK_WITH_LAVAPIPE_STATIC
+
 uint32_t lvk::VulkanPipelineBuilder::numPipelinesCreated_ = 0;
 
 static_assert(lvk::HWDeviceDesc::LVK_MAX_PHYSICAL_DEVICE_NAME_SIZE == VK_MAX_PHYSICAL_DEVICE_NAME_SIZE);
@@ -3963,10 +3967,14 @@ lvk::VulkanContext::VulkanContext(const lvk::ContextConfig& config, void* window
 
   pimpl_ = std::make_unique<VulkanContextImpl>();
 
+#if defined(LVK_WITH_LAVAPIPE_STATIC)
+  volkInitializeCustom(reinterpret_cast<PFN_vkGetInstanceProcAddr>(lvp_GetInstanceProcAddr));
+#else
   if (volkInitialize() != VK_SUCCESS) {
     LLOGW("volkInitialize() failed\n");
     exit(255);
   };
+#endif // LVK_WITH_LAVAPIPE_STATIC
 
   glslang_initialize_process();
 

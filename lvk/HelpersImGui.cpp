@@ -9,6 +9,7 @@
 
 #include "HelpersImGui.h"
 
+#if !defined(LVK_IMGUI_EXTERNAL)
 #include "imgui/imgui.cpp"
 #include "imgui/imgui_draw.cpp"
 #include "imgui/imgui_tables.cpp"
@@ -25,6 +26,11 @@
 #if LVK_WITH_SDL3
 #include "imgui/backends/imgui_impl_sdl3.cpp"
 #endif // LVK_WITH_SDL3
+#else // LVK_IMGUI_EXTERNAL
+#if LVK_WITH_GLFW
+#include <imgui_impl_glfw.h>
+#endif
+#endif // !defined(LVK_IMGUI_EXTERNAL)
 
 #include <math.h>
 

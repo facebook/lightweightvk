@@ -223,19 +223,28 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
       folderThirdParty_ = (path(externalStorage) / "LVK" / "deps" / "src").string() + "/";
       folderContentRoot_ = (path(externalStorage) / "LVK" / "content").string() + "/";
     }
-#else
-    path subdir("third-party/content/");
+#elif defined(LVK_PROJECT_ROOT_PATH)
     path dir = current_path();
-    // find the content somewhere above our current build directory
-    while (dir != current_path().root_path() && !exists(dir / subdir)) {
+    while (dir != dir.root_path() && !exists(dir / path(LVK_PROJECT_ROOT_PATH) / "lvk")) {
       dir = dir.parent_path();
     }
-    if (!exists(dir / subdir)) {
-      LLOGW("Cannot find the content directory. Run `deploy_content.py` before running this app.");
-      LVK_ASSERT(false);
-    }
-    folderThirdParty_ = (dir / path("third-party/deps/src/")).string();
-    folderContentRoot_ = (dir / subdir).string();
+    const path root = dir / path(LVK_PROJECT_ROOT_PATH);
+    folderThirdParty_ = (root / path("third-party/deps/src/")).string();
+    folderContentRoot_ = (root / path("third-party/content/")).string();
+    folderRepoRoot_ = dir.string();
+#else
+  path subdir("third-party/content/");
+  path dir = current_path();
+  // find the content somewhere above our current build directory
+  while (dir != current_path().root_path() && !exists(dir / subdir)) {
+    dir = dir.parent_path();
+  }
+  if (!exists(dir / subdir)) {
+    LLOGW("Cannot find the content directory. Run `deploy_content.py` before running this app.");
+    LVK_ASSERT(false);
+  }
+  folderThirdParty_ = (dir / path("third-party/deps/src/")).string();
+  folderContentRoot_ = (dir / subdir).string();
 #endif // ANDROID
   }
 
@@ -345,8 +354,12 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
 #endif // LVK_WITH_GLFW
 
   // initialize ImGUi after GLFW callbacks have been installed
-  imgui_ = std::make_unique<lvk::ImGuiRenderer>(
-      *ctx_, window_, (folderThirdParty_ + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), 30.0f);
+#if defined(LVK_PROJECT_ROOT_PATH)
+  const std::string fontPath = (std::filesystem::path(folderRepoRoot_) / "third-party/imgui/misc/fonts/DroidSans.ttf").string();
+#else
+  const std::string fontPath = folderThirdParty_ + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf";
+#endif
+  imgui_ = std::make_unique<lvk::ImGuiRenderer>(*ctx_, window_, fontPath.c_str(), 30.0f);
 }
 
 VulkanApp::~VulkanApp() {
