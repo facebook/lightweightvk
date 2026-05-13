@@ -783,8 +783,9 @@ void destroy() {
 }
 
 std::string normalizeTextureName(const char* n) {
-  if (!n)
+  if (!n) {
     return std::string();
+  }
   LVK_ASSERT(strlen(n) < MAX_MATERIAL_NAME);
   std::string name(n);
 #if defined(__linux__) || defined(__APPLE__) || defined(ANDROID)
@@ -801,8 +802,9 @@ bool loadAndCache(const char* cacheFileName) {
 
   fastObjMesh* mesh = fast_obj_read((folderContentRoot + "src/bistro/Exterior/exterior.obj").c_str());
   SCOPE_EXIT {
-    if (mesh)
+    if (mesh) {
       fast_obj_destroy(mesh);
+    }
   };
 
   if (!LVK_VERIFY(mesh)) {
@@ -812,8 +814,9 @@ bool loadAndCache(const char* cacheFileName) {
 
   uint32_t vertexCount = 0;
 
-  for (uint32_t i = 0; i < mesh->face_count; ++i)
+  for (uint32_t i = 0; i < mesh->face_count; ++i) {
     vertexCount += mesh->face_vertices[i];
+  }
 
   vertexData_.reserve(vertexCount);
 
@@ -1176,8 +1179,9 @@ void processLoadedMaterials(lvk::ICommandBuffer& buffer);
 void render(double delta) {
   LVK_PROFILER_FUNCTION();
 
-  if (!width_ && !height_)
+  if (!width_ && !height_) {
     return;
+  }
 
   lvk::TextureHandle nativeDrawable = ctx_->getCurrentSwapchainTexture();
   fbMain_.color[0].texture = nativeDrawable;
@@ -1232,8 +1236,9 @@ void render(double delta) {
       ImGui::End();
     }
 
-    if (showPerfStats_)
+    if (showPerfStats_) {
       showTimeGPU();
+    }
   }
 
   positioner_.update(delta, mousePos_, mousePressed_);
@@ -1849,8 +1854,9 @@ lvk::TextureHandle createTexture(const LoadedImage& img) {
     initialDataNumMipLevels = lvk::calcNumMipLevels(img.w, img.h);
   }
   SCOPE_EXIT {
-    if (texture)
+    if (texture) {
       ktxTexture_Destroy(ktxTexture(texture));
+    }
   };
 
   // No mip-maps come from files on Apple and Android platforms, we need to generate them.
@@ -2126,8 +2132,9 @@ int main(int argc, char* argv[]) {
       mousePressed_ = false;
     }
     // call the previous installed callback
-    if (g_PrevMouseButtonCallback)
+    if (g_PrevMouseButtonCallback) {
       g_PrevMouseButtonCallback(window, button, action, mods);
+    }
   });
 
   g_PrevKeyCallback = glfwSetKeyCallback(window, [](GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -2148,8 +2155,9 @@ int main(int argc, char* argv[]) {
     if (key == GLFW_KEY_P && pressed) {
       showPerfStats_ = !showPerfStats_;
     }
-    if (key == GLFW_KEY_ESCAPE && pressed)
+    if (key == GLFW_KEY_ESCAPE && pressed) {
       glfwSetWindowShouldClose(window, GLFW_TRUE);
+    }
     if (key == GLFW_KEY_W) {
       positioner_.movement_.forward_ = pressed;
     }
@@ -2198,8 +2206,9 @@ int main(int argc, char* argv[]) {
       ktxTexture_Destroy(ktxTexture(texture));
     }
     // call the previous installed callback
-    if (g_PrevKeyCallback)
+    if (g_PrevKeyCallback) {
       g_PrevKeyCallback(window, key, scancode, action, mods);
+    }
   });
 
   // Main loop
@@ -2210,8 +2219,9 @@ int main(int argc, char* argv[]) {
     const double delta = newTime - prevTime;
     prevTime = newTime;
 
-    if (!width_ || !height_)
+    if (!width_ || !height_) {
       continue;
+    }
 
     fps_.tick(delta);
 
