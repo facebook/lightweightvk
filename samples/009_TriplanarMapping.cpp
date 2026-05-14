@@ -459,9 +459,8 @@ VULKAN_APP_MAIN {
     ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once);
     ImGui::Begin("Texture Viewer", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
     ImGui::Image(texture1_.index(), ImVec2(512, 512));
-    if (texture1_.valid()) {
+    if (texture1_.valid())
       ImGui::Text("Press T to unload texture");
-    }
     ImGui::End();
     ImGui::SetNextWindowPos({0, 30}, ImGuiCond_Once);
     ImGui::Begin("Present Mode", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
