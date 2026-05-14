@@ -32,7 +32,11 @@ option(LVK_WITH_ANDROID_VALIDATION "Enable validation layers on Android"     ON)
 option(LVK_WITH_MINILOG            "Enable Minilog"                          ON)
 option(LVK_WITH_SLANG              "Enable Slang compiler"                   OFF)
 option(LVK_WITH_SPIRV_OPT          "Run SPIRV optimization on shaders"       OFF)
+option(LVK_WITH_LAVAPIPE_STATIC    "Use statically linked Lavapipe"          OFF)
+option(LVK_IMGUI_EXTERNAL          "Use external ImGui library               OFF)
 option(LVK_ENABLE_LONG_PATHS_WIN32 "Enable long paths on Windows"            ON)
+
+set(LVK_PROJECT_ROOT_PATH "" CACHE STRING "Absolute project root path (empty = auto-detect) - for monorepo")
 
 set(LVK_ANDROID_ABI "arm64-v8a" CACHE STRING "Enabled ABI on Android")
 # cmake-format: on
