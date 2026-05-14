@@ -972,7 +972,7 @@ void convertEquirectangularMapToKTX(const std::string& inFilename, const std::st
   const uint32_t w = static_cast<uint32_t>(bmp.w_);
   const uint32_t h = static_cast<uint32_t>(bmp.h_);
 
-  const ktxTextureCreateInfo createInfo = {
+  ktxTextureCreateInfo createInfo = {
       .glInternalformat = GL_RGBA8,
       .vkFormat = VK_FORMAT_R8G8B8A8_UNORM,
       .baseWidth = w,
