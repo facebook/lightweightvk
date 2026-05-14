@@ -2069,6 +2069,15 @@ int main(int argc, char* argv[]) {
   // find the content folder
   {
     using namespace std::filesystem;
+#if defined(LVK_PROJECT_ROOT_PATH)
+    path dir = current_path();
+    while (dir != dir.root_path() && !exists(dir / path(LVK_PROJECT_ROOT_PATH) / "lvk")) {
+      dir = dir.parent_path();
+    }
+    const path root = dir / path(LVK_PROJECT_ROOT_PATH);
+    folderThirdParty = (root / path("third-party/deps/src/")).string();
+    folderContentRoot = (root / path("third-party/content/")).string();
+#else
     path subdir("third-party/content/");
     path dir = current_path();
     // find the content somewhere above our current build directory
@@ -2082,6 +2091,7 @@ int main(int argc, char* argv[]) {
     }
     folderThirdParty = (dir / path("third-party/deps/src/")).string();
     folderContentRoot = (dir / subdir).string();
+#endif
   }
 
   lvk::LVKwindow* window = lvk::initWindow("Vulkan Bistro", width_, height_);
