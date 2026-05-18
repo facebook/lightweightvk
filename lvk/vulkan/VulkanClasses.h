@@ -545,7 +545,7 @@ class VulkanStagingDevice final {
 class VulkanContext final : public IContext {
  public:
   VulkanContext(const lvk::ContextConfig& config, void* window, void* display = nullptr, VkSurfaceKHR surface = VK_NULL_HANDLE);
-  ~VulkanContext();
+  ~VulkanContext() override;
 
   ICommandBuffer& acquireCommandBuffer() override;
 
