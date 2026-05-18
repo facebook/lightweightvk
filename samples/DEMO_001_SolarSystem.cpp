@@ -1363,6 +1363,15 @@ VULKAN_APP_MAIN {
   };
   VULKAN_APP_DECLARE(app, cfg);
 
+#if defined(LVK_CONTENT_ROOT_PATH)
+  {
+    std::filesystem::path dir = std::filesystem::current_path();
+    while (dir != dir.root_path() && !exists(dir / std::filesystem::path(LVK_CONTENT_ROOT_PATH) / "src"))
+      dir = dir.parent_path();
+    app.folderContentRoot_ = (dir / std::filesystem::path(LVK_CONTENT_ROOT_PATH) / "").string();
+  }
+#endif
+
   app.positioner_.maxSpeed_ = 0.1f;
 
   lvk::IContext* ctx = app.ctx_.get();
