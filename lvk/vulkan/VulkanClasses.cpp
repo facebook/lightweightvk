@@ -6571,9 +6571,9 @@ lvk::Result lvk::VulkanContext::createInstance() {
 #elif defined(__linux__)
 #if defined(VK_USE_PLATFORM_WAYLAND_KHR)
       VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
-#else
+#elif defined(VK_USE_PLATFORM_XLIB_KHR)
       VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
-#endif // VK_USE_PLATFORM_WAYLAND_KHR
+#endif // VK_USE_PLATFORM_WAYLAND_KHR || VK_USE_PLATFORM_XLIB_KHR
 #endif
   };
 
@@ -6805,7 +6805,7 @@ void lvk::VulkanContext::createSurface(void* window, void* display) {
     VK_ASSERT(vkCreateMetalSurfaceEXT(vkInstance_, &ci, nullptr, &vkSurface_));
   }
 #else
-#error Implement for other platforms
+  LVK_ASSERT_MSG(false, "No windowed surface API available; use createHeadlessSurface()");
 #endif
 }
 
