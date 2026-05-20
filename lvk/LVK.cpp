@@ -24,7 +24,7 @@
 #elif defined(__linux__)
 #  if defined(LVK_WITH_WAYLAND)
 #    define GLFW_EXPOSE_NATIVE_WAYLAND
-#  else
+#  elif !defined(LVK_WITH_GLFW_NULL)
 #    define GLFW_EXPOSE_NATIVE_X11
 #  endif
 #elif __APPLE__
@@ -34,7 +34,9 @@
 #endif
 // clang-format on
 
+#if !defined(LVK_WITH_GLFW_NULL)
 #include <GLFW/glfw3native.h>
+#endif
 #endif // LVK_WITH_GLFW
 
 #if LVK_WITH_SDL3
@@ -492,7 +494,10 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
   ctx = std::make_unique<VulkanContext>(cfg, (void*)waylandSurface, (void*)waylandDisplay);
 #endif
 #else
-#if defined(LVK_WITH_GLFW)
+#if defined(LVK_WITH_GLFW_NULL)
+  (void)window;
+  ctx = std::make_unique<VulkanContext>(cfg, nullptr, nullptr);
+#elif defined(LVK_WITH_GLFW)
   ctx = std::make_unique<VulkanContext>(cfg, (void*)glfwGetX11Window(window), (void*)glfwGetX11Display());
 #elif defined(LVK_WITH_SDL3)
   SDL_PropertiesID props = SDL_GetWindowProperties(window);
