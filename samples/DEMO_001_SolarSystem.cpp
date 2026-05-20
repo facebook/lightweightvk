@@ -15,6 +15,7 @@
 
 #include "ldrutils/lmath/GeometryShapes.h"
 #include <ldrutils/lutils/ScopeExit.h>
+#include <lmath/Random.h>
 
 #include <shared/UtilsCubemap.h>
 
@@ -1294,6 +1295,15 @@ Scene createSolarSystemScene(VulkanApp& app) {
 
     assert(asteroidMesh);
 
+    // Deterministic PRNG for reproducible asteroid layouts across platforms (screenshot tests).
+    // Only enabled in the BUCK build, so the GitHub CMake build's screenshot baselines (which were captured against the original
+    // `randomFloat`/`randomVec` from `UtilsMath.h`) remain valid.
+#if defined(LVK_PROJECT_ROOT_PATH)
+    LRandom rng;
+    auto randomFloat = [&rng](float lo, float hi) { return rng.randomInRange(lo, hi); };
+    auto randomVec = [&rng](const vec3& lo, const vec3& hi) { return rng.randomVector3InRange(lo, hi); };
+#endif
+
     for (size_t i = 0; i < numAsteroidsInner; i++) {
       const float radius = randomFloat(g_Scale * 900.0f, g_Scale * 1250.0f);
       const float globalSpeed = randomFloat(0.5f, 2.5f);
@@ -1312,7 +1322,7 @@ Scene createSolarSystemScene(VulkanApp& app) {
                                                     }});
       SceneNode* subNode = node->createNode(glm::scale(mat4(1.0f), g_Scale * glm::vec3(randomFloat(0.05f, 0.15f))));
       scene.createMesh(subNode, asteroidMesh);
-      scene.createMaterial(subNode, randomFloat(0, 1) < 0.75f ? asteroidMat1 : asteroidMat2);
+      scene.createMaterial(subNode, randomFloat(0.0f, 1.0f) < 0.75f ? asteroidMat1 : asteroidMat2);
     }
 
     for (size_t i = 0; i < numAsteroidsOuter; i++) {
@@ -1333,7 +1343,7 @@ Scene createSolarSystemScene(VulkanApp& app) {
                                                     }});
       SceneNode* subNode = node->createNode(glm::scale(mat4(1.0f), g_Scale * glm::vec3(randomFloat(0.1f, 0.3f))));
       scene.createMesh(subNode, asteroidMesh);
-      scene.createMaterial(subNode, randomFloat(0, 1) < 0.25f ? asteroidMat1 : asteroidMat2);
+      scene.createMaterial(subNode, randomFloat(0.0f, 1.0f) < 0.25f ? asteroidMat1 : asteroidMat2);
     }
   }
 
