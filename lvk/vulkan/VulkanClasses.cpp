@@ -2295,7 +2295,7 @@ void lvk::CommandBuffer::cmdDispatchThreadGroups(const Dimensions& threadgroupCo
   cmdTransitionToGeneral(deps.storageImages, Stage_Comp);
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
-    const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
+    [[maybe_unused]] const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
     LVK_ASSERT_MSG(buf->vkUsageFlags_ & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                    "Did you forget to specify BufferUsageBits_Storage on your buffer?");
     bufferBarrier(deps.buffers[i],
@@ -2425,7 +2425,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   }
 
   const uint32_t numFbColorAttachments = fb.getNumColorAttachments();
-  const uint32_t numPassColorAttachments = renderPass.getNumColorAttachments();
+  [[maybe_unused]] const uint32_t numPassColorAttachments = renderPass.getNumColorAttachments();
 
   LVK_ASSERT(numPassColorAttachments == numFbColorAttachments);
 
@@ -3961,8 +3961,8 @@ void lvk::VulkanStagingDevice::waitAndReset() {
 }
 
 lvk::VulkanContext::VulkanContext(const lvk::ContextConfig& config, void* window, void* display, VkSurfaceKHR surface)
-: config_(config)
-, vkSurface_(surface) {
+: vkSurface_(surface)
+, config_(config) {
   LVK_PROFILER_THREAD("MainThread");
 
   pimpl_ = std::make_unique<VulkanContextImpl>();
@@ -4565,7 +4565,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
         {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2, .pNext = numPlanes > 2 ? &planes[2] : nullptr, .image = img},
     };
 
-    const VkDeviceSize maxMemoryAllocationSize = vkPhysicalDeviceVulkan11Properties_.maxMemoryAllocationSize;
+    [[maybe_unused]] const VkDeviceSize maxMemoryAllocationSize = vkPhysicalDeviceVulkan11Properties_.maxMemoryAllocationSize;
 
     for (uint32_t p = 0; p != numPlanes; p++) {
       vkGetImageMemoryRequirements2(vkDevice_, &imgRequirements[p], &memRequirements[p]);
@@ -6013,8 +6013,6 @@ lvk::Result lvk::VulkanContext::upload(lvk::TextureHandle handle,
     return Result(Result::Code::ArgumentOutOfRange);
   }
 
-  const uint32_t numLayers = std::max(range.numLayers, 1u);
-
   VkFormat vkFormat = texture->vkImageFormat_;
 
   if (texture->vkType_ == VK_IMAGE_TYPE_3D) {
@@ -6130,7 +6128,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSPIRV(const voi
   }
 
   SpvReflectShaderModule mdl;
-  SpvReflectResult result = spvReflectCreateShaderModule(numBytes, spirv, &mdl);
+  [[maybe_unused]] const SpvReflectResult result = spvReflectCreateShaderModule(numBytes, spirv, &mdl);
   LVK_ASSERT(result == SPV_REFLECT_RESULT_SUCCESS);
   SCOPE_EXIT {
     spvReflectDestroyShaderModule(&mdl);
@@ -6494,7 +6492,6 @@ lvk::AccelStructSizes lvk::VulkanContext::getAccelStructSizes(const AccelStructD
     return {};
   }
 
-  Result result;
   VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
   VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
   switch (desc.type) {

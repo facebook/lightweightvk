@@ -166,13 +166,13 @@ uint32_t lvk::getTextureBytesPerLayer(uint32_t width, uint32_t height, lvk::Form
 
   const uint32_t blockWidth = std::max((uint32_t)props.blockWidth, 1u);
   const uint32_t blockHeight = std::max((uint32_t)props.blockHeight, 1u);
-  const uint32_t widthInBlocks = (levelWidth + props.blockWidth - 1) / props.blockWidth;
-  const uint32_t heightInBlocks = (levelHeight + props.blockHeight - 1) / props.blockHeight;
+  const uint32_t widthInBlocks = (levelWidth + blockWidth - 1) / blockWidth;
+  const uint32_t heightInBlocks = (levelHeight + blockHeight - 1) / blockHeight;
   return widthInBlocks * heightInBlocks * props.bytesPerBlock;
 }
 
 uint32_t lvk::getTextureBytesPerPlane(uint32_t width, uint32_t height, lvk::Format format, uint32_t plane) {
-  const TextureFormatProperties props = properties[format];
+  [[maybe_unused]] const TextureFormatProperties props = properties[format];
 
   LVK_ASSERT(plane < props.numPlanes);
 
