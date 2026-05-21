@@ -2425,9 +2425,8 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   }
 
   const uint32_t numFbColorAttachments = fb.getNumColorAttachments();
-  [[maybe_unused]] const uint32_t numPassColorAttachments = renderPass.getNumColorAttachments();
 
-  LVK_ASSERT(numPassColorAttachments == numFbColorAttachments);
+  LVK_ASSERT(renderPass.getNumColorAttachments() == numFbColorAttachments);
 
   framebuffer_ = fb;
 
@@ -6128,8 +6127,8 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSPIRV(const voi
   }
 
   SpvReflectShaderModule mdl;
-  [[maybe_unused]] const SpvReflectResult result = spvReflectCreateShaderModule(numBytes, spirv, &mdl);
-  LVK_ASSERT(result == SPV_REFLECT_RESULT_SUCCESS);
+  const SpvReflectResult result = spvReflectCreateShaderModule(numBytes, spirv, &mdl);
+  LVK_VERIFY(result == SPV_REFLECT_RESULT_SUCCESS);
   SCOPE_EXIT {
     spvReflectDestroyShaderModule(&mdl);
   };
