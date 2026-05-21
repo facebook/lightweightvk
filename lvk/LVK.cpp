@@ -172,9 +172,7 @@ uint32_t lvk::getTextureBytesPerLayer(uint32_t width, uint32_t height, lvk::Form
 }
 
 uint32_t lvk::getTextureBytesPerPlane(uint32_t width, uint32_t height, lvk::Format format, uint32_t plane) {
-  [[maybe_unused]] const TextureFormatProperties props = properties[format];
-
-  LVK_ASSERT(plane < props.numPlanes);
+  LVK_ASSERT(plane < properties[format].numPlanes);
 
   switch (format) {
   case Format_YUV_NV12:
