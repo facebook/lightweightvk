@@ -6128,7 +6128,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSPIRV(const voi
 
   SpvReflectShaderModule mdl;
   const SpvReflectResult result = spvReflectCreateShaderModule(numBytes, spirv, &mdl);
-  LVK_VERIFY(result == SPV_REFLECT_RESULT_SUCCESS);
+  (void)LVK_VERIFY(result == SPV_REFLECT_RESULT_SUCCESS);
   SCOPE_EXIT {
     spvReflectDestroyShaderModule(&mdl);
   };
