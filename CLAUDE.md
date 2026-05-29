@@ -115,6 +115,7 @@ To check CI status: `gh run list` or `gh run view <run-id>`.
 
 ### C++ Conventions
 - Use C++20 designated initializers whenever possible (e.g., `lvk::RenderPass{.color = {...}}`)
+- For unions whose first member is the common variant (e.g., `ClearColorValue`), use **single-brace** initialization: `{1.0f, 1.0f, 1.0f, 1.0f}` — not double-brace `{{1.0f, ...}}` and not `{.float32 = {1.0f, ...}}`
 - Use `if (ptr)` instead of `if (ptr != nullptr)` for pointer checks
 - Use `if (value)` instead of `if (value != 0)` for integer checks
 - Use `if (handle)` instead of `if (handle != VK_NULL_HANDLE)` or `if (handle != XR_NULL_HANDLE)` for Vulkan/OpenXR handle checks
