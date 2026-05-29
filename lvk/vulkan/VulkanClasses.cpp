@@ -3068,7 +3068,7 @@ void lvk::CommandBuffer::cmdResetQueryPool(QueryPoolHandle pool, uint32_t firstQ
 void lvk::CommandBuffer::cmdWriteTimestamp(QueryPoolHandle pool, uint32_t query) {
   VkQueryPool vkPool = *ctx_->queriesPool_.get(pool);
 
-  vkCmdWriteTimestamp(wrapper_->cmdBuf_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, vkPool, query);
+  vkCmdWriteTimestamp2(wrapper_->cmdBuf_, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, vkPool, query);
 }
 
 void lvk::CommandBuffer::cmdClearColorImage(TextureHandle tex, const ClearColorValue& value, const TextureLayers& layers) {
@@ -3430,10 +3430,14 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
 
   LVK_ASSERT(stagingBuffer);
 
+  const size_t origDstOffset = dstOffset;
+  const size_t origSize = size;
+
   while (size) {
     // get next staging buffer free offset
     MemoryRegionDesc desc = getNextFreeOffset((uint32_t)size);
     const uint32_t chunkSize = std::min((uint64_t)size, desc.size_);
+    const bool isLast = (chunkSize == size);
 
     // copy data into staging buffer
     stagingBuffer->bufferSubData(ctx_, desc.offset_, chunkSize, data);
@@ -3447,35 +3451,27 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
 
     const lvk::VulkanImmediateCommands::CommandBufferWrapper& wrapper = ctx_.immediate_->acquire();
     vkCmdCopyBuffer(wrapper.cmdBuf_, stagingBuffer->vkBuffer_, buffer.vkBuffer_, 1, &copy);
-    VkBufferMemoryBarrier barrier = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-        .dstAccessMask = 0,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = buffer.vkBuffer_,
-        .offset = dstOffset,
-        .size = chunkSize,
-    };
-    VkPipelineStageFlags dstMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    if (buffer.vkUsageFlags_ & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) {
-      dstMask |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
-      barrier.dstAccessMask |= VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+    // one barrier covering the full destination range
+    if (isLast) {
+      const VkBufferMemoryBarrier2 barrier = {
+          .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+          .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+          .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+          .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+          .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
+          .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+          .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+          .buffer = buffer.vkBuffer_,
+          .offset = origDstOffset,
+          .size = origSize,
+      };
+      const VkDependencyInfo depInfo = {
+          .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+          .bufferMemoryBarrierCount = 1,
+          .pBufferMemoryBarriers = &barrier,
+      };
+      vkCmdPipelineBarrier2(wrapper.cmdBuf_, &depInfo);
     }
-    if (buffer.vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) {
-      dstMask |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-      barrier.dstAccessMask |= VK_ACCESS_INDEX_READ_BIT;
-    }
-    if (buffer.vkUsageFlags_ & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) {
-      dstMask |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-      barrier.dstAccessMask |= VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-    }
-    if (buffer.vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR) {
-      dstMask |= VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
-      barrier.dstAccessMask |= VK_ACCESS_MEMORY_READ_BIT;
-    }
-    vkCmdPipelineBarrier(
-        wrapper.cmdBuf_, VK_PIPELINE_STAGE_TRANSFER_BIT, dstMask, VkDependencyFlags{}, 0, nullptr, 1, &barrier, 0, nullptr);
     desc.handle_ = ctx_.immediate_->submit(wrapper);
     regions_.push_back(desc);
 
@@ -6190,7 +6186,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
     }
     if (vkStage == VK_SHADER_STAGE_FRAGMENT_BIT) {
       // Note how nonuniformEXT() should be used:
-      // https://github.com/KhronosGroup/Vulkan-Samples/blob/main/shaders/descriptor_indexing/nonuniform-quads.frag#L33-L39
+      // https://github.com/KhronosGroup/Vulkan-Samples/blob/main/shaders/descriptor_indexing/glsl/nonuniform-quads.frag#L38
       sourcePatched +=
           "#version 460\n"
           "#extension GL_EXT_buffer_reference_uvec2 : require\n"
@@ -6678,11 +6674,7 @@ lvk::Result lvk::VulkanContext::createInstance() {
       .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
       .pEngineName = "LVK/Vulkan",
       .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-#if defined(VK_API_VERSION_1_4)
       .apiVersion = config_.vulkanVersion == VulkanVersion_1_3 ? VK_API_VERSION_1_3 : VK_API_VERSION_1_4,
-#else
-      .apiVersion = VK_API_VERSION_1_3,
-#endif // VK_API_VERSION_1_4
   };
 
   const VkInstanceCreateInfo ci = {
@@ -6989,14 +6981,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     addNextPhysicalDeviceProperties(&rayTracingPipelineProperties_);
   }
 
-#if defined(VK_API_VERSION_1_4)
   if (config_.vulkanVersion >= VulkanVersion_1_4) {
     addNextPhysicalDeviceProperties(&vkPhysicalDeviceVulkan14Properties_);
     vkFeatures13_.pNext = &vkFeatures14_;
   }
-#else
-  LVK_ASSERT_MSG(config_.vulkanVersion == VulkanVersion_1_3, "Only Vulkan 1.3 is supported on this platform");
-#endif // VK_API_VERSION_1_4
 
   vkGetPhysicalDeviceFeatures2(vkPhysicalDevice_, &vkFeatures10_);
   vkGetPhysicalDeviceProperties2(vkPhysicalDevice_, &vkPhysicalDeviceProperties2_);
@@ -7079,6 +7067,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .depthClamp = VK_TRUE,
       .depthBiasClamp = VK_TRUE,
       .fillModeNonSolid = vkFeatures10_.features.fillModeNonSolid, // enable if supported
+      .largePoints = VK_TRUE,
       .samplerAnisotropy = VK_TRUE,
       .textureCompressionETC2 = vkFeatures10_.features.textureCompressionETC2, // enable if supported
       .textureCompressionASTC_LDR = vkFeatures10_.features.textureCompressionASTC_LDR, // enable if supported
@@ -7103,6 +7092,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .storageBuffer16BitAccess = VK_TRUE,
       .storageInputOutput16 = vkFeatures11_.storageInputOutput16, // enable if supported
       .multiview = vkFeatures11_.multiview, // enable if supported
+      .variablePointersStorageBuffer = VK_TRUE,
+      .variablePointers = VK_TRUE,
       .samplerYcbcrConversion = VK_TRUE,
       .shaderDrawParameters = VK_TRUE,
   };
@@ -7283,7 +7274,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     addOptionalExtension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_KHR_swapchain_maintenance1_, &swapchainMaintenance1Features);
   }
   addOptionalExtension(VK_EXT_HDR_METADATA_EXTENSION_NAME, has_EXT_hdr_metadata_);
-  addOptionalExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME, has_EXT_device_fault_, &deviceFaultFeatures);
+  if (!addOptionalExtension(VK_KHR_DEVICE_FAULT_EXTENSION_NAME, has_EXT_device_fault_, &deviceFaultFeatures)) {
+    addOptionalExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME, has_EXT_device_fault_, &deviceFaultFeatures);
+  }
   addOptionalExtension(VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME, has_EXT_shader_tile_image, &shaderTileImageFeatures);
   addOptionalExtension(VK_EXT_MESH_SHADER_EXTENSION_NAME, has_EXT_mesh_shader_, &meshShaderFeatures);
   addOptionalExtension(VK_KHR_SHARED_PRESENTABLE_IMAGE_EXTENSION_NAME, has_KHR_shared_presentable_image_);
