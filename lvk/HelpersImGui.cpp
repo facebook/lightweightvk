@@ -135,8 +135,10 @@ lvk::Holder<lvk::RenderPipelineHandle> ImGuiRenderer::createNewPipelineState(con
 
 ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const char* defaultFontTTF, float fontSizePixels)
 : ImGuiRenderer(device, window, nullptr, 0, fontSizePixels) {
-  if (defaultFontTTF)
+  if (defaultFontTTF) {
+    ImGui::GetIO().Fonts->Clear();
     updateFont(defaultFontTTF, nullptr, 0, fontSizePixels);
+  }
 }
 
 ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const void* fontData, size_t fontDataSize, float fontSizePixels)
