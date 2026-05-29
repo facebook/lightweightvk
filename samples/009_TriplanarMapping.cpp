@@ -434,7 +434,7 @@ VULKAN_APP_MAIN {
         .depthStencil = {app.getDepthTexture()},
     };
     buffer.cmdBeginRendering(
-        lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {1.0f, 1.0f, 1.0f, 1.0f}}},
+        lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {{1.0f, 1.0f, 1.0f, 1.0f}}}},
                         .depth = {.loadOp = lvk::LoadOp_Clear, .clearDepth = 1.0}},
         framebuffer);
     {
