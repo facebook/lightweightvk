@@ -85,6 +85,7 @@ struct Resources {
   std::vector<YUVFormatDemo> demos;
 };
 
+// NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 Resources res_;
 
 void createDemo(lvk::IContext* ctx, const char* contentFolder, const char* name, lvk::Format format, const char* fileName) {
