@@ -908,7 +908,7 @@ VULKAN_APP_MAIN {
     for (uint32_t i = 0; i != views.size(); i++) {
       buffer.cmdBeginRendering(
           lvk::RenderPass{
-              .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
+              .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {{0.0f, 0.0f, 0.0f, 1.0f}}}},
           },
           lvk::Framebuffer{
               .color = {{.texture = views[i].colorTexture}},
