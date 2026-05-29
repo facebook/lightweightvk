@@ -43,9 +43,6 @@ Amazon Lumberyard Bistro
 https://developer.nvidia.com/orca/amazon-lumberyard-bistro
 https://casual-effects.com/data/
 
-bc7env
-https://github.com/richgel999/bc7enc/blob/master/LICENSE
-
 Bootstrap
 https://github.com/corporateshark/bootstrapping/blob/master/LICENSE
 
@@ -54,9 +51,6 @@ https://github.com/KhronosGroup/glTF-Sample-Models/blob/master/2.0/DamagedHelmet
 
 fast_obj
 https://github.com/thisistherk/fast_obj/blob/master/LICENSE
-
-fmt
-https://github.com/fmtlib/fmt/blob/master/LICENSE.rst
 
 glfw
 https://github.com/glfw/glfw/blob/master/LICENSE.md
@@ -67,9 +61,6 @@ https://github.com/g-truc/glm
 glslang
 https://github.com/KhronosGroup/glslang/blob/main/LICENSE.txt
 
-googletest
-https://github.com/google/googletest/blob/main/LICENSE
-
 IGL
 https://github.com/facebook/igl/blob/main/LICENSE.md
 
@@ -79,8 +70,8 @@ https://github.com/ocornut/imgui/blob/master/LICENSE.txt
 implot
 https://github.com/epezent/implot/blob/master/LICENSE
 
-ios-cmake
-https://github.com/leetal/ios-cmake/blob/master/LICENSE.md
+KTX-Software
+https://github.com/KhronosGroup/KTX-Software/blob/main/LICENSE.md
 
 ldrutils
 https://github.com/corporateshark/ldrutils/blob/master/LICENSE.md
@@ -94,6 +85,24 @@ https://github.com/zeux/meshoptimizer/blob/master/LICENSE.md
 minilog
 https://github.com/corporateshark/minilog/blob/main/LICENSE
 
+OpenXR SDK
+https://github.com/KhronosGroup/OpenXR-SDK/blob/main/LICENSE
+
+SDL
+https://github.com/libsdl-org/SDL/blob/main/LICENSE.txt
+
+Slang
+https://github.com/shader-slang/slang/blob/master/LICENSE
+
+SPIRV-Headers
+https://github.com/KhronosGroup/SPIRV-Headers/blob/main/LICENSE
+
+SPIRV-Reflect
+https://github.com/KhronosGroup/SPIRV-Reflect/blob/main/LICENSE
+
+SPIRV-Tools
+https://github.com/KhronosGroup/SPIRV-Tools/blob/main/LICENSE
+
 stb
 https://github.com/nothings/stb/blob/master/LICENSE
 
@@ -105,6 +114,9 @@ https://github.com/wolfpld/tracy/blob/master/LICENSE
 
 volk
 https://github.com/zeux/volk/blob/master/LICENSE.md
+
+Vulkan-Headers
+https://github.com/KhronosGroup/Vulkan-Headers/blob/main/LICENSE.md
 
 Vulkan Memory Allocator
 https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/blob/master/LICENSE.txt
