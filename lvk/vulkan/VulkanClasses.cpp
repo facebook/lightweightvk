@@ -569,15 +569,6 @@ VkFormat vertexFormatToVkFormat(lvk::VertexFormat fmt) {
   return VK_FORMAT_UNDEFINED;
 }
 
-bool supportsFormat(VkPhysicalDevice physicalDevice, VkFormat format) {
-  VkFormatProperties2 props = {
-      .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
-  };
-  vkGetPhysicalDeviceFormatProperties2(physicalDevice, format, &props);
-  return props.formatProperties.bufferFeatures != 0 || props.formatProperties.linearTilingFeatures != 0 ||
-         props.formatProperties.optimalTilingFeatures != 0;
-}
-
 std::vector<VkFormat> getCompatibleDepthStencilFormats(lvk::Format format) {
   switch (format) {
   case lvk::Format_Z_UN16:
@@ -593,7 +584,6 @@ std::vector<VkFormat> getCompatibleDepthStencilFormats(lvk::Format format) {
   default:
     return {VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT};
   }
-  return {VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT};
 }
 
 bool validateImageLimits(VkImageType imageType,
