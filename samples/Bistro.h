@@ -229,20 +229,19 @@ bool loadAndCache(VulkanApp& app, const char* cacheFileName, const char* modelFi
 
   std::filesystem::create_directories(std::filesystem::path(cacheFileName).parent_path());
   FILE* cacheFile = fopen(cacheFileName, "wb");
-  if (cacheFile) {
-    const uint32_t numMaterials = (uint32_t)cachedMaterials_.size();
-    const uint32_t numVertices = (uint32_t)vertexData_.size();
-    const uint32_t numIndices = (uint32_t)indexData_.size();
-    fwrite(&kMeshCacheVersion, sizeof(kMeshCacheVersion), 1, cacheFile);
-    fwrite(&numMaterials, sizeof(numMaterials), 1, cacheFile);
-    fwrite(&numVertices, sizeof(numVertices), 1, cacheFile);
-    fwrite(&numIndices, sizeof(numIndices), 1, cacheFile);
-    fwrite(cachedMaterials_.data(), sizeof(CachedMaterial), numMaterials, cacheFile);
-    fwrite(vertexData_.data(), sizeof(VertexData), numVertices, cacheFile);
-    fwrite(indexData_.data(), sizeof(uint32_t), numIndices, cacheFile);
-    fclose(cacheFile);
-  }
-  return true;
+  if (!cacheFile)
+    return false;
+  const uint32_t numMaterials = (uint32_t)cachedMaterials_.size();
+  const uint32_t numVertices = (uint32_t)vertexData_.size();
+  const uint32_t numIndices = (uint32_t)indexData_.size();
+  fwrite(&kMeshCacheVersion, sizeof(kMeshCacheVersion), 1, cacheFile);
+  fwrite(&numMaterials, sizeof(numMaterials), 1, cacheFile);
+  fwrite(&numVertices, sizeof(numVertices), 1, cacheFile);
+  fwrite(&numIndices, sizeof(numIndices), 1, cacheFile);
+  fwrite(cachedMaterials_.data(), sizeof(CachedMaterial), numMaterials, cacheFile);
+  fwrite(vertexData_.data(), sizeof(VertexData), numVertices, cacheFile);
+  fwrite(indexData_.data(), sizeof(uint32_t), numIndices, cacheFile);
+  return fclose(cacheFile) == 0;
 }
 
 bool loadFromCache(VulkanApp& app, const char* cacheFileName) {
