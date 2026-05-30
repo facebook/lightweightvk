@@ -48,17 +48,10 @@ if not os.path.isfile(tar_path):
             print("  Adding {} ...".format(desktop_path))
             count = 0
             for root, dirs, files in os.walk(desktop_path):
-                dirs[:] = [
-                    d
-                    for d in dirs
-                    if d not in exclude_names
-                    and os.path.abspath(os.path.join(root, d)) not in exclude_abs
-                ]
+                dirs[:] = [d for d in dirs if d not in exclude_names and os.path.abspath(os.path.join(root, d)) not in exclude_abs]
                 for f in files:
                     full_path = os.path.join(root, f)
-                    arcname = os.path.join(
-                        archive_prefix, os.path.relpath(full_path, desktop_path)
-                    ).replace("\\", "/")
+                    arcname = os.path.join(archive_prefix, os.path.relpath(full_path, desktop_path)).replace("\\", "/")
                     tf.add(full_path, arcname=arcname)
                     count += 1
             total_files += count
@@ -67,15 +60,11 @@ if not os.path.isfile(tar_path):
     print("Created {} ({:.1f} MB, {} files)".format(tar_path, tar_size_mb, total_files))
 else:
     tar_size_mb = os.path.getsize(tar_path) / (1024 * 1024)
-    print(
-        "{} already exists ({:.1f} MB), skipping creation".format(tar_path, tar_size_mb)
-    )
+    print("{} already exists ({:.1f} MB), skipping creation".format(tar_path, tar_size_mb))
 
 # upload to the device
 try:
-    result = subprocess.run(
-        ["adb", "shell", "echo", "$EXTERNAL_STORAGE"], capture_output=True, text=True
-    )
+    result = subprocess.run(["adb", "shell", "echo", "$EXTERNAL_STORAGE"], capture_output=True, text=True)
     external_storage = result.stdout.strip()
 except Exception as e:
     print("adb error:", e)
