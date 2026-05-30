@@ -200,7 +200,9 @@ struct PerFrame {
   uint32_t sampler;
 };
 
+// NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 lvk::Holder<lvk::TextureHandle> texture0_;
+// NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 lvk::Holder<lvk::TextureHandle> texture1_;
 
 VULKAN_APP_MAIN {
