@@ -4661,7 +4661,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
   image.isOwningVkImage_ = false;
 
   // drop all existing image views - they belong to the base image
-  memset(&image.imageViewStorage_, 0, sizeof(image.imageViewStorage_));
+  image.imageViewStorage_ = VK_NULL_HANDLE;
   memset(&image.imageViewForFramebuffer_, 0, sizeof(image.imageViewForFramebuffer_));
   memset(&image.imageViewForFramebufferMultiview_, 0, sizeof(image.imageViewForFramebufferMultiview_));
 
