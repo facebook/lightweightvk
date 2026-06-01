@@ -251,12 +251,14 @@ VULKAN_APP_MAIN {
       buffer.cmdBeginRendering(
           {.color =
                {
+                   // NOLINTBEGIN(clang-diagnostic-missing-braces)
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 0, .clearColor = {0.3f, 0.1f, 0.1f, 1.0f}},
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 1, .clearColor = {0.1f, 0.3f, 0.1f, 1.0f}},
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 2, .clearColor = {0.1f, 0.1f, 0.3f, 1.0f}},
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 3, .clearColor = {0.3f, 0.1f, 0.3f, 1.0f}},
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 4, .clearColor = {0.3f, 0.3f, 0.1f, 1.0f}},
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 5, .clearColor = {0.1f, 0.3f, 0.3f, 1.0f}},
+                   // NOLINTEND(clang-diagnostic-missing-braces)
                }},
           // NOLINTEND(clang-diagnostic-missing-braces)
           {.color = {
