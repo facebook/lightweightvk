@@ -20,6 +20,7 @@ vec3 lightDir_ = normalize(vec3(-0.5f, 0.85f, -0.05f));
 #else
 #define MODEL_PATH "src/bistro/Exterior/exterior.obj"
 #define CACHE_FILE_NAME "cache2.data"
+// NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 vec3 lightDir_ = normalize(vec3(0.032f, 0.835f, 0.549f));
 #endif
 
@@ -1080,6 +1081,7 @@ struct {
   std::vector<lvk::Holder<lvk::AccelStructHandle>> BLAS;
   lvk::Holder<lvk::AccelStructHandle> TLAS;
   lvk::Holder<lvk::BufferHandle> sbHashSlot_;
+  // NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 } res;
 
 bool enableShadows_ = true;
@@ -1121,6 +1123,7 @@ struct GPUMaterial {
 
 static_assert(sizeof(GPUMaterial) % 16 == 0);
 
+// NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 std::vector<GPUMaterial> materials_;
 
 bool initModel(VulkanApp& app) {
