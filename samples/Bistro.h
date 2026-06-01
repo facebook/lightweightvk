@@ -76,23 +76,23 @@ struct CachedMaterial {
 
 std::vector<CachedMaterial> cachedMaterials_;
 
-vec2 msign(vec2 v) {
+inline vec2 msign(vec2 v) {
   return vec2(v.x >= 0.0 ? 1.0f : -1.0f, v.y >= 0.0 ? 1.0f : -1.0f);
 }
 
 // https://www.shadertoy.com/view/llfcRl
-uint16_t packSnorm2x8(vec2 v) {
+inline uint16_t packSnorm2x8(vec2 v) {
   glm::uvec2 d = glm::uvec2(round(127.5f + v * 127.5f));
   return d.x | (d.y << 8u);
 }
 
 // https://www.shadertoy.com/view/llfcRl
-uint16_t packOctahedral16(vec3 n) {
+inline uint16_t packOctahedral16(vec3 n) {
   n /= (abs(n.x) + abs(n.y) + abs(n.z));
   return ::packSnorm2x8((n.z >= 0.0) ? vec2(n.x, n.y) : (vec2(1.0) - abs(vec2(n.y, n.x))) * msign(vec2(n)));
 }
 
-std::string normalizeTextureName(const char* n) {
+inline std::string normalizeTextureName(const char* n) {
   if (!n)
     return std::string();
   LVK_ASSERT(strlen(n) < MAX_MATERIAL_NAME);
@@ -135,7 +135,7 @@ unsigned long bistroMemFileSize(void* filePtr, void* /*userData*/) {
 }
 } // namespace
 
-bool loadAndCache(VulkanApp& app, const char* cacheFileName, const char* modelFileName) {
+inline bool loadAndCache(VulkanApp& app, const char* cacheFileName, const char* modelFileName) {
   LVK_PROFILER_FUNCTION();
 
   // load 3D model and cache it
@@ -244,7 +244,7 @@ bool loadAndCache(VulkanApp& app, const char* cacheFileName, const char* modelFi
   return fclose(cacheFile) == 0;
 }
 
-bool loadFromCache(VulkanApp& app, const char* cacheFileName) {
+inline bool loadFromCache(VulkanApp& app, const char* cacheFileName) {
   const std::vector<uint8_t> data = app.loadFile(cacheFileName);
   if (data.empty())
     return false;
