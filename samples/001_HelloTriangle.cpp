@@ -106,6 +106,7 @@ VULKAN_APP_MAIN {
       lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
 
       // this will clear the framebuffer
+      // NOLINTNEXTLINE(clang-diagnostic-missing-braces)
       buffer.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {1.0f, 1.0f, 1.0f, 1.0f}}}},
                                {.color = {{.texture = ctx->getCurrentSwapchainTexture()}}});
       buffer.cmdBindRenderPipeline(renderPipelineState_Triangle_);
