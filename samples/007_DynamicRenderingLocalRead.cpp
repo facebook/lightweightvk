@@ -610,9 +610,11 @@ VULKAN_APP_MAIN {
           {.color =
                {
                    {.loadOp = lvk::LoadOp_DontCare, .storeOp = lvk::StoreOp_Store},
+                   // NOLINTBEGIN(clang-diagnostic-missing-braces)
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
+                   // NOLINTEND(clang-diagnostic-missing-braces)
                }},
           framebuffer,
           {.inputAttachments = {texAlbedo, texNormal, texWorldPos}});
