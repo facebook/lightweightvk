@@ -382,6 +382,7 @@ void main() {
 };
 )";
 
+namespace {
 struct PerFrame {
   mat4 proj;
   mat4 view;
@@ -398,6 +399,7 @@ struct PerLight {
   float shadowFar;
   uint32_t shadowMap;
 };
+} // namespace
 
 VULKAN_APP_MAIN {
   const VulkanAppConfig cfg{
