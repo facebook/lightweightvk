@@ -2745,7 +2745,12 @@ void lvk::CommandBuffer::cmdBindIndexBuffer(BufferHandle indexBuffer, IndexForma
   LVK_ASSERT(buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
   const VkIndexType type = indexFormatToVkIndexType(indexFormat);
-  vkCmdBindIndexBuffer2KHR(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, bufferSize, type); // TODO: remove KHR to update to Vulkan 1.4
+  // TODO: remove KHR fallback once Vulkan 1.4 with VK_KHR_maintenance5 is baseline
+  if (vkCmdBindIndexBuffer2KHR) {
+    vkCmdBindIndexBuffer2KHR(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, bufferSize, type);
+  } else {
+    vkCmdBindIndexBuffer(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, type);
+  }
 }
 
 void lvk::CommandBuffer::cmdPushConstants(const void* data, size_t size, size_t offset) {
