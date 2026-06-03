@@ -3969,7 +3969,7 @@ lvk::VulkanContext::VulkanContext(const lvk::ContextConfig& config, void* window
   }
 
   if (!surface) {
-    if (config_.enableHeadlessSurface) {
+    if (config_.enableHeadlessSurface && vkCreateHeadlessSurfaceEXT) {
       createHeadlessSurface();
     } else if (window || display) {
       createSurface(window, display);
@@ -6588,7 +6588,7 @@ lvk::Result lvk::VulkanContext::createInstance() {
     enabledInstanceExtensionNames_.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME); // enabled only for validation
   }
 
-  if (config_.enableHeadlessSurface) {
+  if (config_.enableHeadlessSurface && hasExtension(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME, allInstanceExtensions)) {
     enabledInstanceExtensionNames_.push_back(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME);
   }
 
