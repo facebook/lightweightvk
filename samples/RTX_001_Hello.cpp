@@ -175,6 +175,7 @@ void main() {
 
 lvk::IContext* ctx_ = nullptr;
 
+namespace {
 struct Resources {
   lvk::Holder<lvk::AccelStructHandle> BLAS;
   lvk::Holder<lvk::AccelStructHandle> TLAS;
@@ -194,6 +195,7 @@ struct Resources {
   lvk::Holder<lvk::RayTracingPipelineHandle> pipeline;
   // NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 } res;
+} // namespace
 
 void createBottomLevelAccelerationStructure() {
   struct Vertex {
