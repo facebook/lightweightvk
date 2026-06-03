@@ -187,6 +187,7 @@ void main() {
 };
 )";
 
+namespace {
 struct VertexPosUvw {
   vec3 pos;
   vec3 color;
@@ -199,6 +200,7 @@ struct PerFrame {
   uint32_t texture1;
   uint32_t sampler;
 };
+} // namespace
 
 // NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 lvk::Holder<lvk::TextureHandle> texture0_;
