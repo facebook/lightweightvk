@@ -503,6 +503,8 @@ bool drawNormals_ = false;
 
 bool isShadowMapDirty_ = true;
 
+namespace {
+
 struct VertexData {
   vec3 position;
   uint32_t uv; // hvec2
@@ -595,6 +597,8 @@ struct LoadedMaterial {
   LoadedImage diffuse;
   LoadedImage alpha;
 };
+
+} // namespace
 
 // file name -> LoadedImage
 std::mutex imagesCacheMutex_;
