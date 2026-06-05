@@ -62,8 +62,8 @@ struct VertexData {
 
 static_assert(sizeof(VertexData) == 5 * sizeof(uint32_t));
 
-std::vector<VertexData> vertexData_;
-std::vector<uint32_t> indexData_;
+inline std::vector<VertexData> vertexData_;
+inline std::vector<uint32_t> indexData_;
 
 struct CachedMaterial {
   char name[MAX_MATERIAL_NAME] = {};
@@ -74,7 +74,7 @@ struct CachedMaterial {
   char alpha_texname[MAX_MATERIAL_NAME] = {};
 };
 
-std::vector<CachedMaterial> cachedMaterials_;
+inline std::vector<CachedMaterial> cachedMaterials_;
 
 inline vec2 msign(vec2 v) {
   return vec2(v.x >= 0.0 ? 1.0f : -1.0f, v.y >= 0.0 ? 1.0f : -1.0f);
