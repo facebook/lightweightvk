@@ -110,6 +110,7 @@ void main() {
 };
 )";
 
+namespace {
 struct {
   lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Triangle_;
   lvk::Holder<lvk::ShaderModuleHandle> task_;
@@ -117,6 +118,7 @@ struct {
   lvk::Holder<lvk::ShaderModuleHandle> frag_;
   // NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 } res;
+} // namespace
 
 VULKAN_APP_MAIN {
   const VulkanAppConfig cfg{
