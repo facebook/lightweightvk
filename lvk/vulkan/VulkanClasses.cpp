@@ -7000,6 +7000,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     return Result(Result::Code::RuntimeError, "Vulkan is not supported");
   }
 
+  // NOLINTNEXTLINE(performance-no-int-to-ptr)
   vkPhysicalDevice_ = (VkPhysicalDevice)desc.guid;
 
   useStaging_ = !isHostVisibleSingleHeapMemory(vkPhysicalDevice_);
