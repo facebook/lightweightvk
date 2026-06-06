@@ -291,6 +291,7 @@ struct Resources {
   lvk::Holder<lvk::BufferHandle> ubo;
 
   lvk::Holder<lvk::RayTracingPipelineHandle> pipeline;
+  // NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 } res;
 } // namespace
 
