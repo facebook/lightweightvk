@@ -262,6 +262,7 @@ class VulkanPipelineBuilder final {
   VulkanPipelineBuilder& dynamicState(VkDynamicState state);
   VulkanPipelineBuilder& primitiveTopology(VkPrimitiveTopology topology);
   VulkanPipelineBuilder& rasterizationSamples(VkSampleCountFlagBits samples, float minSampleShading);
+  VulkanPipelineBuilder& alphaToCoverage(bool enable);
   VulkanPipelineBuilder& shaderStage(VkPipelineShaderStageCreateInfo stage);
   VulkanPipelineBuilder& stencilStateOps(VkStencilFaceFlags faceMask,
                                          VkStencilOp failOp,
