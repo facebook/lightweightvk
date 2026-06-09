@@ -28,7 +28,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/SPIRV-Tools.git",
-        "revision": "v2026.1"
+        "revision": "v2026.2"
     }
 },
 {
@@ -60,7 +60,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/libsdl-org/SDL",
-        "revision": "release-3.4.8"
+        "revision": "release-3.4.10"
     }
 },
 {
@@ -220,7 +220,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/corporateshark/ldrutils",
-        "revision": "e0d6c0dbf41d304d6ce1fc46ec1dcd1c517b8509"
+        "revision": "641bda4e6ceec6bb14d81022edeb6bb3d4f3899c"
     }
 },
 {
@@ -270,7 +270,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/shader-slang/slang",
-        "revision": "v2026.9.1",
+        "revision": "v2026.10.2",
         "recursive": true
     }
 },
