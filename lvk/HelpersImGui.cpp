@@ -30,6 +30,9 @@
 #if LVK_WITH_GLFW
 #include <imgui_impl_glfw.h>
 #endif
+#if defined(LVK_WITH_IMPLOT)
+#include <implot/implot.h>
+#endif // LVK_WITH_IMPLOT
 #endif // !defined(LVK_IMGUI_EXTERNAL)
 
 #include <math.h>

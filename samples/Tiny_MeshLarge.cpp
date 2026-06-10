@@ -1962,7 +1962,7 @@ void showTimeGPU() {
 
   const double timeGPU = timeScene + timeCompute + timePresent;
   stats.add(0, "GPU", timeGPU);
-  const double timeCPU = stats.add(4, "CPU", (timestampEndRendering - timestampBeginRendering) * 1000);
+  stats.add(4, "CPU", (timestampEndRendering - timestampBeginRendering) * 1000);
   stats.updateMinMax();
 
   char text[128];
@@ -2007,10 +2007,10 @@ void showTimeGPU() {
   };
 
   if (ImGui::BeginTable("##table", 3, ImGuiTableFlags_None, ImVec2(-1, 0))) {
-    const ImGuiTableColumnFlags flags = ImGuiTableColumnFlags_NoSort;
-    ImGui::TableSetupColumn("Stage", flags);
-    ImGui::TableSetupColumn("Time (ms)", flags);
-    ImGui::TableSetupColumn("Graph", flags | ImGuiTableColumnFlags_WidthStretch);
+    const ImGuiTableColumnFlags columnFlags = ImGuiTableColumnFlags_NoSort;
+    ImGui::TableSetupColumn("Stage", columnFlags);
+    ImGui::TableSetupColumn("Time (ms)", columnFlags);
+    ImGui::TableSetupColumn("Graph", columnFlags | ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     for (uint32_t i = 0; i != sTimeStats::kNumTimelines; i++) {
       ImGui::TableNextRow();
