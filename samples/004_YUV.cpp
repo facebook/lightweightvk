@@ -155,7 +155,7 @@ VULKAN_APP_MAIN {
 
 #if !defined(ANDROID)
 #if LVK_WITH_GLFW
-  app.addMouseButtonCallback([](auto* window, int button, int action, int mods) {
+  app.addMouseButtonCallback([](auto* /*window*/, int /*button*/, int action, int /*mods*/) {
     if (action == GLFW_PRESS && !res_.demos.empty()) {
       currentDemo_ = (currentDemo_ + 1) % res_.demos.size();
     }
@@ -193,7 +193,7 @@ VULKAN_APP_MAIN {
 #endif
 #endif // !ANDROID
 
-  app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
+  app.run([&](lvk::Span<const RenderView> /*views*/, float /*deltaSeconds*/) {
 #if defined(ANDROID)
     // cycle through demos on touch release
     if (app.imguiClearMouseNextFrame_ && !res_.demos.empty()) {
