@@ -4524,9 +4524,10 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   }
 
   const uint32_t numPlanes = lvk::getNumImagePlanes(desc.format);
-  const bool isDisjoint = numPlanes > 1;
+  const bool isMultiplanar = numPlanes > 1;
+  bool isDisjoint = false;
 
-  if (isDisjoint) {
+  if (isMultiplanar) {
     // some constraints for multiplanar image formats
     LVK_ASSERT(vkImageType == VK_IMAGE_TYPE_2D);
     LVK_ASSERT(vkSamples == VK_SAMPLE_COUNT_1_BIT);
@@ -4536,10 +4537,13 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
         .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
     };
     vkGetPhysicalDeviceFormatProperties2(vkPhysicalDevice_, vkFormat, &props);
-    if ((props.formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_DISJOINT_BIT) == 0) {
-      LLOGW("VK_FORMAT_FEATURE_DISJOINT_BIT is not supported for VkFormat = %u\n", (uint32_t)vkFormat);
+    // VK_IMAGE_CREATE_DISJOINT_BIT is only legal when the image format advertises VK_FORMAT_FEATURE_DISJOINT_BIT
+    // Some GPUs expose multiplanar formats without it, in which case all planes are backed by a single memory allocation
+    isDisjoint = (props.formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_DISJOINT_BIT) != 0;
+    if (isDisjoint) {
+      vkCreateFlags |= VK_IMAGE_CREATE_DISJOINT_BIT;
     }
-    vkCreateFlags |= VK_IMAGE_CREATE_DISJOINT_BIT | VK_IMAGE_CREATE_ALIAS_BIT | VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+    vkCreateFlags |= VK_IMAGE_CREATE_ALIAS_BIT | VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
     awaitingNewImmutableSamplers_ = true;
   }
 
@@ -4599,15 +4603,19 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
 
     const VkImage img = image.vkImage_;
 
+    // a non-disjoint image (including a non-disjoint multiplanar image) is backed by a single memory allocation spanning all planes,
+    // so its per-plane VkImagePlaneMemoryRequirementsInfo must not be chained in.
+    const uint32_t numMemoryAllocations = isDisjoint ? numPlanes : 1;
+
     const VkImageMemoryRequirementsInfo2 imgRequirements[kNumMaxImagePlanes] = {
-        {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2, .pNext = numPlanes > 0 ? &planes[0] : nullptr, .image = img},
-        {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2, .pNext = numPlanes > 1 ? &planes[1] : nullptr, .image = img},
-        {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2, .pNext = numPlanes > 2 ? &planes[2] : nullptr, .image = img},
+        {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2, .pNext = isDisjoint ? &planes[0] : nullptr, .image = img},
+        {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2, .pNext = isDisjoint ? &planes[1] : nullptr, .image = img},
+        {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2, .pNext = isDisjoint ? &planes[2] : nullptr, .image = img},
     };
 
     [[maybe_unused]] const VkDeviceSize maxMemoryAllocationSize = vkPhysicalDeviceVulkan11Properties_.maxMemoryAllocationSize;
 
-    for (uint32_t p = 0; p != numPlanes; p++) {
+    for (uint32_t p = 0; p != numMemoryAllocations; p++) {
       vkGetImageMemoryRequirements2(vkDevice_, &imgRequirements[p], &memRequirements[p]);
       LVK_ASSERT(memRequirements[p].memoryRequirements.size <= maxMemoryAllocationSize);
       VK_ASSERT(lvk::allocateMemory2(vkPhysicalDevice_, vkDevice_, &memRequirements[p], memFlags, &image.vkMemory_[p]));
@@ -4623,7 +4631,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
         lvk::getBindImageMemoryInfo(&bindImagePlaneMemoryInfo[1], img, image.vkMemory_[1]),
         lvk::getBindImageMemoryInfo(&bindImagePlaneMemoryInfo[2], img, image.vkMemory_[2]),
     };
-    VK_ASSERT(vkBindImageMemory2(vkDevice_, numPlanes, bindInfo));
+    VK_ASSERT(vkBindImageMemory2(vkDevice_, numMemoryAllocations, bindInfo));
 
     // handle memory-mapped images
     if (memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT && numPlanes == 1) {
@@ -4660,7 +4668,8 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
       .a = VkComponentSwizzle(desc.components.a),
   };
 
-  const VkSamplerYcbcrConversionInfo* ycbcrInfo = isDisjoint ? getOrCreateYcbcrConversionInfo(desc.format) : nullptr;
+  // a sampled view of a multiplanar (YUV) format always needs the Y'CbCr conversion chained in, regardless of whether the image is disjoint
+  const VkSamplerYcbcrConversionInfo* ycbcrInfo = isMultiplanar ? getOrCreateYcbcrConversionInfo(desc.format) : nullptr;
 
   image.imageView_ = image.createImageView(
       vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, components, ycbcrInfo, debugNameImageView);
@@ -4985,6 +4994,7 @@ const VkSamplerYcbcrConversionInfo* lvk::VulkanContext::getOrCreateYcbcrConversi
 
   const bool cosited = (props.formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT) != 0;
   const bool midpoint = (props.formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT) != 0;
+  const bool isDisjoint = (props.formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_DISJOINT_BIT) != 0;
 
   if (!LVK_VERIFY(cosited || midpoint)) {
     LVK_ASSERT_MSG(cosited || midpoint, "Unsupported Ycbcr feature");
@@ -5026,7 +5036,7 @@ const VkSamplerYcbcrConversionInfo* lvk::VulkanContext::getOrCreateYcbcrConversi
       .type = VK_IMAGE_TYPE_2D,
       .tiling = VK_IMAGE_TILING_OPTIMAL,
       .usage = VK_IMAGE_USAGE_SAMPLED_BIT,
-      .flags = VK_IMAGE_CREATE_DISJOINT_BIT,
+      .flags = isDisjoint ? VK_IMAGE_CREATE_DISJOINT_BIT : VkImageCreateFlags{0},
   };
   vkGetPhysicalDeviceImageFormatProperties2(getVkPhysicalDevice(), &imageFormatInfo, &imageFormatProps);
 
@@ -5846,7 +5856,7 @@ void lvk::VulkanContext::destroy(lvk::TextureHandle handle) {
     return;
   }
 
-  if (LVK_VULKAN_USE_VMA && tex->vkMemory_[1] == VK_NULL_HANDLE) {
+  if (tex->vmaAllocation_) {
     if (tex->mappedPtr_) {
       vmaUnmapMemory((VmaAllocator)getVmaAllocator(), tex->vmaAllocation_);
     }
