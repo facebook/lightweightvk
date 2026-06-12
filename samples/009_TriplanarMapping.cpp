@@ -390,7 +390,7 @@ VULKAN_APP_MAIN {
 
 #if !defined(ANDROID)
 #if LVK_WITH_GLFW
-  app.addKeyCallback([](GLFWwindow* window, int key, int, int action, int) {
+  app.addKeyCallback([](GLFWwindow* /*window*/, int key, int, int action, int) {
     if (key == GLFW_KEY_T && action == GLFW_PRESS) {
       texture1_.reset();
     }
@@ -404,7 +404,7 @@ VULKAN_APP_MAIN {
 #endif
 #endif // !ANDROID
 
-  app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
+  app.run([&](lvk::Span<const RenderView> views, float /*deltaSeconds*/) {
     LVK_PROFILER_FUNCTION();
 
     const float fov = float(45.0f * (M_PI / 180.0f));
@@ -422,9 +422,9 @@ VULKAN_APP_MAIN {
     // rotate objects around random axes
     for (uint32_t i = 0; i != kNumObjects; i++) {
       const float direction = powf(-1, (float)(i + 1));
-      const uint32_t cubesInLine = (uint32_t)sqrt(kNumObjects);
-      const vec3 offset =
-          vec3(-1.5f * sqrt(kNumObjects) + 4.0f * (i % cubesInLine), -1.5f * sqrt(kNumObjects) + 4.0f * (i / cubesInLine), 0);
+      const uint32_t cubesInLine = (uint32_t)sqrtf((float)kNumObjects);
+      const vec3 offset = vec3(
+          -1.5f * sqrtf((float)kNumObjects) + 4.0f * (i % cubesInLine), -1.5f * sqrtf((float)kNumObjects) + 4.0f * (i / cubesInLine), 0);
       modelMatrices[i] = glm::rotate(glm::translate(mat4(1.0f), offset), float(direction * app.getSimulatedTime()), axis_[i]);
     }
 
