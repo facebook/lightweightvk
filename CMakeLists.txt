@@ -33,6 +33,8 @@ option(LVK_WITH_MINILOG            "Enable Minilog"                          ON)
 option(LVK_WITH_SLANG              "Enable Slang compiler"                   OFF)
 option(LVK_WITH_SPIRV_OPT          "Run SPIRV optimization on shaders"       OFF)
 option(LVK_WITH_LAVAPIPE_STATIC    "Use statically linked Lavapipe"          OFF)
+option(LVK_WITH_IMPLOT             "Enable ImPlot"                           ON)
+option(LVK_WITH_RAW_VULKAN         "Enable raw Vulkan interop"               OFF)
 option(LVK_IMGUI_EXTERNAL          "Use external ImGui library"              OFF)
 option(LVK_ENABLE_LONG_PATHS_WIN32 "Enable long paths on Windows"            ON)
 
@@ -235,6 +237,17 @@ endif()
 
 if(LVK_WITH_IMPLOT)
   target_compile_definitions(LVKLibrary PUBLIC "LVK_WITH_IMPLOT=1")
+  if(NOT LVK_IMPLOT_EXTERNAL)
+    target_include_directories(LVKLibrary PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/implot")
+  endif()
+endif()
+
+if(LVK_WITH_RAW_VULKAN)
+  target_compile_definitions(LVKVulkan PUBLIC "LVK_WITH_RAW_VULKAN=1")
+endif()
+
+if(NOT LVK_IMGUI_EXTERNAL)
+  target_include_directories(LVKLibrary PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/imgui")
 endif()
 
 if(LVK_DEPLOY_DEPS)
