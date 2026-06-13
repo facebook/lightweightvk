@@ -804,7 +804,7 @@ VULKAN_APP_MAIN {
 
 #if !defined(ANDROID) && !defined(LVK_DEMO_WITH_OPENXR)
 #if LVK_WITH_GLFW
-  app.addKeyCallback([](GLFWwindow* window, int key, int, int action, int) {
+  app.addKeyCallback([](GLFWwindow* /*window*/, int key, int, int action, int) {
     if (key == GLFW_KEY_1 && action == GLFW_PRESS) {
       g_Gravity.x += 0.001f;
     }
