@@ -359,9 +359,9 @@ void createTopLevelAccelerationStructure() {
   const lvk::AccelStructInstance instances[2] = {
       {
           // clang-format off
-          .transform = {.matrix = {{1.0f, 0.0f, 0.0f, -2.0f},
-                                   {0.0f, 1.0f, 0.0f,  0.0f},
-                                   {0.0f, 0.0f, 1.0f,  0.0f}}},
+          .transform = {.matrix = {1.0f, 0.0f, 0.0f, -2.0f,
+                                   0.0f, 1.0f, 0.0f,  0.0f,
+                                   0.0f, 0.0f, 1.0f,  0.0f}},
           // clang-format on
           .instanceCustomIndex = 0,
           .mask = 0xff,
@@ -371,9 +371,9 @@ void createTopLevelAccelerationStructure() {
       },
       {
           // clang-format off
-          .transform = {.matrix = {{1.0f, 0.0f, 0.0f, +2.0f},
-                                   {0.0f, 1.0f, 0.0f,  0.0f},
-                                   {0.0f, 0.0f, 1.0f,  0.0f}}},
+          .transform = {.matrix = {1.0f, 0.0f, 0.0f, +2.0f,
+                                   0.0f, 1.0f, 0.0f,  0.0f,
+                                   0.0f, 0.0f, 1.0f,  0.0f}},
           // clang-format on
           .instanceCustomIndex = 0,
           .mask = 0xff,

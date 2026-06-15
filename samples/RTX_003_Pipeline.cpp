@@ -710,7 +710,6 @@ VULKAN_APP_MAIN {
     // Pass 2: render into the swapchain image
     {
       const lvk::RenderPass renderPassMain = {
-          // NOLINTNEXTLINE(clang-diagnostic-missing-braces)
           .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
       };
       const lvk::Framebuffer fbMain = {

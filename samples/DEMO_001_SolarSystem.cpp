@@ -1333,6 +1333,7 @@ Scene createSolarSystemScene(VulkanApp& app) {
 
     assert(asteroidMesh);
 
+    // added deterministic PRNG for reproducible screenshot tests
     LRandom rng;
     auto randomFloat = [&rng](float lo, float hi) { return rng.randomInRange(lo, hi); };
     auto randomVec = [&rng](const vec3& lo, const vec3& hi) { return rng.randomVector3InRange(lo, hi); };
@@ -1809,7 +1810,7 @@ VULKAN_APP_MAIN {
       buf.cmdUpdateBuffer(vulkanState.bufPerFrame, perFrame);
       buf.cmdBindVertexBuffer(0, vulkanState.bufVertices, 0);
 
-      buf.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {{0.0f, 0.0f, 0.0f, 1.0f}}}},
+      buf.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
                              .depth = {.loadOp = lvk::LoadOp_Clear, .clearDepth = 1.0f},
                              .layerCount = (uint32_t)views.size(),
                              .viewMask = g_MultiViewStereo ? 0b11 : 0u},

@@ -34,13 +34,9 @@ add_library(LVKVulkanApp
   VulkanApp.cpp
   VulkanApp.h
   "${LVK_ROOT_DIR}/third-party/deps/src/3D-Graphics-Rendering-Cookbook/shared/UtilsCubemap.cpp"
-  "${LVK_ROOT_DIR}/third-party/deps/src/imgui/imgui_demo.cpp"
 )
 lvk_set_cxxstd(LVKVulkanApp 20)
 lvk_set_folder(LVKVulkanApp "LVK")
-if(NOT "${LVK_PROJECT_ROOT_PATH}" STREQUAL "")
-  target_compile_definitions(LVKVulkanApp PUBLIC LVK_PROJECT_ROOT_PATH="${LVK_PROJECT_ROOT_PATH}")
-endif()
 target_link_libraries(LVKVulkanApp PUBLIC LVKLibrary)
 target_link_libraries(LVKVulkanApp PUBLIC LVKstb)
 target_link_libraries(LVKVulkanApp PUBLIC LUtils)
@@ -165,7 +161,11 @@ macro(ADD_DEMO_SOURCES app srcs)
   if(ANDROID)
     target_sources(lvk_android_native_${app} PRIVATE ${srcs})
   else()
-    target_sources(${app} PRIVATE ${srcs})
+    foreach(suffix "" "_Slang" "_OpenXR" "_Slang_OpenXR")
+      if(TARGET ${app}${suffix})
+        target_sources(${app}${suffix} PRIVATE ${srcs})
+      endif()
+    endforeach()
   endif()
 endmacro()
 
@@ -200,3 +200,4 @@ endif()
 
 ADD_DEMO("DEMO_001_SolarSystem" LVK_WITH_SLANG)
 ADD_DEMO("Tiny_MeshLarge" LVK_WITH_SLANG)
+ADD_DEMO_SOURCES("Tiny_MeshLarge" "${LVK_ROOT_DIR}/third-party/deps/src/imgui/imgui_demo.cpp")

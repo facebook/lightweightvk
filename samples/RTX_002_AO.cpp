@@ -1332,7 +1332,7 @@ VULKAN_APP_MAIN {
   lvk::RenderPass renderPassZPrepass_ = {.color = {{
                                              .loadOp = lvk::LoadOp_Clear,
                                              .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
-                                             .clearColor = {{0.0f, 0.0f, 0.0f, 1.0f}},
+                                             .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
                                          }},
                                          .depth = {
                                              .loadOp = lvk::LoadOp_Clear,
@@ -1343,7 +1343,7 @@ VULKAN_APP_MAIN {
   lvk::RenderPass renderPassOffscreen_ = {.color = {{
                                               .loadOp = lvk::LoadOp_Clear,
                                               .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
-                                              .clearColor = {{0.0f, 0.0f, 0.0f, 1.0f}},
+                                              .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
                                           }},
                                           .depth = {
                                               .loadOp = lvk::LoadOp_Load,
@@ -1541,7 +1541,7 @@ VULKAN_APP_MAIN {
 
       buffer.cmdBeginRendering(
           lvk::RenderPass{
-              .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {{0.0f, 0.0f, 0.0f, 1.0f}}}},
+              .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
           },
           fbMain_,
           {.sampledImages = {tex, fbOffscreen.color[0].texture}});

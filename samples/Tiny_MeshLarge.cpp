@@ -40,7 +40,9 @@
 #include <stb/stb_image_resize2.h>
 #include <taskflow/taskflow.hpp>
 
-#include <implot/implot.h>
+#if defined(LVK_WITH_IMPLOT)
+#include <implot.h>
+#endif // LVK_WITH_IMPLOT
 #include <lvk/HelpersImGui.h>
 #include <lvk/LVK.h>
 
@@ -56,8 +58,12 @@
 #elif LVK_WITH_GLFW
 #include <GLFW/glfw3.h>
 #elif LVK_WITH_SDL3
-#include "imgui/backends/imgui_impl_sdl3.h"
 #include <SDL3/SDL.h>
+#if __has_include(<imgui_impl_sdl3.h>)
+#include <imgui_impl_sdl3.h> // external ImGui
+#else
+#include <imgui/backends/imgui_impl_sdl3.h> // bundled ImGui
+#endif
 #endif
 
 #include "DEMO_002_Bistro.cpp" // temporary
@@ -698,7 +704,6 @@ bool init(lvk::LVKwindow* window) {
                           }};
 
   renderPassMain_ = {
-      // NOLINTNEXTLINE(clang-diagnostic-missing-braces)
       .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
   };
   renderPassShadow_ = {
@@ -836,21 +841,21 @@ bool loadAndCache(const char* cacheFileName) {
     // 1. Generate an index buffer
     const size_t indexCount = vertexData_.size();
     std::vector<uint32_t> remap(indexCount);
-    const size_t uniqueVertexCount =
+    const size_t remappedVertexCount =
         meshopt_generateVertexRemap(remap.data(), nullptr, indexCount, vertexData_.data(), indexCount, sizeof(VertexData));
     // 2. Remap vertices
     std::vector<VertexData> remappedVertices;
     indexData_.resize(indexCount);
-    remappedVertices.resize(uniqueVertexCount);
+    remappedVertices.resize(remappedVertexCount);
     meshopt_remapIndexBuffer(indexData_.data(), nullptr, indexCount, &remap[0]);
     meshopt_remapVertexBuffer(remappedVertices.data(), vertexData_.data(), indexCount, sizeof(VertexData), remap.data());
     vertexData_ = remappedVertices;
     // 3. Optimize for the GPU vertex cache reuse and overdraw
-    meshopt_optimizeVertexCache(indexData_.data(), indexData_.data(), indexCount, uniqueVertexCount);
+    meshopt_optimizeVertexCache(indexData_.data(), indexData_.data(), indexCount, remappedVertexCount);
     meshopt_optimizeOverdraw(
-        indexData_.data(), indexData_.data(), indexCount, &vertexData_[0].position.x, uniqueVertexCount, sizeof(VertexData), 1.05f);
+        indexData_.data(), indexData_.data(), indexCount, &vertexData_[0].position.x, remappedVertexCount, sizeof(VertexData), 1.05f);
     meshopt_optimizeVertexFetch(
-        vertexData_.data(), indexData_.data(), indexCount, vertexData_.data(), uniqueVertexCount, sizeof(VertexData));
+        vertexData_.data(), indexData_.data(), indexCount, vertexData_.data(), remappedVertexCount, sizeof(VertexData));
   }
 
   // loop over materials
@@ -1374,7 +1379,7 @@ void render(double delta) {
           .height = (uint32_t)height_,
       };
       buffer.cmdPushConstants(bindings);
-      buffer.cmdDispatchThreadGroups(
+      buffer.cmdDispatch(
           {
               .width = 1 + (uint32_t)width_ / 16,
               .height = 1 + (uint32_t)height_ / 16,
@@ -1968,8 +1973,9 @@ void showTimeGPU() {
   const double timePresent = stats.add(3, " Present", getTimespan(GPUTimestamp_BeginPresent));
 
   const double timeGPU = timeScene + timeCompute + timePresent;
+  const double timeCPU = (timestampEndRendering - timestampBeginRendering) * 1000;
   stats.add(0, "GPU", timeGPU);
-  stats.add(4, "CPU", (timestampEndRendering - timestampBeginRendering) * 1000);
+  stats.add(4, "CPU", timeCPU);
   stats.updateMinMax();
 
   char text[128];

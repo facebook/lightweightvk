@@ -390,7 +390,7 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) override;
 
   void cmdBindComputePipeline(lvk::ComputePipelineHandle handle) override;
-  void cmdDispatchThreadGroups(const Dimensions& threadgroupCount, const Dependencies& deps) override;
+  void cmdDispatch(const Dimensions& groupCount, const Dependencies& deps) override;
   void cmdDispatchIndirect(BufferHandle indirectBuffer, size_t indirectBufferOffset, const Dependencies& deps) override;
 
   void cmdPushDebugGroupLabel(const char* label, uint32_t colorRGBA) const override;
@@ -514,7 +514,7 @@ class VulkanStagingDevice final {
                    const VkRect2D& imageRegion,
                    uint32_t baseMipLevel,
                    uint32_t numMipLevels,
-                   uint32_t layer,
+                   uint32_t baseLayer,
                    uint32_t numLayers,
                    VkFormat format,
                    const void* data,
@@ -536,8 +536,9 @@ class VulkanStagingDevice final {
     SubmitHandle handle_ = {};
   };
 
-  MemoryRegionDesc getNextFreeOffset(uint32_t size);
-  void ensureStagingBufferSize(uint32_t sizeNeeded);
+  MemoryRegionDesc getNextFreeOffset(VkDeviceSize size);
+  void ensureStagingBufferSize(VkDeviceSize sizeNeeded);
+  void insertRegion(const MemoryRegionDesc& region);
   void waitAndReset();
 
  private:

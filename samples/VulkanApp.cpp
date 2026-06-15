@@ -483,18 +483,16 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
   // initialize ImGUi after GLFW callbacks have been installed
 #if defined(ANDROID)
   {
-    const TarFileReader::FileData& fd = tarReader_ ? tarReader_->getFile("deps/src/3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf")
-                                                   : TarFileReader::FileData{};
+    const TarFileReader::FileData& fd =
+        tarReader_ ? tarReader_->getFile("deps/src/3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf") : TarFileReader::FileData{};
     imgui_ = std::make_unique<lvk::ImGuiRenderer>(*ctx_, window_, fd.ptr, fd.size, 30.0f);
   }
 #elif defined(LVK_PROJECT_ROOT_PATH)
   imgui_ = std::make_unique<lvk::ImGuiRenderer>(
       *ctx_, window_, (std::filesystem::path(folderRepoRoot_) / "third-party/imgui/misc/fonts/DroidSans.ttf").string().c_str(), 30.0f);
 #else
-imgui_ = std::make_unique<lvk::ImGuiRenderer>(*ctx_,
-                                              window_,
-                                              (folderThirdParty_ + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(),
-                                              30.0f);
+  imgui_ = std::make_unique<lvk::ImGuiRenderer>(
+      *ctx_, window_, (folderThirdParty_ + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), 30.0f);
 #endif // ANDROID
 }
 
