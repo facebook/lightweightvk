@@ -4686,8 +4686,10 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   if (desc.data) {
     LVK_ASSERT(desc.type == TextureType_2D || desc.type == TextureType_Cube);
     LVK_ASSERT(desc.dataNumMipLevels <= desc.numMipLevels);
-    const uint32_t numLayers = desc.type == TextureType_Cube ? 6 : 1;
-    Result res = upload(handle, {.dimensions = desc.dimensions, .numLayers = numLayers, .numMipLevels = desc.dataNumMipLevels}, desc.data);
+    Result res =
+        upload(handle,
+               {.dimensions = desc.dimensions, .numLayers = desc.type == TextureType_Cube ? 6u : 1u, .numMipLevels = desc.dataNumMipLevels},
+               desc.data);
     if (!res.isOk()) {
       Result::setResult(outResult, res);
       return {};
@@ -6722,31 +6724,33 @@ lvk::Result lvk::VulkanContext::createInstance() {
     }
   }
 
-  const VkApplicationInfo appInfo = {
-      .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-      .pNext = nullptr,
-      .pApplicationName = "LVK/Vulkan",
-      .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
-      .pEngineName = "LVK/Vulkan",
-      .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-      .apiVersion = config_.vulkanVersion == VulkanVersion_1_3 ? VK_API_VERSION_1_3 : VK_API_VERSION_1_4,
-  };
+  {
+    const VkApplicationInfo appInfo = {
+        .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+        .pNext = nullptr,
+        .pApplicationName = "LVK/Vulkan",
+        .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
+        .pEngineName = "LVK/Vulkan",
+        .engineVersion = VK_MAKE_VERSION(1, 0, 0),
+        .apiVersion = config_.vulkanVersion == VulkanVersion_1_3 ? VK_API_VERSION_1_3 : VK_API_VERSION_1_4,
+    };
 
-  const VkInstanceCreateInfo ci = {
-      .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+    const VkInstanceCreateInfo ci = {
+        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 #if defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
-      .pNext = &layerSettingsCreateInfo,
+        .pNext = &layerSettingsCreateInfo,
 #else
-      .pNext = config_.enableValidation ? &features : nullptr,
+        .pNext = config_.enableValidation ? &features : nullptr,
 #endif // defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
-      .flags = hasPortabilityEnumeration ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR : 0u,
-      .pApplicationInfo = &appInfo,
-      .enabledLayerCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(kDefaultValidationLayers) : 0u,
-      .ppEnabledLayerNames = config_.enableValidation ? kDefaultValidationLayers : nullptr,
-      .enabledExtensionCount = (uint32_t)enabledInstanceExtensionNames_.size(),
-      .ppEnabledExtensionNames = enabledInstanceExtensionNames_.data(),
-  };
-  VK_ASSERT(vkCreateInstance(&ci, nullptr, &vkInstance_));
+        .flags = hasPortabilityEnumeration ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR : 0u,
+        .pApplicationInfo = &appInfo,
+        .enabledLayerCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(kDefaultValidationLayers) : 0u,
+        .ppEnabledLayerNames = config_.enableValidation ? kDefaultValidationLayers : nullptr,
+        .enabledExtensionCount = (uint32_t)enabledInstanceExtensionNames_.size(),
+        .ppEnabledExtensionNames = enabledInstanceExtensionNames_.data(),
+    };
+    VK_ASSERT(vkCreateInstance(&ci, nullptr, &vkInstance_));
+  }
 
   volkLoadInstance(vkInstance_);
 
@@ -7506,16 +7510,19 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     }
   }
 
-  const VkDeviceCreateInfo ci = {
-      .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-      .pNext = createInfoNext,
-      .queueCreateInfoCount = numQueues,
-      .pQueueCreateInfos = ciQueue,
-      .enabledExtensionCount = (uint32_t)enabledDeviceExtensionNames_.size(),
-      .ppEnabledExtensionNames = enabledDeviceExtensionNames_.data(),
-      .pEnabledFeatures = &deviceFeatures10,
-  };
-  VK_ASSERT_RETURN(vkCreateDevice(vkPhysicalDevice_, &ci, nullptr, &vkDevice_));
+  {
+    const VkDeviceCreateInfo ci = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pNext = createInfoNext,
+        .flags = 0,
+        .queueCreateInfoCount = numQueues,
+        .pQueueCreateInfos = ciQueue,
+        .enabledExtensionCount = (uint32_t)enabledDeviceExtensionNames_.size(),
+        .ppEnabledExtensionNames = enabledDeviceExtensionNames_.data(),
+        .pEnabledFeatures = &deviceFeatures10,
+    };
+    VK_ASSERT_RETURN(vkCreateDevice(vkPhysicalDevice_, &ci, nullptr, &vkDevice_));
+  }
 
   volkLoadDevice(vkDevice_);
 
