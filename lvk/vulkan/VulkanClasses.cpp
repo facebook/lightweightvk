@@ -8180,7 +8180,7 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
 }
 
 lvk::SamplerHandle lvk::VulkanContext::createSampler(const VkSamplerCreateInfo& ci,
-                                                     lvk::Result* outResult,
+                                                     lvk::Result* /*outResult*/,
                                                      lvk::Format yuvFormat,
                                                      const char* debugName) {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
