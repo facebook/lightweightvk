@@ -3597,7 +3597,7 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
 
   // https://registry.khronos.org/KTX/specs/1.0/ktxspec.v1.html
   for (uint32_t mipLevel = 0; mipLevel < numMipLevels; ++mipLevel) {
-    for (uint32_t layer = 0; layer != numLayers; layer++) {
+    for (uint32_t layerIdx = 0; layerIdx != numLayers; layerIdx++) {
       const uint32_t currentMipLevel = baseMipLevel + mipLevel;
 
       LVK_ASSERT(currentMipLevel < image.numLevels_);
@@ -3610,7 +3610,7 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
                                StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
                                coversFullImage ? VK_IMAGE_LAYOUT_UNDEFINED : image.vkImageLayout_,
                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                               VkImageSubresourceRange{imageAspect, currentMipLevel, 1, layer, 1});
+                               VkImageSubresourceRange{imageAspect, currentMipLevel, 1, layerIdx, 1});
 
 #if LVK_VULKAN_PRINT_COMMANDS
       LLOGL("%p vkCmdCopyBufferToImage2()\n", wrapper.cmdBuf_);
@@ -3636,7 +3636,7 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
             .bufferRowLength = bufferRowLength,
             .bufferImageHeight = 0,
             .imageSubresource =
-                VkImageSubresourceLayers{numPlanes > 1 ? VK_IMAGE_ASPECT_PLANE_0_BIT << plane : imageAspect, currentMipLevel, layer, 1},
+                VkImageSubresourceLayers{numPlanes > 1 ? VK_IMAGE_ASPECT_PLANE_0_BIT << plane : imageAspect, currentMipLevel, layerIdx, 1},
             .imageOffset = {.x = region.offset.x, .y = region.offset.y, .z = 0},
             .imageExtent = {.width = region.extent.width, .height = region.extent.height, .depth = 1u},
         };
@@ -3660,7 +3660,7 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
           StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-          VkImageSubresourceRange{imageAspect, currentMipLevel, 1, layer, 1});
+          VkImageSubresourceRange{imageAspect, currentMipLevel, 1, layerIdx, 1});
 
       offset += lvk::getTextureBytesPerLayer(imageRegion.extent.width, imageRegion.extent.height, texFormat, currentMipLevel);
     }
