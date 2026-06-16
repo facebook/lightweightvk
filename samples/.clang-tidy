@@ -1,0 +1,5 @@
+InheritParentConfig: true
+Checks: '
+-clang-diagnostic-global-constructors,
+-misc-use-anonymous-namespace,
+'
