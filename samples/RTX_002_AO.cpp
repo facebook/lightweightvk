@@ -1060,6 +1060,7 @@ void main() {
 
 lvk::IContext* ctx_ = nullptr;
 
+namespace {
 struct {
   lvk::Holder<lvk::TextureHandle> fbOffscreenColor_;
   lvk::Holder<lvk::TextureHandle> fbOffscreenDepth_;
@@ -1083,6 +1084,7 @@ struct {
   lvk::Holder<lvk::BufferHandle> sbHashSlot_;
   // NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 } res;
+} // namespace
 
 bool enableShadows_ = true;
 bool enableAO_ = true;
