@@ -31,12 +31,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/random.hpp>
 
-#include <ktx-software/lib/src/gl_format.h>
-#include <ktx-software/lib/src/vkformat_enum.h>
-#include <ktx.h>
-#include <ldrutils/lmath/Colors.h>
-#include <ldrutils/lutils/ScopeExit.h>
-
 #include <fast_obj.h>
 #include <meshoptimizer.h>
 #include <shared/Camera.h>
@@ -49,6 +43,11 @@
 #include <implot/implot.h>
 #include <lvk/HelpersImGui.h>
 #include <lvk/LVK.h>
+
+#include <ktx-software/lib/src/gl_format.h>
+#include <ktx.h>
+#include <ldrutils/lmath/Colors.h>
+#include <ldrutils/lutils/ScopeExit.h>
 
 #if defined(ANDROID)
 #include <android_native_app_glue.h>
