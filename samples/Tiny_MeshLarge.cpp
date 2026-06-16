@@ -2049,7 +2049,7 @@ double getCurrentTimestamp() {
 #endif
 }
 
-int main(int argc, char* argv[]) {
+int main(int /*argc*/, char* /*argv*/[]) {
 #if defined(LVK_WITH_MINILOG)
   minilog::initialize(nullptr, {.threadNames = false});
 #endif
