@@ -799,6 +799,7 @@ void main() {
 };
 )";
 
+namespace {
 struct SceneNode final {
   SceneNode* parent = nullptr;
   mat4 local = mat4(1.0f);
@@ -898,8 +899,6 @@ struct Scene final {
   Scene() = default;
   Scene(Scene&) = delete;
   Scene(Scene&&) = default;
-  Scene& operator=(Scene&) = delete;
-  Scene& operator=(Scene&&) = default;
 
   std::vector<MeshComponent> meshes;
   std::vector<Material> materials;
@@ -1091,19 +1090,6 @@ ShaderModules loadShaderProgram(lvk::IContext* ctx,
   lvk::Holder<lvk::ShaderModuleHandle> vert = ctx->createShaderModule({codeVS, lvk::Stage_Vert, "Shader Module: vert"});
   lvk::Holder<lvk::ShaderModuleHandle> frag = ctx->createShaderModule({codeFS, lvk::Stage_Frag, "Shader Module: frag"});
 #endif // defined(LVK_DEMO_WITH_SLANG)
-
-  const ShaderModules sm = {vert, frag};
-
-  // ownership
-  vulkanState.shaderModules.emplace_back(std::move(vert));
-  vulkanState.shaderModules.emplace_back(std::move(frag));
-
-  return sm;
-}
-
-ShaderModules loadShaderProgram(lvk::IContext* ctx, const char* codeVS, const char* codeFS) {
-  lvk::Holder<lvk::ShaderModuleHandle> vert = ctx->createShaderModule({codeVS, lvk::Stage_Vert, "Shader Module: vert"});
-  lvk::Holder<lvk::ShaderModuleHandle> frag = ctx->createShaderModule({codeFS, lvk::Stage_Frag, "Shader Module: frag"});
 
   const ShaderModules sm = {vert, frag};
 
@@ -1395,6 +1381,7 @@ struct RenderOp final {
   DrawData drawData = {};
   uint32_t idDrawData = 0;
 };
+} // namespace
 
 VULKAN_APP_MAIN {
   const VulkanAppConfig cfg{
