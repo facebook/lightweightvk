@@ -442,6 +442,7 @@ void main() {
 }
 )";
 
+namespace {
 lvk::IContext* ctx_ = nullptr;
 
 struct {
@@ -465,7 +466,7 @@ struct {
 struct UniformsPerFrame {
   mat4 viewInverse;
   mat4 projInverse;
-} perFrame_;
+};
 
 // this goes into our GLSL shaders
 struct GPUMaterial {
@@ -476,6 +477,7 @@ struct GPUMaterial {
 static_assert(sizeof(GPUMaterial) % 16 == 0);
 
 std::vector<GPUMaterial> materials_;
+} // namespace
 
 void createPipelines();
 
