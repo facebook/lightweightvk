@@ -1196,7 +1196,7 @@ Scene createSolarSystemScene(VulkanApp& app) {
 
 #if !defined(ANDROID)
 #if LVK_WITH_GLFW
-  app.addKeyCallback([](GLFWwindow* window, int key, int, int action, int) {
+  app.addKeyCallback([](GLFWwindow* /*window*/, int key, int, int action, int) {
     if (key == GLFW_KEY_X && action == GLFW_PRESS) {
       g_Wireframe = !g_Wireframe;
     } else if (key == GLFW_KEY_P && action == GLFW_PRESS) {
