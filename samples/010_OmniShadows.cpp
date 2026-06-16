@@ -528,7 +528,7 @@ VULKAN_APP_MAIN {
       .debugName = "Pipeline: shadow",
   });
 
-  app.run([&](lvk::Span<const RenderView> views, float /*deltaSeconds*/) {
+  app.run([&](ldr::Span<const RenderView> views, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
 
     const float fov = glm::radians(45.0f);
