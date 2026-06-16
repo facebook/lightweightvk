@@ -20,7 +20,6 @@ vec3 lightDir_ = normalize(vec3(-0.5f, 0.85f, -0.05f));
 #else
 #define MODEL_PATH "src/bistro/Exterior/exterior.obj"
 #define CACHE_FILE_NAME "cache2.data"
-// NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 vec3 lightDir_ = normalize(vec3(0.032f, 0.835f, 0.549f));
 #endif
 
@@ -1060,7 +1059,6 @@ void main() {
 
 lvk::IContext* ctx_ = nullptr;
 
-namespace {
 struct {
   lvk::Holder<lvk::TextureHandle> fbOffscreenColor_;
   lvk::Holder<lvk::TextureHandle> fbOffscreenDepth_;
@@ -1082,9 +1080,7 @@ struct {
   std::vector<lvk::Holder<lvk::AccelStructHandle>> BLAS;
   lvk::Holder<lvk::AccelStructHandle> TLAS;
   lvk::Holder<lvk::BufferHandle> sbHashSlot_;
-  // NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 } res;
-} // namespace
 
 bool enableShadows_ = true;
 bool enableAO_ = true;
@@ -1107,7 +1103,6 @@ bool enableFiltering_ = false;
 
 uint32_t frameId = 0;
 
-namespace {
 struct UniformsPerFrame {
   mat4 proj;
   mat4 view;
@@ -1123,11 +1118,9 @@ struct GPUMaterial {
   vec4 ambient = vec4(0.0f);
   vec4 diffuse = vec4(0.0f);
 };
-} // namespace
 
 static_assert(sizeof(GPUMaterial) % 16 == 0);
 
-// NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 std::vector<GPUMaterial> materials_;
 
 bool initModel(VulkanApp& app) {
@@ -1332,7 +1325,7 @@ VULKAN_APP_MAIN {
   lvk::RenderPass renderPassZPrepass_ = {.color = {{
                                              .loadOp = lvk::LoadOp_Clear,
                                              .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
-                                             .clearColor = {{0.0f, 0.0f, 0.0f, 1.0f}},
+                                             .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
                                          }},
                                          .depth = {
                                              .loadOp = lvk::LoadOp_Clear,
@@ -1343,7 +1336,7 @@ VULKAN_APP_MAIN {
   lvk::RenderPass renderPassOffscreen_ = {.color = {{
                                               .loadOp = lvk::LoadOp_Clear,
                                               .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
-                                              .clearColor = {{0.0f, 0.0f, 0.0f, 1.0f}},
+                                              .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
                                           }},
                                           .depth = {
                                               .loadOp = lvk::LoadOp_Load,
@@ -1541,7 +1534,7 @@ VULKAN_APP_MAIN {
 
       buffer.cmdBeginRendering(
           lvk::RenderPass{
-              .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {{0.0f, 0.0f, 0.0f, 1.0f}}}},
+              .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
           },
           fbMain_,
           {.sampledImages = {tex, fbOffscreen.color[0].texture}});

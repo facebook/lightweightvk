@@ -1,5 +1,6 @@
 InheritParentConfig: true
 Checks: '
 -clang-diagnostic-global-constructors,
+-facebook-hte-ShadowingClass,
 -misc-use-anonymous-namespace,
 '

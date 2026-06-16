@@ -382,7 +382,6 @@ void main() {
 };
 )";
 
-namespace {
 struct PerFrame {
   mat4 proj;
   mat4 view;
@@ -399,7 +398,6 @@ struct PerLight {
   float shadowFar;
   uint32_t shadowMap;
 };
-} // namespace
 
 VULKAN_APP_MAIN {
   const VulkanAppConfig cfg{
@@ -611,7 +609,7 @@ VULKAN_APP_MAIN {
     };
     buffer.cmdBeginRendering(
         lvk::RenderPass{
-            .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {{1.0f, 1.0f, 1.0f, 1.0f}}}},
+            .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {1.0f, 1.0f, 1.0f, 1.0f}}},
             .depth = {.loadOp = lvk::LoadOp_Clear, .clearDepth = 1.0},
         },
         framebuffer,

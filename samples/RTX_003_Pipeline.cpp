@@ -442,7 +442,6 @@ void main() {
 }
 )";
 
-namespace {
 lvk::IContext* ctx_ = nullptr;
 
 struct {
@@ -477,7 +476,6 @@ struct GPUMaterial {
 static_assert(sizeof(GPUMaterial) % 16 == 0);
 
 std::vector<GPUMaterial> materials_;
-} // namespace
 
 void createPipelines();
 
@@ -710,7 +708,6 @@ VULKAN_APP_MAIN {
     // Pass 2: render into the swapchain image
     {
       const lvk::RenderPass renderPassMain = {
-          // NOLINTNEXTLINE(clang-diagnostic-missing-braces)
           .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
       };
       const lvk::Framebuffer fbMain = {

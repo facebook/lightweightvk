@@ -103,7 +103,6 @@ inline std::string normalizeTextureName(const char* n) {
   return name;
 }
 
-namespace {
 struct BistroMemFile {
   std::vector<uint8_t> data;
   size_t offset = 0;
@@ -133,7 +132,6 @@ unsigned long bistroMemFileSize(void* filePtr, void* /*userData*/) {
   BistroMemFile* file = static_cast<BistroMemFile*>(filePtr);
   return (unsigned long)file->data.size();
 }
-} // namespace
 
 inline bool loadAndCache(VulkanApp& app, const char* cacheFileName, const char* modelFileName) {
   LVK_PROFILER_FUNCTION();

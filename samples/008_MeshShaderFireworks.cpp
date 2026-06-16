@@ -203,13 +203,11 @@ float g_AirResistance = 0.98f;
 bool g_Pause = false;
 
 // Color palettes for fireworks
-namespace {
 struct ColorPalette {
   vec3 primary;
   vec3 secondary;
   vec3 sparkle;
 };
-} // namespace
 
 const ColorPalette g_Palettes[] = {
     {{1.0f, 0.3f, 0.1f}, {1.0f, 0.6f, 0.2f}, {1.0f, 1.0f, 0.4f}}, // Classic Red-Orange
@@ -240,7 +238,6 @@ enum ParticleStateMessage {
   PSM_Emission = 2,
 };
 
-namespace {
 struct Particle {
   vec3 pos = vec3(0.0f);
   vec3 velocity = vec3(0.0f);
@@ -689,11 +686,9 @@ struct ParticleSystem {
     }
   }
 };
-} // namespace
 
 ParticleSystem g_Points;
 
-namespace {
 struct Vertex {
   vec3 pos;
   vec4 color;
@@ -703,7 +698,6 @@ struct PerFrame {
   mat4 proj;
   mat4 view;
 };
-} // namespace
 
 void generateParticleTexture(uint8_t* image, int size) {
   const float center = 0.5f * (size - 1);
@@ -914,7 +908,7 @@ VULKAN_APP_MAIN {
     for (uint32_t i = 0; i != views.size(); i++) {
       buffer.cmdBeginRendering(
           lvk::RenderPass{
-              .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {{0.0f, 0.0f, 0.0f, 1.0f}}}},
+              .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
           },
           lvk::Framebuffer{
               .color = {{.texture = views[i].colorTexture}},

@@ -247,20 +247,16 @@ VULKAN_APP_MAIN {
       lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
 
       buffer.cmdPushDebugGroupLabel("Render to Cube Map", 0xff0000ff);
-      // NOLINTBEGIN(clang-diagnostic-missing-braces)
       buffer.cmdBeginRendering(
           {.color =
                {
-                   // NOLINTBEGIN(clang-diagnostic-missing-braces)
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 0, .clearColor = {0.3f, 0.1f, 0.1f, 1.0f}},
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 1, .clearColor = {0.1f, 0.3f, 0.1f, 1.0f}},
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 2, .clearColor = {0.1f, 0.1f, 0.3f, 1.0f}},
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 3, .clearColor = {0.3f, 0.1f, 0.3f, 1.0f}},
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 4, .clearColor = {0.3f, 0.3f, 0.1f, 1.0f}},
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 5, .clearColor = {0.1f, 0.3f, 0.3f, 1.0f}},
-                   // NOLINTEND(clang-diagnostic-missing-braces)
                }},
-          // NOLINTEND(clang-diagnostic-missing-braces)
           {.color = {
                {.texture = texture_},
                {.texture = texture_},
@@ -275,7 +271,6 @@ VULKAN_APP_MAIN {
       buffer.cmdEndRendering();
       buffer.cmdPopDebugGroupLabel();
 
-      // NOLINTBEGIN(clang-diagnostic-missing-braces)
       buffer.cmdBeginRendering({.color = {{
                                     .loadOp = lvk::LoadOp_Clear,
                                     .storeOp = lvk::StoreOp_Store,
@@ -283,7 +278,6 @@ VULKAN_APP_MAIN {
                                 }}},
                                {.color = {{.texture = ctx->getCurrentSwapchainTexture()}}},
                                {.sampledImages = {texture_}});
-      // NOLINTEND(clang-diagnostic-missing-braces)
       {
         buffer.cmdBindRenderPipeline(renderPipelineState_Mesh_);
         buffer.cmdBindViewport(views[0].viewport);

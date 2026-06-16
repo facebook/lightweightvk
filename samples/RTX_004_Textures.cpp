@@ -270,7 +270,6 @@ void main() {
 
 lvk::IContext* ctx_ = nullptr;
 
-namespace {
 struct Resources {
   lvk::Holder<lvk::AccelStructHandle> BLAS;
   lvk::Holder<lvk::AccelStructHandle> TLAS;
@@ -291,9 +290,7 @@ struct Resources {
   lvk::Holder<lvk::BufferHandle> ubo;
 
   lvk::Holder<lvk::RayTracingPipelineHandle> pipeline;
-  // NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 } res;
-} // namespace
 
 void createBottomLevelAccelerationStructure() {
   struct Vertex {
@@ -359,9 +356,9 @@ void createTopLevelAccelerationStructure() {
   const lvk::AccelStructInstance instances[2] = {
       {
           // clang-format off
-          .transform = {.matrix = {{1.0f, 0.0f, 0.0f, -2.0f},
-                                   {0.0f, 1.0f, 0.0f,  0.0f},
-                                   {0.0f, 0.0f, 1.0f,  0.0f}}},
+          .transform = {.matrix = {1.0f, 0.0f, 0.0f, -2.0f,
+                                   0.0f, 1.0f, 0.0f,  0.0f,
+                                   0.0f, 0.0f, 1.0f,  0.0f}},
           // clang-format on
           .instanceCustomIndex = 0,
           .mask = 0xff,
@@ -371,9 +368,9 @@ void createTopLevelAccelerationStructure() {
       },
       {
           // clang-format off
-          .transform = {.matrix = {{1.0f, 0.0f, 0.0f, +2.0f},
-                                   {0.0f, 1.0f, 0.0f,  0.0f},
-                                   {0.0f, 0.0f, 1.0f,  0.0f}}},
+          .transform = {.matrix = {1.0f, 0.0f, 0.0f, +2.0f,
+                                   0.0f, 1.0f, 0.0f,  0.0f,
+                                   0.0f, 0.0f, 1.0f,  0.0f}},
           // clang-format on
           .instanceCustomIndex = 0,
           .mask = 0xff,

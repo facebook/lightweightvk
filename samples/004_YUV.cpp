@@ -71,7 +71,6 @@ void main() {
 
 size_t currentDemo_ = 0;
 
-namespace {
 // demonstrate different YUV formats
 struct YUVFormatDemo {
   const char* name;
@@ -85,9 +84,7 @@ struct Resources {
   lvk::Holder<lvk::ShaderModuleHandle> frag;
   std::vector<YUVFormatDemo> demos;
 };
-} // namespace
 
-// NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 Resources res_;
 
 void createDemo(VulkanApp& app, const char* name, lvk::Format format, const char* fileName) {

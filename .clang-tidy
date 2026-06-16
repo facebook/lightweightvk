@@ -2,9 +2,11 @@ InheritParentConfig: true
 Checks: '
 -facebook-arfx-enum-containers-check,
 -facebook-hte-CArray,
+-facebook-hte-NullableDereference,
 -facebook-hte-NullableReturn,
 -bugprone-easily-swappable-parameters,
 -bugprone-exception-escape,
+-clang-diagnostic-missing-braces,
 -clang-diagnostic-missing-designated-field-initializers,
 -clang-diagnostic-missing-field-initializers,
 -misc-misplaced-const,

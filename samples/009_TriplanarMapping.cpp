@@ -187,7 +187,6 @@ void main() {
 };
 )";
 
-namespace {
 struct VertexPosUvw {
   vec3 pos;
   vec3 color;
@@ -200,11 +199,8 @@ struct PerFrame {
   uint32_t texture1;
   uint32_t sampler;
 };
-} // namespace
 
-// NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 lvk::Holder<lvk::TextureHandle> texture0_;
-// NOLINTNEXTLINE(clang-diagnostic-global-constructors)
 lvk::Holder<lvk::TextureHandle> texture1_;
 
 VULKAN_APP_MAIN {
@@ -438,7 +434,7 @@ VULKAN_APP_MAIN {
         .depthStencil = {app.getDepthTexture()},
     };
     buffer.cmdBeginRendering(
-        lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {{1.0f, 1.0f, 1.0f, 1.0f}}}},
+        lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {1.0f, 1.0f, 1.0f, 1.0f}}},
                         .depth = {.loadOp = lvk::LoadOp_Clear, .clearDepth = 1.0}},
         framebuffer);
     {

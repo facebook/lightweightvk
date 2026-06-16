@@ -799,7 +799,6 @@ void main() {
 };
 )";
 
-namespace {
 struct SceneNode final {
   SceneNode* parent = nullptr;
   mat4 local = mat4(1.0f);
@@ -1100,7 +1099,6 @@ ShaderModules loadShaderProgram(lvk::IContext* ctx,
   return sm;
 }
 
-namespace {
 struct MemFile {
   std::vector<uint8_t> data;
   size_t offset = 0;
@@ -1130,7 +1128,6 @@ unsigned long memFileSize(void* filePtr, void* /*userData*/) {
   MemFile* file = static_cast<MemFile*>(filePtr);
   return (unsigned long)file->data.size();
 }
-} // namespace
 
 std::vector<GeometryShapes::Vertex> loadMeshFromFile(VulkanApp& app, const char* fileName) {
   const std::string path = (std::filesystem::path(app.folderContentRoot_) / "src/solarsystem" / fileName).string();
@@ -1319,6 +1316,7 @@ Scene createSolarSystemScene(VulkanApp& app) {
 
     assert(asteroidMesh);
 
+    // added deterministic PRNG for reproducible screenshot tests
     LRandom rng;
     auto randomFloat = [&rng](float lo, float hi) { return rng.randomInRange(lo, hi); };
     auto randomVec = [&rng](const vec3& lo, const vec3& hi) { return rng.randomVector3InRange(lo, hi); };
@@ -1381,7 +1379,6 @@ struct RenderOp final {
   DrawData drawData = {};
   uint32_t idDrawData = 0;
 };
-} // namespace
 
 VULKAN_APP_MAIN {
   const VulkanAppConfig cfg{
@@ -1796,7 +1793,7 @@ VULKAN_APP_MAIN {
       buf.cmdUpdateBuffer(vulkanState.bufPerFrame, perFrame);
       buf.cmdBindVertexBuffer(0, vulkanState.bufVertices, 0);
 
-      buf.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {{0.0f, 0.0f, 0.0f, 1.0f}}}},
+      buf.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
                              .depth = {.loadOp = lvk::LoadOp_Clear, .clearDepth = 1.0f},
                              .layerCount = (uint32_t)views.size(),
                              .viewMask = g_MultiViewStereo ? 0b11 : 0u},
