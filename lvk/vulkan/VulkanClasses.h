@@ -262,6 +262,7 @@ class VulkanPipelineBuilder final {
   VulkanPipelineBuilder& dynamicState(VkDynamicState state);
   VulkanPipelineBuilder& primitiveTopology(VkPrimitiveTopology topology);
   VulkanPipelineBuilder& rasterizationSamples(VkSampleCountFlagBits samples, float minSampleShading);
+  VulkanPipelineBuilder& alphaToCoverage(bool enable);
   VulkanPipelineBuilder& shaderStage(VkPipelineShaderStageCreateInfo stage);
   VulkanPipelineBuilder& stencilStateOps(VkStencilFaceFlags faceMask,
                                          VkStencilOp failOp,
@@ -741,6 +742,7 @@ class VulkanContext final : public IContext {
   VkPhysicalDeviceAccelerationStructurePropertiesKHR accelerationStructureProperties_ = {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
   VkPhysicalDeviceDriverProperties vkPhysicalDeviceDriverProperties_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES, nullptr};
+  VkPhysicalDeviceMaintenance6Properties maintenance6Properties_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_PROPERTIES, nullptr};
   // provided by Vulkan 1.4
   VkPhysicalDeviceVulkan14Properties vkPhysicalDeviceVulkan14Properties_ = {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_PROPERTIES,
@@ -813,6 +815,7 @@ class VulkanContext final : public IContext {
   bool has_MVK_macos_surface_ = false;
   bool has_KHR_shared_presentable_image_ = false;
   bool has_KHR_present_mode_fifo_latest_ready_ = false;
+  bool has_KHR_maintenance6_ = false;
   std::vector<const char*> enabledInstanceExtensionNames_;
   std::vector<const char*> enabledDeviceExtensionNames_;
 
