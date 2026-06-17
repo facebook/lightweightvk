@@ -1457,6 +1457,9 @@ void generateCompressedTexture(LoadedImage img) {
   };
   ktxTexture2* textureKTX2 = nullptr;
   (void)LVK_VERIFY(ktxTexture2_Create(&createInfoKTX2, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &textureKTX2) == KTX_SUCCESS);
+  if (!textureKTX2) {
+    return;
+  }
 
   SCOPE_EXIT {
     ktxTexture_Destroy(ktxTexture(textureKTX2));
@@ -1513,6 +1516,9 @@ void generateCompressedTexture(LoadedImage img) {
   };
   ktxTexture1* textureKTX1 = nullptr;
   (void)LVK_VERIFY(ktxTexture1_Create(&createInfoKTX1, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &textureKTX1) == KTX_SUCCESS);
+  if (!textureKTX1) {
+    return;
+  }
 
   for (uint32_t i = 0; i != mipmapLevelCount; ++i) {
     size_t offset1 = 0;
