@@ -7850,7 +7850,11 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(VulkanContext::DescriptorSet&
         // multisampled images cannot be directly accessed from shaders
         const bool isTextureAvailable = (img.vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
         const bool isYUVImage = isTextureAvailable && img.isSampledImage() && lvk::getNumImagePlanes(img.vkImageFormat_) > 1;
-        immutableSamplers[i] = isYUVImage ? getOrCreateYcbcrSampler(vkFormatToFormat(img.vkImageFormat_)) : firstYcbcrSampler;
+        if (i < immutableSamplers.size()) {
+          // The bounds check above guarantees this access is in range; the static analyzer's heuristic cannot prove it.
+          // NOLINTNEXTLINE(facebook-hte-LocalUncheckedArrayBounds)
+          immutableSamplers[i] = isYUVImage ? getOrCreateYcbcrSampler(vkFormatToFormat(img.vkImageFormat_)) : firstYcbcrSampler;
+        }
       }
     }
     immutableSamplersData = immutableSamplers.data();
