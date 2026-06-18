@@ -7,7 +7,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#pragma once
+#ifndef LVK_LVK_H
+#define LVK_LVK_H
 
 #include <cstdarg>
 #include <cstddef>
@@ -1290,3 +1291,5 @@ LVKwindow* initWindow(const char* windowTitle, int& outWidth, int& outHeight, bo
 #endif // LVK_WITH_GLFW || LVK_WITH_SDL3
 
 } // namespace lvk
+
+#endif // LVK_LVK_H

@@ -8301,7 +8301,7 @@ lvk::SamplerHandle lvk::VulkanContext::createSampler(const VkSamplerCreateInfo& 
   VK_ASSERT(vkCreateSampler(vkDevice_, &cinfo, nullptr, &sampler));
   VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_SAMPLER, (uint64_t)sampler, debugName));
 
-  SamplerHandle handle = samplersPool_.create(VkSampler(sampler));
+  SamplerHandle handle = samplersPool_.create(static_cast<VkSampler&&>(sampler));
 
   awaitingCreation_ = true;
 

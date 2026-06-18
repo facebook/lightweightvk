@@ -7,7 +7,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#pragma once
+#ifndef LVK_VULKAN_VULKANUTILS_H
+#define LVK_VULKAN_VULKANUTILS_H
 
 #define VMA_VULKAN_VERSION 1003000
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
@@ -161,3 +162,5 @@ const VkPhysicalDeviceVulkan12Properties& getVkPhysicalDeviceVulkan12Properties(
 const VkPhysicalDeviceVulkan13Properties& getVkPhysicalDeviceVulkan13Properties(const IContext* ctx);
 
 } // namespace lvk
+
+#endif // LVK_VULKAN_VULKANUTILS_H

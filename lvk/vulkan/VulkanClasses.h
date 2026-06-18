@@ -7,7 +7,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#pragma once
+#ifndef LVK_VULKAN_VULKANCLASSES_H
+#define LVK_VULKAN_VULKANCLASSES_H
 
 #include <ldrutils/lutils/Pool.h>
 #include <lvk/vulkan/VulkanUtils.h>
@@ -834,3 +835,5 @@ class VulkanContext final : public IContext {
 };
 
 } // namespace lvk
+
+#endif // LVK_VULKAN_VULKANCLASSES_H
