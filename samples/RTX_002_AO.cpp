@@ -1103,6 +1103,8 @@ bool enableFiltering_ = false;
 
 uint32_t frameId = 0;
 
+namespace {
+
 struct UniformsPerFrame {
   mat4 proj;
   mat4 view;
@@ -1118,6 +1120,8 @@ struct GPUMaterial {
   vec4 ambient = vec4(0.0f);
   vec4 diffuse = vec4(0.0f);
 };
+
+} // namespace
 
 static_assert(sizeof(GPUMaterial) % 16 == 0);
 
