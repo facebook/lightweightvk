@@ -462,6 +462,7 @@ struct {
   lvk::Holder<lvk::RayTracingPipelineHandle> rayTracingPipeline_;
 } res;
 
+namespace {
 struct UniformsPerFrame {
   mat4 viewInverse;
   mat4 projInverse;
@@ -472,6 +473,7 @@ struct GPUMaterial {
   vec4 ambient = vec4(0.0f);
   vec4 diffuse = vec4(0.0f);
 };
+} // namespace
 
 static_assert(sizeof(GPUMaterial) % 16 == 0);
 
