@@ -444,6 +444,7 @@ void main() {
 
 lvk::IContext* ctx_ = nullptr;
 
+namespace {
 struct {
   lvk::Holder<lvk::ShaderModuleHandle> smFullscreenVert_;
   lvk::Holder<lvk::ShaderModuleHandle> smFullscreenFrag_;
@@ -462,7 +463,6 @@ struct {
   lvk::Holder<lvk::RayTracingPipelineHandle> rayTracingPipeline_;
 } res;
 
-namespace {
 struct UniformsPerFrame {
   mat4 viewInverse;
   mat4 projInverse;
