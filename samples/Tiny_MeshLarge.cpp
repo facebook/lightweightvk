@@ -529,8 +529,8 @@ uint16_t packSnorm2x8(vec2 v) {
 
 // https://www.shadertoy.com/view/llfcRl
 uint16_t packOctahedral16(vec3 n) {
-  n /= (abs(n.x) + abs(n.y) + abs(n.z));
-  return ::packSnorm2x8((n.z >= 0.0) ? vec2(n.x, n.y) : (vec2(1.0) - abs(vec2(n.y, n.x))) * msign(vec2(n)));
+  n /= (std::abs(n.x) + std::abs(n.y) + std::abs(n.z));
+  return ::packSnorm2x8((n.z >= 0.0) ? vec2(n.x, n.y) : (vec2(1.0) - glm::abs(vec2(n.y, n.x))) * msign(vec2(n)));
 }
 
 std::vector<VertexData> vertexData_;
