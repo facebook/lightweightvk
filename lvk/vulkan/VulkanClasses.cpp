@@ -572,6 +572,7 @@ VkFormat vertexFormatToVkFormat(lvk::VertexFormat fmt) {
 }
 
 std::vector<VkFormat> getCompatibleDepthStencilFormats(lvk::Format format) {
+  // NOLINTNEXTLINE(clang-diagnostic-switch-enum)
   switch (format) {
   case lvk::Format_Z_UN16:
     return {VK_FORMAT_D16_UNORM, VK_FORMAT_D16_UNORM_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT};
@@ -715,6 +716,7 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>
   };
 
   auto colorSpaceToVkSurfaceFormat = [](lvk::ColorSpace colorSpace, bool isBGR, bool hasSwapchainColorspaceExt) -> VkSurfaceFormatKHR {
+    // NOLINTNEXTLINE(clang-diagnostic-switch-enum)
     switch (colorSpace) {
     case lvk::ColorSpace_SRGB_NONLINEAR:
       return VkSurfaceFormatKHR{isBGR ? VK_FORMAT_B8G8R8A8_UNORM : VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
@@ -4356,6 +4358,7 @@ lvk::Holder<lvk::AccelStructHandle> lvk::VulkanContext::createAccelerationStruct
 
   AccelStructHandle handle;
 
+  // NOLINTNEXTLINE(clang-diagnostic-switch-enum)
   switch (desc.type) {
   case AccelStructType_BLAS:
     handle = createBLAS(desc, &result);
@@ -5512,8 +5515,8 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   std::vector<uint8_t> shaderHandleStorage(sbtSize);
   VK_ASSERT(vkGetRayTracingShaderGroupHandlesKHR(vkDevice_, rtps->pipeline_, 0, numShaderGroups, sbtSize, shaderHandleStorage.data()));
 
-  const uint32_t sbtEntrySizeAligned = getAlignedSize(handleSizeAligned, props.shaderGroupBaseAlignment);
-  const uint32_t sbtBufferSize = numShaderGroups * sbtEntrySizeAligned;
+  const VkDeviceSize sbtEntrySizeAligned = getAlignedSize(handleSizeAligned, props.shaderGroupBaseAlignment);
+  const VkDeviceSize sbtBufferSize = numShaderGroups * sbtEntrySizeAligned;
 
   // repack SBT respecting `shaderGroupBaseAlignment`
   std::vector<uint8_t> sbtStorage(sbtBufferSize);
@@ -6073,7 +6076,7 @@ lvk::Result lvk::VulkanContext::download(lvk::TextureHandle handle, const Textur
   const Result result = validateRange(texture->vkExtent_, texture->numLevels_, range);
 
   if (!LVK_VERIFY(result.isOk())) {
-    return result;
+    return result; // NOLINT(clang-diagnostic-nrvo)
   }
 
   stagingDevice_->getImageData(*texture,
@@ -6534,7 +6537,7 @@ lvk::TextureHandle lvk::VulkanContext::getCurrentSwapchainTexture() {
 
   LVK_ASSERT_MSG(texturesPool_.get(tex)->vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid image format");
 
-  return tex;
+  return tex; // NOLINT(clang-diagnostic-nrvo)
 }
 
 uint32_t lvk::VulkanContext::getSwapchainCurrentImageIndex() const {
@@ -6595,6 +6598,7 @@ lvk::AccelStructSizes lvk::VulkanContext::getAccelStructSizes(const AccelStructD
 
   VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
   VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
+  // NOLINTNEXTLINE(clang-diagnostic-switch-enum)
   switch (desc.type) {
   case AccelStructType_BLAS:
     getBuildInfoBLAS(desc, accelerationStructureGeometry, accelerationStructureBuildSizesInfo);
@@ -6913,6 +6917,7 @@ uint32_t lvk::VulkanContext::queryDevices(HWDeviceDesc* outDevices, uint32_t max
   VK_ASSERT(vkEnumeratePhysicalDevices(vkInstance_, &deviceCount, vkDevices.data()));
 
   auto convertVulkanDeviceTypeToLVK = [](VkPhysicalDeviceType vkDeviceType) -> HWDeviceType {
+    // NOLINTNEXTLINE(clang-diagnostic-switch-enum)
     switch (vkDeviceType) {
     case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
       return HWDeviceType_Integrated;
