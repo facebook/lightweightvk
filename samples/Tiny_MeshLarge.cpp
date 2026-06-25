@@ -1431,7 +1431,7 @@ void render(double delta) {
   }
 }
 
-void generateCompressedTexture(LoadedImage img) {
+void generateCompressedTexture(const LoadedImage& img) {
   LVK_PROFILER_FUNCTION();
 
   if (loaderShouldExit_.load(std::memory_order_acquire)) {
