@@ -481,6 +481,7 @@ VmaAllocator lvk::createVmaAllocator(VkPhysicalDevice physDev, VkDevice device, 
       .vkGetPhysicalDeviceMemoryProperties2KHR = vkGetPhysicalDeviceMemoryProperties2,
       .vkGetDeviceBufferMemoryRequirements = vkGetDeviceBufferMemoryRequirements,
       .vkGetDeviceImageMemoryRequirements = vkGetDeviceImageMemoryRequirements,
+      .vkGetPhysicalDeviceProperties2KHR = vkGetPhysicalDeviceProperties2,
   };
 
   const VmaAllocatorCreateInfo ci = {
@@ -1204,6 +1205,7 @@ uint32_t lvk::getBytesPerPixel(VkFormat format) {
   case VK_FORMAT_R8G8B8A8_UNORM:
   case VK_FORMAT_B8G8R8A8_UNORM:
   case VK_FORMAT_R8G8B8A8_SRGB:
+  case VK_FORMAT_B8G8R8A8_SRGB:
   case VK_FORMAT_R16G16_SFLOAT:
   case VK_FORMAT_R32_SFLOAT:
   case VK_FORMAT_R32_UINT:

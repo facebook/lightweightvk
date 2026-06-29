@@ -972,11 +972,38 @@ struct AccelStructDesc {
   const char* debugName = "";
 };
 
+struct SubmitHandle {
+  union {
+    struct {
+      uint32_t bufferIndex_      : 16;
+      uint32_t queueFamilyIndex_ : 16; // Vulkan queue family this submission ran on; makes a handle self-describing
+      uint32_t submitId_         : 32;
+    };
+    uint64_t handle_ = 0;
+  };
+  SubmitHandle() = default;
+  explicit SubmitHandle(uint64_t handle) : handle_(handle) {
+    LVK_ASSERT(submitId_);
+  }
+  bool empty() const {
+    return submitId_ == 0;
+  }
+  uint64_t handle() const {
+    return handle_;
+  }
+};
+
+static_assert(sizeof(SubmitHandle) == sizeof(uint64_t));
+
 struct Dependencies {
   ldr::Span<TextureHandle> sampledImages = {};
   ldr::Span<TextureHandle> storageImages = {};
   ldr::Span<BufferHandle> buffers = {};
   ldr::Span<TextureHandle> inputAttachments = {};
+  // Cross-queue waits only: dependencies on work submitted to the *other* queue. Same-queue ordering is already
+  // guaranteed automatically (by barriers within a command buffer and by the intra-queue chain between submits).
+  ldr::Span<SubmitHandle> waitCompute = {}; // async-compute work a graphics submit must wait for
+  ldr::Span<SubmitHandle> waitGraphics = {}; // graphics work an async-compute submit must wait for
 };
 
 class ICommandBuffer {
@@ -987,6 +1014,9 @@ class ICommandBuffer {
   virtual void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const = 0;
   // no extraDstStage parameter: this is only used within a render pass
   virtual void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const = 0;
+  // Hand graphics-produced images to the async-compute queue (queue-family ownership release). The matching acquire is emitted
+  // automatically when the async-compute submit first uses the image. Pair with `Dependencies::waitGraphics` on that submit.
+  virtual void cmdReleaseToAsyncCompute(const ldr::Span<TextureHandle>& textures) const = 0;
 
   virtual void cmdPushDebugGroupLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;
   virtual void cmdInsertDebugEventLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;
@@ -1084,23 +1114,6 @@ class ICommandBuffer {
 #endif // defined(LVK_WITH_RAW_VULKAN)
 };
 
-struct SubmitHandle {
-  uint32_t bufferIndex_ = 0;
-  uint32_t submitId_ = 0;
-  SubmitHandle() = default;
-  explicit SubmitHandle(uint64_t handle) : bufferIndex_(uint32_t(handle & 0xffffffff)), submitId_(uint32_t(handle >> 32)) {
-    LVK_ASSERT(submitId_);
-  }
-  bool empty() const {
-    return submitId_ == 0;
-  }
-  uint64_t handle() const {
-    return (uint64_t(submitId_) << 32) + bufferIndex_;
-  }
-};
-
-static_assert(sizeof(SubmitHandle) == sizeof(uint64_t));
-
 class IContext {
  protected:
   IContext() = default;
@@ -1108,7 +1121,7 @@ class IContext {
  public:
   virtual ~IContext() = default;
 
-  virtual ICommandBuffer& acquireCommandBuffer() = 0;
+  virtual ICommandBuffer& acquireCommandBuffer(bool dedicatedCompute = false) = 0;
 
   virtual SubmitHandle submit(ICommandBuffer& commandBuffer, TextureHandle present = {}) = 0;
   virtual void wait(SubmitHandle handle) = 0; // waiting on an empty handle results in vkDeviceWaitIdle()
@@ -1185,6 +1198,7 @@ class IContext {
   virtual uint32_t getFramebufferMSAABitMask() const = 0;
 
   virtual bool isExtensionEnabled(const char* ext) const = 0;
+  virtual bool supportsAsyncCompute() const = 0;
 
 #pragma region Performance queries
   virtual double getTimestampPeriodToMs() const = 0;
@@ -1223,6 +1237,7 @@ struct ContextConfig {
   VulkanVersion vulkanVersion = VulkanVersion_1_3;
   bool terminateOnValidationError = false; // invoke std::terminate() on any validation error
   bool enableValidation = true;
+  bool enableValidationGpuAV = true;
   bool generateSPIRVDebugInfo = true;
   lvk::ColorSpace swapchainRequestedColorSpace = lvk::ColorSpace_SRGB_NONLINEAR;
   // owned by the application - should be alive until createVulkanContextWithSwapchain() returns

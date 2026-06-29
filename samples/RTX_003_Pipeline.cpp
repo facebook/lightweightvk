@@ -466,7 +466,7 @@ struct {
 struct UniformsPerFrame {
   mat4 viewInverse;
   mat4 projInverse;
-};
+} perFrame_;
 
 // this goes into our GLSL shaders
 struct GPUMaterial {

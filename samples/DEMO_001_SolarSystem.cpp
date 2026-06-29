@@ -898,6 +898,8 @@ struct Scene final {
   Scene() = default;
   Scene(Scene&) = delete;
   Scene(Scene&&) = default;
+  Scene& operator=(Scene&) = delete;
+  Scene& operator=(Scene&&) = default;
 
   std::vector<MeshComponent> meshes;
   std::vector<Material> materials;
