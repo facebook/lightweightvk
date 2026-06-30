@@ -7,6 +7,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+#include <cmath>
 #include <filesystem>
 
 #include "VulkanApp.h"
@@ -1747,7 +1748,7 @@ VULKAN_APP_MAIN {
         // https://paulbourke.net/stereographics/stereorender/
         const float focalLength = 0.5f;
         const float aspect = aspectRatio * 0.5f;
-        const float wd2 = nearPlane * tan(fov / 2.0f);
+        const float wd2 = nearPlane * std::tan(fov / 2.0f);
         const float D = 0.5f * IoD * nearPlane / focalLength;
         const mat4 proj0 = glm::frustum(-aspect * wd2 - D, aspect * wd2 - D, -wd2, wd2, nearPlane, farPlane); // left
         const mat4 proj1 = glm::frustum(-aspect * wd2 + D, aspect * wd2 + D, -wd2, wd2, nearPlane, farPlane); // right
