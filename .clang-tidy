@@ -11,5 +11,6 @@ Checks: '
 -clang-diagnostic-missing-field-initializers,
 -misc-misplaced-const,
 -modernize-use-using,
+-performance-move-const-arg,
 -readability-braces-around-statements,
 '

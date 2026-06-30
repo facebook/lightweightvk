@@ -54,14 +54,14 @@ namespace {
 struct TextureFormatProperties {
   const lvk::Format format = lvk::Format_Invalid;
   const uint8_t bytesPerBlock : 5 = 1;
-  const uint8_t blockWidth : 3 = 1;
-  const uint8_t blockHeight : 3 = 1;
-  const uint8_t minBlocksX : 2 = 1;
-  const uint8_t minBlocksY : 2 = 1;
-  const bool depth : 1 = false;
-  const bool stencil : 1 = false;
-  const bool compressed : 1 = false;
-  const uint8_t numPlanes : 2 = 1;
+  const uint8_t blockWidth    : 3 = 1;
+  const uint8_t blockHeight   : 3 = 1;
+  const uint8_t minBlocksX    : 2 = 1;
+  const uint8_t minBlocksY    : 2 = 1;
+  const bool depth            : 1 = false;
+  const bool stencil          : 1 = false;
+  const bool compressed       : 1 = false;
+  const uint8_t numPlanes     : 2 = 1;
 };
 
 // clang-format off

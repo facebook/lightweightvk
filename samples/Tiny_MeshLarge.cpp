@@ -690,7 +690,6 @@ bool init(lvk::LVKwindow* window) {
   renderPassOffscreen_ = {.color = {{
                               .loadOp = lvk::LoadOp_Clear,
                               .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
-                              // NOLINTNEXTLINE(clang-diagnostic-missing-braces)
                               .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
                           }},
                           .depth = {

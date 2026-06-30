@@ -116,6 +116,10 @@ struct VulkanImage final {
   char debugName_[256] = {0};
   // current image layout
   mutable VkImageLayout vkImageLayout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+  mutable uint32_t ownerQueueFamily_ = VK_QUEUE_FAMILY_IGNORED;
+  mutable uint32_t pendingAcquireSrcFamily_ = VK_QUEUE_FAMILY_IGNORED; // released in `submit()`, consumed by `acquireOwnershipIfPending()`
+  mutable VkImageLayout qfotSrcLayout_ = VK_IMAGE_LAYOUT_UNDEFINED; // oldLayout the acquire must match the release
+  mutable VkImageLayout qfotDstLayout_ = VK_IMAGE_LAYOUT_UNDEFINED; // newLayout (rendezvous layout) the acquire must match the release
   // precached image views - owned by this VulkanImage
   VkImageView imageView_ = VK_NULL_HANDLE; // default view with all mip-levels
   VkImageView imageViewStorage_ = VK_NULL_HANDLE; // default view with identity swizzle (all mip-levels)
@@ -189,6 +193,7 @@ class VulkanImmediateCommands final {
     SubmitHandle handle_ = {};
     VkFence fence_ = VK_NULL_HANDLE;
     VkSemaphore semaphore_ = VK_NULL_HANDLE;
+    mutable uint64_t signaledTimelineValue_ = 0; // value signaled on submitTimelineSemaphore_ by this submission (cross-queue waits)
     bool isEncoding_ = false;
   };
 
@@ -196,8 +201,14 @@ class VulkanImmediateCommands final {
   const CommandBufferWrapper& acquire();
   SubmitHandle submit(const CommandBufferWrapper& wrapper);
   void waitSemaphore(VkSemaphore semaphore);
+  void waitTimelineSemaphore(VkSemaphore semaphore, uint64_t value);
   void signalSemaphore(VkSemaphore semaphore, uint64_t signalValue);
   VkSemaphore acquireLastSubmitSemaphore();
+  // timeline semaphore signaled by every submit() on this queue; lets another queue wait for a specific submission to complete
+  VkSemaphore getTimelineSemaphore() const {
+    return submitTimelineSemaphore_;
+  }
+  uint64_t getTimelineValue(SubmitHandle handle) const;
   void setLastPresentSemaphore(VkSemaphore semaphore, VkFence presentFence);
   VkFence getVkFence(SubmitHandle handle) const;
   SubmitHandle getLastSubmitHandle() const;
@@ -223,10 +234,13 @@ class VulkanImmediateCommands final {
                                                 .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
   VkSemaphoreSubmitInfo waitSemaphore_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                                           .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT}; // extra "wait" semaphore
+  VkSemaphoreSubmitInfo waitTimeline_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                                         .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT}; // timeline wait (cross-queue)
   VkSemaphoreSubmitInfo signalSemaphore_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                                             .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT}; // extra "signal" semaphore
   VkSemaphore lastPresentSemaphore_ = VK_NULL_HANDLE; // present-wait semaphore of the last vkQueuePresentKHR()
   VkFence lastPresentFence_ = VK_NULL_HANDLE; // its present fence; acquire() waits it before reusing that slot
+  VkSemaphore submitTimelineSemaphore_ = VK_NULL_HANDLE; // monotonic timeline signaled by every submit() (cross-queue waits)
   uint32_t numAvailableCommandBuffers_ = kMaxCommandBuffers;
   uint32_t submitCounter_ = 1;
 };
@@ -379,7 +393,7 @@ struct AccelerationStructure {
 class CommandBuffer final : public ICommandBuffer {
  public:
   CommandBuffer() = default;
-  explicit CommandBuffer(VulkanContext* ctx);
+  CommandBuffer(VulkanContext* ctx, VulkanImmediateCommands& immediate, uint32_t queueFamilyIndex);
   ~CommandBuffer() override;
 
   CommandBuffer& operator=(CommandBuffer&& other) = default;
@@ -387,6 +401,7 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const override;
   void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const override;
   void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const override;
+  void cmdReleaseToAsyncCompute(const ldr::Span<TextureHandle>& textures) const override;
 
   void cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) override;
 
@@ -477,11 +492,33 @@ class CommandBuffer final : public ICommandBuffer {
                      VkDeviceSize offset = 0,
                      VkDeviceSize size = VK_WHOLE_SIZE);
 
+  void addCrossQueueDependencies(const Dependencies& deps);
+  // Completes a cross-queue ownership transfer for `img` if the producing queue armed one; returns true if an acquire was emitted
+  bool acquireOwnershipIfPending(lvk::VulkanImage& img, StageAccess dst) const;
+
  private:
   friend class VulkanContext;
 
+  // One image handed off to the other queue at `submit()` (QFOT release); collected during recording
+  struct PendingRelease {
+    lvk::TextureHandle handle;
+    uint32_t dstQueueFamily = VK_QUEUE_FAMILY_IGNORED;
+    VkImageLayout dstLayout = VK_IMAGE_LAYOUT_UNDEFINED; // rendezvous layout the matching acquire must replay
+    StageAccess srcStage = {}; // producer's last-write scope
+  };
+
   VulkanContext* ctx_ = nullptr;
   const VulkanImmediateCommands::CommandBufferWrapper* wrapper_ = nullptr;
+  VulkanImmediateCommands* immediate_ = nullptr; // which queue this buffer was acquired from and submits to
+
+  // Highest async-compute timeline value a graphics CB depends on (from Dependencies::waitCompute); waited cross-queue at `submit()`
+  uint64_t crossQueueComputeWaitValue_ = 0;
+  // Highest graphics timeline value an async-compute CB depends on (from Dependencies::waitGraphics); waited cross-queue at `submit()`
+  uint64_t crossQueueGraphicsWaitValue_ = 0;
+  // Images handed off to the other queue (compute->graphics or graphics->compute), released at this CB's `submit()`
+  // The list lives with the CommandBuffer, so it is implicitly cleared when the slot is reset at the end of `submit()`
+  std::vector<PendingRelease> imagesToTransfer_;
+  uint32_t queueFamilyIndex_ = 0;
 
   lvk::Framebuffer framebuffer_ = {};
   lvk::SubmitHandle lastSubmitHandle_ = {};
@@ -558,7 +595,7 @@ class VulkanContext final : public IContext {
   VulkanContext(const lvk::ContextConfig& config, void* window, void* display = nullptr, VkSurfaceKHR surface = VK_NULL_HANDLE);
   ~VulkanContext() override;
 
-  ICommandBuffer& acquireCommandBuffer() override;
+  ICommandBuffer& acquireCommandBuffer(bool dedicatedCompute = false) override;
 
   SubmitHandle submit(lvk::ICommandBuffer& commandBuffer, TextureHandle present) override;
   void wait(SubmitHandle handle) override;
@@ -616,6 +653,9 @@ class VulkanContext final : public IContext {
 
   uint32_t getFramebufferMSAABitMask() const override;
   bool isExtensionEnabled(const char* ext) const override;
+  bool supportsAsyncCompute() const override {
+    return immediateCompute_ != nullptr;
+  }
 
   double getTimestampPeriodToMs() const override;
   bool getQueryPoolResults(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount, size_t dataSize, void* outData, size_t stride)
@@ -781,6 +821,7 @@ class VulkanContext final : public IContext {
   std::unique_ptr<lvk::VulkanSwapchain> swapchain_;
   VkSemaphore timelineSemaphore_ = VK_NULL_HANDLE;
   std::unique_ptr<lvk::VulkanImmediateCommands> immediate_;
+  std::unique_ptr<lvk::VulkanImmediateCommands> immediateCompute_; // dedicated async-compute queue (optional)
   std::unique_ptr<lvk::VulkanStagingDevice> stagingDevice_;
   VkDescriptorSetLayout dslInputAttachments_ = VK_NULL_HANDLE;
   std::vector<DescriptorSet> DSets_ = {};
@@ -817,7 +858,8 @@ class VulkanContext final : public IContext {
   bool has_MVK_macos_surface_ = false;
   bool has_KHR_shared_presentable_image_ = false;
   bool has_KHR_present_mode_fifo_latest_ready_ = false;
-  bool has_KHR_maintenance6_ = false;
+  bool has_KHR_maintenance6_ = false; // promoted to Vulkan 1.4
+  bool has_EXT_host_image_copy_ = false; // promoted to Vulkan 1.4
   std::vector<const char*> enabledInstanceExtensionNames_;
   std::vector<const char*> enabledDeviceExtensionNames_;
 

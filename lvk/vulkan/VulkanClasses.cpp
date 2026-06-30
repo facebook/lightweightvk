@@ -693,6 +693,35 @@ void transitionToColorAttachment(VkCommandBuffer buffer, lvk::VulkanImage* color
                              VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
 }
 
+void emitImageQFOTransfer(VkCommandBuffer cb,
+                          const lvk::VulkanImage& img,
+                          VkImageLayout oldLayout,
+                          VkImageLayout newLayout,
+                          StageAccess src,
+                          StageAccess dst,
+                          uint32_t srcQueueFamily,
+                          uint32_t dstQueueFamily) {
+  const VkImageMemoryBarrier2 barrier = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+      .srcStageMask = src.stage,
+      .srcAccessMask = src.access,
+      .dstStageMask = dst.stage,
+      .dstAccessMask = dst.access,
+      .oldLayout = oldLayout,
+      .newLayout = newLayout,
+      .srcQueueFamilyIndex = srcQueueFamily,
+      .dstQueueFamilyIndex = dstQueueFamily,
+      .image = img.vkImage_,
+      .subresourceRange = {img.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
+  };
+  const VkDependencyInfo di = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .imageMemoryBarrierCount = 1,
+      .pImageMemoryBarriers = &barrier,
+  };
+  vkCmdPipelineBarrier2(cb, &di);
+}
+
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats,
                                            lvk::ColorSpace requestedColorSpace,
                                            bool hasSwapchainColorspaceExt) {
@@ -772,6 +801,7 @@ struct VulkanContextImpl final {
   VmaAllocator vma_ = VK_NULL_HANDLE;
 
   lvk::CommandBuffer currentCommandBuffer_;
+  lvk::CommandBuffer currentComputeCommandBuffer_; // async-compute slot (coexists with the graphics one).
 
   std::vector<DeferredTask> deferredTasks_;
 
@@ -1013,6 +1043,7 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
   for (uint32_t layer = 0; layer < numLayers_; ++layer) {
     int32_t mipWidth = (int32_t)vkExtent_.width;
     int32_t mipHeight = (int32_t)vkExtent_.height;
+    int32_t mipDepth = (int32_t)vkExtent_.depth; // 3D textures downsample depth too (1 for 2D/array/cube).
 
     for (uint32_t i = 1; i < numLevels_; ++i) {
       // 1: Transition the i-th level to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; it will be copied into from the (i-1)-th layer
@@ -1026,14 +1057,15 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
 
       const int32_t nextLevelWidth = mipWidth > 1 ? mipWidth / 2 : 1;
       const int32_t nextLevelHeight = mipHeight > 1 ? mipHeight / 2 : 1;
+      const int32_t nextLevelDepth = mipDepth > 1 ? mipDepth / 2 : 1; // 3D blit downsamples depth (1 for 2D).
 
       const VkOffset3D srcOffsets[2] = {
           VkOffset3D{0, 0, 0},
-          VkOffset3D{mipWidth, mipHeight, 1},
+          VkOffset3D{mipWidth, mipHeight, mipDepth},
       };
       const VkOffset3D dstOffsets[2] = {
           VkOffset3D{0, 0, 0},
-          VkOffset3D{nextLevelWidth, nextLevelHeight, 1},
+          VkOffset3D{nextLevelWidth, nextLevelHeight, nextLevelDepth},
       };
 
       // 2: Blit the image from the prev mip-level (i-1) (VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) to the current mip-level (i)
@@ -1071,6 +1103,7 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
       // Compute the size of the next mip-level
       mipWidth = nextLevelWidth;
       mipHeight = nextLevelHeight;
+      mipDepth = nextLevelDepth;
     }
   }
 
@@ -1551,7 +1584,14 @@ lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device,
     buf.fence_ = lvk::createFence(device, fenceName);
     VK_ASSERT(vkAllocateCommandBuffers(device, &ai, &buf.cmdBufAllocated_));
     buffers_[i].handle_.bufferIndex_ = i;
+    buffers_[i].handle_.queueFamilyIndex_ = queueFamilyIndex; // make every SubmitHandle self-describing
   }
+
+  char timelineName[256] = {0};
+  if (debugName) {
+    (void)snprintf(timelineName, sizeof(timelineName) - 1, "Semaphore: %s (timeline)", debugName);
+  }
+  submitTimelineSemaphore_ = lvk::createSemaphoreTimeline(device, 0, timelineName);
 }
 
 lvk::VulkanImmediateCommands::~VulkanImmediateCommands() {
@@ -1565,6 +1605,7 @@ lvk::VulkanImmediateCommands::~VulkanImmediateCommands() {
     vkDestroySemaphore(device_, buf.semaphore_, nullptr);
   }
 
+  vkDestroySemaphore(device_, submitTimelineSemaphore_, nullptr);
   vkDestroyCommandPool(device_, commandPool_, nullptr);
 }
 
@@ -1725,7 +1766,8 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
   LVK_ASSERT(wrapper.isEncoding_);
   VK_ASSERT(vkEndCommandBuffer(wrapper.cmdBuf_));
 
-  VkSemaphoreSubmitInfo waitSemaphores[] = {{}, {}};
+  // waits: swapchain-acquire + intra-queue chain + an optional cross-queue timeline wait (e.g. Dependencies::waitCompute)
+  VkSemaphoreSubmitInfo waitSemaphores[3] = {};
   uint32_t numWaitSemaphores = 0;
   if (waitSemaphore_.semaphore) {
     waitSemaphores[numWaitSemaphores++] = waitSemaphore_;
@@ -1733,16 +1775,29 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
   if (lastSubmitSemaphore_.semaphore) {
     waitSemaphores[numWaitSemaphores++] = lastSubmitSemaphore_;
   }
+  if (waitTimeline_.semaphore) {
+    waitSemaphores[numWaitSemaphores++] = waitTimeline_;
+  }
+  // Signals: per-slot binary semaphore (intra-queue chain / present) + the monotonic cross-queue timeline + an optional extra signal.
+  // The next timeline value is one past the most recent submission's; the highest value always belongs to the last submit,
+  // so we read it back from that slot instead of caching a separate running counter.
+  const uint64_t prevTimelineValue = lastSubmitHandle_.empty() ? 0 : buffers_[lastSubmitHandle_.bufferIndex_].signaledTimelineValue_;
+  const uint64_t timelineValue = prevTimelineValue + 1;
   VkSemaphoreSubmitInfo signalSemaphores[] = {
       VkSemaphoreSubmitInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                             .semaphore = wrapper.semaphore_,
                             .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT},
+      VkSemaphoreSubmitInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                            .semaphore = submitTimelineSemaphore_,
+                            .value = timelineValue,
+                            .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT},
       {},
   };
-  uint32_t numSignalSemaphores = 1;
+  uint32_t numSignalSemaphores = 2;
   if (signalSemaphore_.semaphore) {
     signalSemaphores[numSignalSemaphores++] = signalSemaphore_;
   }
+  wrapper.signaledTimelineValue_ = timelineValue;
 
   LVK_PROFILER_ZONE("vkQueueSubmit2()", LVK_PROFILER_COLOR_SUBMIT);
 #if LVK_VULKAN_PRINT_COMMANDS
@@ -1836,6 +1891,7 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
   lastSubmitSemaphore_.semaphore = wrapper.semaphore_;
   lastSubmitHandle_ = wrapper.handle_;
   waitSemaphore_.semaphore = VK_NULL_HANDLE;
+  waitTimeline_.semaphore = VK_NULL_HANDLE;
   signalSemaphore_.semaphore = VK_NULL_HANDLE;
 
   // reset
@@ -1854,6 +1910,13 @@ void lvk::VulkanImmediateCommands::waitSemaphore(VkSemaphore semaphore) {
   LVK_ASSERT(waitSemaphore_.semaphore == VK_NULL_HANDLE);
 
   waitSemaphore_.semaphore = semaphore;
+}
+
+void lvk::VulkanImmediateCommands::waitTimelineSemaphore(VkSemaphore semaphore, uint64_t value) {
+  LVK_ASSERT(waitTimeline_.semaphore == VK_NULL_HANDLE);
+
+  waitTimeline_.semaphore = semaphore;
+  waitTimeline_.value = value;
 }
 
 void lvk::VulkanImmediateCommands::signalSemaphore(VkSemaphore semaphore, uint64_t signalValue) {
@@ -1878,6 +1941,16 @@ VkFence lvk::VulkanImmediateCommands::getVkFence(lvk::SubmitHandle handle) const
   }
 
   return buffers_[handle.bufferIndex_].fence_;
+}
+
+uint64_t lvk::VulkanImmediateCommands::getTimelineValue(lvk::SubmitHandle handle) const {
+  if (handle.empty()) {
+    return 0;
+  }
+
+  const CommandBufferWrapper& buf = buffers_[handle.bufferIndex_];
+  // a stale handle (slot already recycled and reused) means the dependency completed long ago - nothing to wait for
+  return buf.handle_.submitId_ == handle.submitId_ ? buf.signaledTimelineValue_ : 0;
 }
 
 lvk::SubmitHandle lvk::VulkanImmediateCommands::getLastSubmitHandle() const {
@@ -2171,11 +2244,87 @@ VkResult lvk::VulkanPipelineBuilder::build(VkDevice device,
   return lvk::setDebugObjectName(device, VK_OBJECT_TYPE_PIPELINE, (uint64_t)*outPipeline, debugName);
 }
 
-lvk::CommandBuffer::CommandBuffer(VulkanContext* ctx) : ctx_(ctx), wrapper_(&ctx_->immediate_->acquire()) {}
+lvk::CommandBuffer::CommandBuffer(VulkanContext* ctx, VulkanImmediateCommands& immediate, uint32_t queueFamilyIndex)
+: ctx_(ctx)
+, wrapper_(&immediate.acquire())
+, immediate_(&immediate)
+, queueFamilyIndex_(queueFamilyIndex) {}
 
 lvk::CommandBuffer::~CommandBuffer() {
   // did you forget to call cmdEndRendering()?
   LVK_ASSERT(!isRendering_);
+}
+
+void lvk::CommandBuffer::addCrossQueueDependencies(const Dependencies& deps) {
+  if (!ctx_->immediateCompute_) {
+    return; // no async-compute queue: all work runs on graphics and the intra-queue chain orders it
+  }
+
+  // validate before any early-out so a foreign handle is caught on either queue, even though same-queue deps are ignored below
+  for ([[maybe_unused]] const SubmitHandle dep : deps.waitCompute) {
+    LVK_ASSERT_MSG(dep.empty() || dep.queueFamilyIndex_ == ctx_->deviceQueues_.computeQueueFamilyIndex,
+                   "Dependencies::waitCompute expects SubmitHandles produced by acquireCommandBuffer(dedicatedCompute = true)");
+  }
+  for ([[maybe_unused]] const SubmitHandle dep : deps.waitGraphics) {
+    LVK_ASSERT_MSG(dep.empty() || dep.queueFamilyIndex_ == ctx_->deviceQueues_.graphicsQueueFamilyIndex,
+                   "Dependencies::waitGraphics expects SubmitHandles produced by acquireCommandBuffer(dedicatedCompute = false)");
+  }
+
+  // each queue only needs to wait on the *other* queue's timeline; same-queue ordering is the intra-queue chain's job
+  const bool isCompute = immediate_ == ctx_->immediateCompute_.get();
+  const ldr::Span<SubmitHandle> crossDeps = isCompute ? deps.waitGraphics : deps.waitCompute;
+  lvk::VulkanImmediateCommands& other = isCompute ? *ctx_->immediate_ : *ctx_->immediateCompute_;
+  uint64_t& waitValue = isCompute ? crossQueueGraphicsWaitValue_ : crossQueueComputeWaitValue_;
+
+  // each queue signals one monotonic timeline, so waiting on the highest required value covers every dependency at once
+  for (SubmitHandle dep : crossDeps) {
+    if (dep.empty()) {
+      continue;
+    }
+    waitValue = std::max<uint64_t>(waitValue, other.getTimelineValue(dep));
+  }
+}
+
+bool lvk::CommandBuffer::acquireOwnershipIfPending(lvk::VulkanImage& img, StageAccess dst) const {
+  if (img.pendingAcquireSrcFamily_ == VK_QUEUE_FAMILY_IGNORED || img.pendingAcquireSrcFamily_ == queueFamilyIndex_) {
+    return false;
+  }
+
+  // acquire half of a cross-queue ownership transfer: it must replay the producer's release layouts (src/dst) exactly
+  emitImageQFOTransfer(
+      wrapper_->cmdBuf_, img, img.qfotSrcLayout_, img.qfotDstLayout_, StageAccess{}, dst, img.pendingAcquireSrcFamily_, queueFamilyIndex_);
+  img.pendingAcquireSrcFamily_ = VK_QUEUE_FAMILY_IGNORED;
+  img.ownerQueueFamily_ = queueFamilyIndex_;
+  img.vkImageLayout_ = img.qfotDstLayout_;
+  return true;
+}
+
+void lvk::CommandBuffer::cmdReleaseToAsyncCompute(const ldr::Span<TextureHandle>& textures) const {
+  LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
+
+  if (!ctx_->immediateCompute_) {
+    return; // no async-compute queue: nothing to hand off, the image stays on the graphics queue
+  }
+  LVK_ASSERT_MSG(immediate_ == ctx_->immediate_.get(), "cmdReleaseToAsyncCompute() must be called on a graphics command buffer");
+
+  const uint32_t computeFamily = ctx_->deviceQueues_.computeQueueFamilyIndex;
+
+  for (TextureHandle handle : textures) {
+    LVK_ASSERT(!handle.empty());
+    const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
+
+    const bool already =
+        std::any_of(imagesToTransfer_.begin(), imagesToTransfer_.end(), [&](const PendingRelease& r) { return r.handle == handle; });
+    if (already) {
+      continue; // de-dup: one image, one release
+    }
+    const_cast<CommandBuffer*>(this)->imagesToTransfer_.push_back(PendingRelease{
+        .handle = handle,
+        .dstQueueFamily = computeFamily,
+        .dstLayout = VK_IMAGE_LAYOUT_GENERAL, // rendezvous layout valid for both sampled and storage reads on compute
+        .srcStage = getPipelineStageAccess(img.vkImageLayout_), // producer's last use of the image
+    });
+  }
 }
 
 void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
@@ -2190,14 +2339,43 @@ void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& 
     extraDstAccess.stage |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
   }
 
+  const bool isCompute = immediate_ == ctx_->immediateCompute_.get();
+
   for (TextureHandle handle : textures) {
     LVK_ASSERT(!handle.empty());
     lvk::VulkanImage& tex = *ctx_->texturesPool_.get(handle);
+
+    StageAccess dst = getPipelineStageAccess(VK_IMAGE_LAYOUT_GENERAL);
+    dst.stage |= extraDstAccess.stage;
+    dst.access |= extraDstAccess.access;
+
+    // Reading an image another queue released to us (e.g. compute reading a graphics-produced storage image): complete the acquire.
+    const bool acquired = acquireOwnershipIfPending(tex, dst);
+
+    if (!acquired && tex.ownerQueueFamily_ != VK_QUEUE_FAMILY_IGNORED && tex.ownerQueueFamily_ != queueFamilyIndex_) {
+      // foreign-owned with no handoff armed: we are overwriting, so discard the stale contents instead of acquiring them
+      tex.vkImageLayout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+    }
 
     tex.transitionLayout(wrapper_->cmdBuf_,
                          VK_IMAGE_LAYOUT_GENERAL,
                          VkImageSubresourceRange{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
                          extraDstAccess);
+    tex.ownerQueueFamily_ = queueFamilyIndex_;
+
+    // Async-compute storage OUTPUTS are auto-released to graphics at submit(); an image just acquired as input is not re-released.
+    if (isCompute && !acquired) {
+      const bool already =
+          std::any_of(imagesToTransfer_.begin(), imagesToTransfer_.end(), [&](const PendingRelease& r) { return r.handle == handle; });
+      if (!already) {
+        const_cast<CommandBuffer*>(this)->imagesToTransfer_.push_back(PendingRelease{
+            .handle = handle,
+            .dstQueueFamily = ctx_->deviceQueues_.graphicsQueueFamilyIndex,
+            .dstLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // rendezvous layout: graphics samples the compute output
+            .srcStage = StageAccess{.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, .access = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT},
+        });
+      }
+    }
   }
 }
 
@@ -2231,20 +2409,34 @@ void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const ldr::Span<TextureHa
   }
 
   for (TextureHandle handle : textures) {
-    const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
+    lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
 
     LVK_ASSERT(!img.isSwapchainImage_);
 
     // transition only non-multisampled images - MSAA images cannot be accessed from shaders
-    if (img.vkSamples_ == VK_SAMPLE_COUNT_1_BIT) {
-      LVK_ASSERT_MSG(img.vkUsageFlags_ & VK_IMAGE_USAGE_SAMPLED_BIT,
-                     "Texture must have VK_IMAGE_USAGE_SAMPLED_BIT (lvk::TextureUsageBits_Sampled)");
-      const VkImageAspectFlags flags = img.getImageAspectFlags();
-      // set the result of the previous render pass
-      img.transitionLayout(wrapper_->cmdBuf_,
-                           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                           VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
-                           extraDstAccess);
+    if (img.vkSamples_ != VK_SAMPLE_COUNT_1_BIT) {
+      continue;
+    }
+    LVK_ASSERT_MSG(img.vkUsageFlags_ & VK_IMAGE_USAGE_SAMPLED_BIT,
+                   "Texture must have VK_IMAGE_USAGE_SAMPLED_BIT (lvk::TextureUsageBits_Sampled)");
+
+    StageAccess dst = getPipelineStageAccess(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    dst.stage |= extraDstAccess.stage;
+    dst.access |= extraDstAccess.access;
+
+    // Complete a pending cross-queue handoff (acquire half). It replays the producer's rendezvous layout.
+    if (acquireOwnershipIfPending(img, dst) && img.vkImageLayout_ == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+      continue; // acquired directly into the layout we need (e.g. compute->graphics handoff)
+    }
+
+    // Either no handoff, or acquired into a different rendezvous layout (e.g. GENERAL): finish with a same-queue transition.
+    const VkImageAspectFlags flags = img.getImageAspectFlags();
+    img.transitionLayout(wrapper_->cmdBuf_,
+                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                         VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
+                         extraDstAccess);
+    if (img.ownerQueueFamily_ == VK_QUEUE_FAMILY_IGNORED) {
+      img.ownerQueueFamily_ = queueFamilyIndex_;
     }
   }
 }
@@ -2307,6 +2499,7 @@ void lvk::CommandBuffer::cmdDispatch(const Dimensions& groupCount, const Depende
 
   LVK_ASSERT(!isRendering_);
 
+  addCrossQueueDependencies(deps);
   cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_Comp);
   cmdTransitionToGeneral(deps.storageImages, Stage_Comp);
 
@@ -2328,6 +2521,7 @@ void lvk::CommandBuffer::cmdDispatchIndirect(BufferHandle indirectBuffer, size_t
 
   LVK_ASSERT(!isRendering_);
 
+  addCrossQueueDependencies(deps);
   cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_Comp);
   cmdTransitionToGeneral(deps.storageImages, Stage_Comp);
 
@@ -2461,6 +2655,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   isRendering_ = true;
   viewMask_ = renderPass.viewMask;
 
+  addCrossQueueDependencies(deps);
   cmdTransitionToShaderReadOnly(deps.sampledImages, {});
   cmdTransitionToGeneral(deps.storageImages, {});
 
@@ -2546,7 +2741,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     inputAttachments_.count = i;
   }
 
-  VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+  VkSampleCountFlagBits colorSamples = VK_SAMPLE_COUNT_1_BIT;
   uint32_t mipLevel = 0;
   uint32_t fbWidth = 0;
   uint32_t fbHeight = 0;
@@ -2572,14 +2767,14 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     mipLevel = descColor.level;
     fbWidth = dim.width;
     fbHeight = dim.height;
-    samples = colorTexture.vkSamples_;
+    colorSamples = colorTexture.vkSamples_;
     colorAttachments[i] = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .pNext = nullptr,
         .imageView = colorTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, viewMask_),
         .imageLayout = colorTexture.vkImageLayout_, // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        .resolveMode = (samples > 1) ? resolveModeToVkResolveModeFlagBits(descColor.resolveMode, VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM)
-                                     : VK_RESOLVE_MODE_NONE,
+        .resolveMode = (colorSamples > 1) ? resolveModeToVkResolveModeFlagBits(descColor.resolveMode, VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM)
+                                          : VK_RESOLVE_MODE_NONE,
         .resolveImageView = VK_NULL_HANDLE,
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .loadOp = loadOpToVkAttachmentLoadOp(descColor.loadOp),
@@ -2588,7 +2783,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     memcpy(&colorAttachments[i].clearValue.color, &descColor.clearColor, sizeof(descColor.clearColor));
     // handle MSAA
     if (attachment.resolveTexture) {
-      LVK_ASSERT(samples > 1);
+      LVK_ASSERT(colorSamples > 1);
       LVK_ASSERT_MSG(colorAttachments[i].storeOp == VK_ATTACHMENT_STORE_OP_DONT_CARE,
                      "Multisampled attachments should have store op DONT_CARE");
       LVK_ASSERT_MSG(!attachment.resolveTexture.empty(), "Framebuffer attachment should contain a resolve texture");
@@ -2620,9 +2815,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     // handle depth MSAA
     if (fb.depthStencil.resolveTexture) {
       LVK_ASSERT(depthTexture.vkSamples_ > 1);
-      LVK_ASSERT(depthTexture.vkSamples_ == samples);
-      LVK_ASSERT_MSG(depthAttachment.storeOp == VK_ATTACHMENT_STORE_OP_DONT_CARE,
-                     "Multisampled attachments should have store op DONT_CARE");
+      LVK_ASSERT(!numFbColorAttachments || depthTexture.vkSamples_ == colorSamples);
       const lvk::Framebuffer::AttachmentDesc& attachment = fb.depthStencil;
       LVK_ASSERT_MSG(!attachment.resolveTexture.empty(), "Framebuffer depth attachment should contain a resolve texture");
       lvk::VulkanImage& depthResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
@@ -3102,6 +3295,7 @@ void lvk::CommandBuffer::cmdTraceRays(uint32_t width, uint32_t height, uint32_t 
 
   LVK_ASSERT(!isRendering_);
 
+  addCrossQueueDependencies(deps);
   cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_RayGen);
   cmdTransitionToGeneral(deps.storageImages, Stage_RayGen);
 
@@ -4135,6 +4329,7 @@ lvk::VulkanContext::~VulkanContext() {
 
   waitDeferredTasks();
 
+  immediateCompute_.reset(nullptr);
   immediate_.reset(nullptr);
 
   for (const DescriptorSet& dset : DSets_) {
@@ -4168,18 +4363,26 @@ lvk::VulkanContext::~VulkanContext() {
   LLOGL("Vulkan graphics pipelines created: %u\n", VulkanPipelineBuilder::getNumPipelinesCreated());
 }
 
-lvk::ICommandBuffer& lvk::VulkanContext::acquireCommandBuffer() {
+lvk::ICommandBuffer& lvk::VulkanContext::acquireCommandBuffer(bool dedicatedCompute) {
   LVK_PROFILER_FUNCTION();
 
-  LVK_ASSERT_MSG(!pimpl_->currentCommandBuffer_.ctx_, "Cannot acquire more than 1 command buffer simultaneously");
+  if (dedicatedCompute && !immediateCompute_) {
+    // Fall back to the graphics command buffer when there is no dedicated async-compute queue
+    return pimpl_->currentCommandBuffer_.ctx_ ? pimpl_->currentCommandBuffer_ : acquireCommandBuffer();
+  }
+
+  lvk::CommandBuffer& commandBuffer = dedicatedCompute ? pimpl_->currentComputeCommandBuffer_ : pimpl_->currentCommandBuffer_;
+
+  LVK_ASSERT_MSG(!commandBuffer.ctx_, "Cannot acquire more than 1 command buffer simultaneously");
 
 #if defined(_M_ARM64)
   vkDeviceWaitIdle(vkDevice_); // a temporary workaround for Windows on Snapdragon
 #endif
 
-  pimpl_->currentCommandBuffer_ = CommandBuffer(this);
+  commandBuffer = dedicatedCompute ? CommandBuffer(this, *immediateCompute_, deviceQueues_.computeQueueFamilyIndex)
+                                   : CommandBuffer(this, *immediate_, deviceQueues_.graphicsQueueFamilyIndex);
 
-  return pimpl_->currentCommandBuffer_;
+  return commandBuffer;
 }
 
 lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer, TextureHandle present) {
@@ -4215,7 +4418,39 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
     immediate_->signalSemaphore(timelineSemaphore_, signalValue);
   }
 
-  vkCmdBuffer->lastSubmitHandle_ = immediate_->submit(*vkCmdBuffer->wrapper_);
+  // Submit on the command buffer's own queue (graphics or async-compute)
+  LVK_ASSERT(vkCmdBuffer->immediate_);
+  lvk::VulkanImmediateCommands& imm = *vkCmdBuffer->immediate_;
+
+  // QFOT release: hand off every image this CB collected (compute->graphics auto-collected outputs, or graphics->compute
+  // images declared via cmdReleaseToAsyncCompute()) to its destination queue. The matching acquire is emitted by the consumer.
+  const uint32_t producerFamily = (&imm == immediateCompute_.get()) ? deviceQueues_.computeQueueFamilyIndex
+                                                                    : deviceQueues_.graphicsQueueFamilyIndex;
+  for (const CommandBuffer::PendingRelease& r : vkCmdBuffer->imagesToTransfer_) {
+    lvk::VulkanImage& img = *texturesPool_.get(r.handle);
+    const VkImageLayout oldLayout = img.vkImageLayout_;
+    emitImageQFOTransfer(
+        vkCmdBuffer->wrapper_->cmdBuf_, img, oldLayout, r.dstLayout, r.srcStage, StageAccess{}, producerFamily, r.dstQueueFamily);
+    img.qfotSrcLayout_ = oldLayout;
+    img.qfotDstLayout_ = r.dstLayout;
+    img.vkImageLayout_ = r.dstLayout;
+    img.pendingAcquireSrcFamily_ = producerFamily; // the destination queue completes the transfer on first use
+  }
+
+  if (&imm == immediateCompute_.get()) {
+    // Compute waits on the graphics submit timeline for BOTH the write-after-read guard (don't overwrite images the graphics queue
+    // may still be reading) and any explicit Dependencies::waitGraphics (read-after-write). A single wait on the highest value covers both.
+    const lvk::SubmitHandle lastGraphics = immediate_->getLastSubmitHandle();
+    const uint64_t waitValue = std::max<uint64_t>(immediate_->getTimelineValue(lastGraphics), vkCmdBuffer->crossQueueGraphicsWaitValue_);
+    if (waitValue) {
+      immediateCompute_->waitTimelineSemaphore(immediate_->getTimelineSemaphore(), waitValue);
+    }
+  } else if (vkCmdBuffer->crossQueueComputeWaitValue_) {
+    // Cross-queue execution dependency: wait until the required async-compute submits complete (from Dependencies::waitCompute)
+    imm.waitTimelineSemaphore(immediateCompute_->getTimelineSemaphore(), vkCmdBuffer->crossQueueComputeWaitValue_);
+  }
+
+  vkCmdBuffer->lastSubmitHandle_ = imm.submit(*vkCmdBuffer->wrapper_);
 
   if (shouldPresent) {
     swapchain_->present(immediate_->acquireLastSubmitSemaphore());
@@ -4237,13 +4472,23 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
     DSets_[idx].handle_ = handle;
   }
 
-  // reset
-  pimpl_->currentCommandBuffer_ = {};
+  // Reset the just-submitted slot (graphics or async-compute). Consumers reference a compute submission by SubmitHandle (a value
+  // looked up against the compute queue's timeline), not by a CommandBuffer pointer, so nothing needs this object to outlive submit().
+  if (&imm == immediateCompute_.get()) {
+    pimpl_->currentComputeCommandBuffer_ = {};
+  } else {
+    pimpl_->currentCommandBuffer_ = {};
+  }
 
   return handle;
 }
 
 void lvk::VulkanContext::wait(SubmitHandle handle) {
+  // route to the queue the handle was produced on (a SubmitHandle is self-describing via its queue family index)
+  if (immediateCompute_ && !handle.empty() && handle.queueFamilyIndex_ == deviceQueues_.computeQueueFamilyIndex) {
+    immediateCompute_->wait(handle);
+    return;
+  }
   immediate_->wait(handle);
 }
 
@@ -4746,10 +4991,9 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   if (desc.data) {
     LVK_ASSERT(desc.type == TextureType_2D || desc.type == TextureType_Cube);
     LVK_ASSERT(desc.dataNumMipLevels <= desc.numMipLevels);
+    const uint32_t dataNumLayers = desc.type == TextureType_Cube ? 6 : 1;
     Result res =
-        upload(handle,
-               {.dimensions = desc.dimensions, .numLayers = desc.type == TextureType_Cube ? 6u : 1u, .numMipLevels = desc.dataNumMipLevels},
-               desc.data);
+        upload(handle, {.dimensions = desc.dimensions, .numLayers = dataNumLayers, .numMipLevels = desc.dataNumMipLevels}, desc.data);
     if (!res.isOk()) {
       Result::setResult(outResult, res);
       return {};
@@ -6682,9 +6926,6 @@ lvk::Result lvk::VulkanContext::createInstance() {
   const bool hasPortabilityEnumeration = hasExtension(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME, allInstanceExtensions);
 
 #if defined(__APPLE__)
-  if (hasExtension(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME, allInstanceExtensions)) {
-    enabledInstanceExtensionNames_.push_back(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME);
-  }
   if (hasExtension(VK_MVK_MACOS_SURFACE_EXTENSION_NAME, allInstanceExtensions)) {
     has_MVK_macos_surface_ = true;
     enabledInstanceExtensionNames_.push_back(VK_MVK_MACOS_SURFACE_EXTENSION_NAME);
@@ -6704,11 +6945,11 @@ lvk::Result lvk::VulkanContext::createInstance() {
     enabledInstanceExtensionNames_.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
   }
 
-  if (config_.enableValidation) {
-    enabledInstanceExtensionNames_.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME); // enabled only for validation
+  if (hasExtension(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME, allInstanceExtensions)) {
+    enabledInstanceExtensionNames_.push_back(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME);
   }
 
-  if (config_.enableHeadlessSurface && hasExtension(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME, allInstanceExtensions)) {
+  if (config_.enableHeadlessSurface) {
     enabledInstanceExtensionNames_.push_back(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME);
   }
 
@@ -6738,24 +6979,15 @@ lvk::Result lvk::VulkanContext::createInstance() {
     }
   }
 
-#if !defined(ANDROID)
   // GPU Assisted Validation doesn't work on Android.
   // It implicitly requires vertexPipelineStoresAndAtomics feature that's not supported even on high-end devices.
-  const VkValidationFeatureEnableEXT validationFeaturesEnabled[] = {
-      VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT,
-      VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT,
-  };
+#if defined(ANDROID)
+  const bool enableGpuAV = false;
+#else
+  const bool enableGpuAV = config_.enableValidation && config_.enableValidationGpuAV;
 #endif // ANDROID
 
-  const VkValidationFeaturesEXT features = {
-      .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
-      .pNext = nullptr,
-#if !defined(ANDROID)
-      .enabledValidationFeatureCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(validationFeaturesEnabled) : 0u,
-      .pEnabledValidationFeatures = config_.enableValidation ? validationFeaturesEnabled : nullptr,
-#endif
-  };
-
+  const VkBool32 gpuav_enable = enableGpuAV ? VK_TRUE : VK_FALSE;
   const VkBool32 gpuav_post_process_descriptor_indexing = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/9222
 #define LAYER_SETTINGS_BOOL32(name, var)                                                                                        \
   VkLayerSettingEXT {                                                                                                           \
@@ -6763,12 +6995,12 @@ lvk::Result lvk::VulkanContext::createInstance() {
     .pValues = var,                                                                                                             \
   }
   const VkLayerSettingEXT settings[] = {
+      LAYER_SETTINGS_BOOL32("gpuav_enable", &gpuav_enable),
       LAYER_SETTINGS_BOOL32("gpuav_post_process_descriptor_indexing", &gpuav_post_process_descriptor_indexing),
   };
 #undef LAYER_SETTINGS_BOOL32
   const VkLayerSettingsCreateInfoEXT layerSettingsCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
-      .pNext = config_.enableValidation ? &features : nullptr,
       .settingCount = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(settings),
       .pSettings = settings,
   };
@@ -6787,39 +7019,33 @@ lvk::Result lvk::VulkanContext::createInstance() {
     }
   }
 
-  {
-    const VkApplicationInfo appInfo = {
-        .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pNext = nullptr,
-        .pApplicationName = "LVK/Vulkan",
-        .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
-        .pEngineName = "LVK/Vulkan",
-        .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-        .apiVersion = config_.vulkanVersion == VulkanVersion_1_3 ? VK_API_VERSION_1_3 : VK_API_VERSION_1_4,
-    };
+  const VkApplicationInfo appInfo = {
+      .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+      .pNext = nullptr,
+      .pApplicationName = "LVK/Vulkan",
+      .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
+      .pEngineName = "LVK/Vulkan",
+      .engineVersion = VK_MAKE_VERSION(1, 0, 0),
+      .apiVersion = config_.vulkanVersion == VulkanVersion_1_3 ? VK_API_VERSION_1_3 : VK_API_VERSION_1_4,
+  };
 
-    const VkInstanceCreateInfo ci = {
-        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-#if defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
-        .pNext = &layerSettingsCreateInfo,
-#else
-        .pNext = config_.enableValidation ? &features : nullptr,
-#endif // defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
-        .flags = hasPortabilityEnumeration ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR : 0u,
-        .pApplicationInfo = &appInfo,
-        .enabledLayerCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(kDefaultValidationLayers) : 0u,
-        .ppEnabledLayerNames = config_.enableValidation ? kDefaultValidationLayers : nullptr,
-        .enabledExtensionCount = (uint32_t)enabledInstanceExtensionNames_.size(),
-        .ppEnabledExtensionNames = enabledInstanceExtensionNames_.data(),
-    };
-    VK_ASSERT(vkCreateInstance(&ci, nullptr, &vkInstance_));
-  }
+  const VkInstanceCreateInfo ci = {
+      .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+      .pNext = &layerSettingsCreateInfo,
+      .flags = hasPortabilityEnumeration ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR : 0u,
+      .pApplicationInfo = &appInfo,
+      .enabledLayerCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(kDefaultValidationLayers) : 0u,
+      .ppEnabledLayerNames = config_.enableValidation ? kDefaultValidationLayers : nullptr,
+      .enabledExtensionCount = (uint32_t)enabledInstanceExtensionNames_.size(),
+      .ppEnabledExtensionNames = enabledInstanceExtensionNames_.data(),
+  };
+  VK_ASSERT(vkCreateInstance(&ci, nullptr, &vkInstance_));
 
   volkLoadInstance(vkInstance_);
 
   // debug messenger
   if (hasDebugUtils) {
-    const VkDebugUtilsMessengerCreateInfoEXT ci = {
+    const VkDebugUtilsMessengerCreateInfoEXT messengerCi = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
         .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
                            VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
@@ -6828,7 +7054,7 @@ lvk::Result lvk::VulkanContext::createInstance() {
         .pfnUserCallback = &vulkanDebugCallback,
         .pUserData = this,
     };
-    VK_ASSERT(vkCreateDebugUtilsMessengerEXT(vkInstance_, &ci, nullptr, &vkDebugUtilsMessenger_));
+    VK_ASSERT(vkCreateDebugUtilsMessengerEXT(vkInstance_, &messengerCi, nullptr, &vkDebugUtilsMessenger_));
   }
 
   LLOGL("%s layer version: %u.%u.%u\n",
@@ -7225,6 +7451,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
       .pNext = config_.extensionsDeviceFeatures,
       .storageBuffer16BitAccess = VK_TRUE,
+      .storagePushConstant16 = vkFeatures11_.storagePushConstant16, // enable if supported
       .storageInputOutput16 = vkFeatures11_.storageInputOutput16, // enable if supported
       .multiview = vkFeatures11_.multiview, // enable if supported
       .variablePointersStorageBuffer = VK_TRUE,
@@ -7282,6 +7509,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .dynamicRenderingLocalRead = VK_TRUE,
       .maintenance5 = VK_TRUE,
       .maintenance6 = VK_TRUE,
+      .hostImageCopy = vkFeatures14_.hostImageCopy, // enable if supported
       .pushDescriptor = VK_TRUE,
   };
 
@@ -7349,6 +7577,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_MODE_FIFO_LATEST_READY_FEATURES_KHR,
       .presentModeFifoLatestReady = VK_TRUE,
   };
+  VkPhysicalDeviceHostImageCopyFeaturesEXT hostImageCopyFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_IMAGE_COPY_FEATURES_EXT,
+      .hostImageCopy = VK_TRUE,
+  };
 
   auto addExtension = [&allDeviceExtensions, this, &createInfoNext](const char* name, void* features = nullptr) mutable -> void {
     if (!hasExtension(name, allDeviceExtensions)) {
@@ -7398,8 +7630,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     if (!addOptionalExtension(VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features)) {
       addOptionalExtension(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features);
     }
+    addOptionalExtension(VK_EXT_HOST_IMAGE_COPY_EXTENSION_NAME, has_EXT_host_image_copy_, &hostImageCopyFeatures);
   } else {
     has_KHR_maintenance6_ = vkFeatures14_.maintenance6 == VK_TRUE; // promoted to core in Vulkan 1.4
+    has_EXT_host_image_copy_ = vkFeatures14_.hostImageCopy == VK_TRUE; // promoted to core in Vulkan 1.4
   }
 #if defined(LVK_WITH_TRACY)
   addOptionalExtension(VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, has_KHR_calibrated_timestamps_, nullptr);
@@ -7593,19 +7827,16 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     }
   }
 
-  {
-    const VkDeviceCreateInfo ci = {
-        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = createInfoNext,
-        .flags = 0,
-        .queueCreateInfoCount = numQueues,
-        .pQueueCreateInfos = ciQueue,
-        .enabledExtensionCount = (uint32_t)enabledDeviceExtensionNames_.size(),
-        .ppEnabledExtensionNames = enabledDeviceExtensionNames_.data(),
-        .pEnabledFeatures = &deviceFeatures10,
-    };
-    VK_ASSERT_RETURN(vkCreateDevice(vkPhysicalDevice_, &ci, nullptr, &vkDevice_));
-  }
+  const VkDeviceCreateInfo ci = {
+      .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+      .pNext = createInfoNext,
+      .queueCreateInfoCount = numQueues,
+      .pQueueCreateInfos = ciQueue,
+      .enabledExtensionCount = (uint32_t)enabledDeviceExtensionNames_.size(),
+      .ppEnabledExtensionNames = enabledDeviceExtensionNames_.data(),
+      .pEnabledFeatures = &deviceFeatures10,
+  };
+  VK_ASSERT_RETURN(vkCreateDevice(vkPhysicalDevice_, &ci, nullptr, &vkDevice_));
 
   volkLoadDevice(vkDevice_);
 
@@ -7617,16 +7848,22 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   immediate_ = std::make_unique<lvk::VulkanImmediateCommands>(
       vkDevice_, deviceQueues_.graphicsQueueFamilyIndex, has_EXT_device_fault_, "VulkanContext::immediate_");
 
+  if (deviceQueues_.computeQueueFamilyIndex != DeviceQueues::INVALID &&
+      deviceQueues_.computeQueueFamilyIndex != deviceQueues_.graphicsQueueFamilyIndex) {
+    immediateCompute_ = std::make_unique<lvk::VulkanImmediateCommands>(
+        vkDevice_, deviceQueues_.computeQueueFamilyIndex, has_EXT_device_fault_, "VulkanContext::immediateCompute_");
+  }
+
   // create Vulkan pipeline cache
   {
-    const VkPipelineCacheCreateInfo ci = {
+    const VkPipelineCacheCreateInfo cacheCi = {
         VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
         nullptr,
         VkPipelineCacheCreateFlags(0),
         config_.pipelineCacheDataSize,
         config_.pipelineCacheData,
     };
-    vkCreatePipelineCache(vkDevice_, &ci, nullptr, &pipelineCache_);
+    vkCreatePipelineCache(vkDevice_, &cacheCi, nullptr, &pipelineCache_);
   }
 
   if (LVK_VULKAN_USE_VMA) {
@@ -8014,8 +8251,9 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
     }
 
     vmaAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    vmaAllocInfo.minAlignment = 16;
 
-    vmaCreateBufferWithAlignment((VmaAllocator)getVmaAllocator(), &ci, &vmaAllocInfo, 16, &buf.vkBuffer_, &buf.vmaAllocation_, nullptr);
+    vmaCreateBuffer((VmaAllocator)getVmaAllocator(), &ci, &vmaAllocInfo, &buf.vkBuffer_, &buf.vmaAllocation_, nullptr);
 
     // handle memory-mapped buffers
     if (memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
@@ -8310,7 +8548,7 @@ lvk::SamplerHandle lvk::VulkanContext::createSampler(const VkSamplerCreateInfo& 
   VK_ASSERT(vkCreateSampler(vkDevice_, &cinfo, nullptr, &sampler));
   VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_SAMPLER, (uint64_t)sampler, debugName));
 
-  SamplerHandle handle = samplersPool_.create(static_cast<VkSampler&&>(sampler));
+  SamplerHandle handle = samplersPool_.create(std::move(sampler));
 
   awaitingCreation_ = true;
 
