@@ -1678,7 +1678,7 @@ VULKAN_APP_MAIN {
     // always store the 1st ROP
     batchedROPs.emplace_back(ROPs[0]);
 
-    const RenderOp* prevROP = &ROPs[0];
+    const RenderOp* prevROP = ROPs.data();
     const RenderOp* ROP = &ROPs[1];
 
     for (size_t i = 1; i != size; i++, ROP++, prevROP++) {
