@@ -101,7 +101,7 @@ struct VulkanImage final {
   VkDeviceMemory vkMemory_[3] = {VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE};
   VmaAllocation vmaAllocation_ = VK_NULL_HANDLE;
   VkFormatProperties vkFormatProperties_ = {};
-  VkExtent3D vkExtent_ = {0, 0, 0};
+  VkExtent3D vkExtent_ = {.width = 0, .height = 0, .depth = 0};
   VkImageType vkType_ = VK_IMAGE_TYPE_MAX_ENUM;
   VkFormat vkImageFormat_ = VK_FORMAT_UNDEFINED;
   VkSampleCountFlagBits vkSamples_ = VK_SAMPLE_COUNT_1_BIT;
@@ -780,35 +780,37 @@ class VulkanContext final : public IContext {
 
  public:
   VkPhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelineProperties_ = {
-      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
   VkPhysicalDeviceAccelerationStructurePropertiesKHR accelerationStructureProperties_ = {
-      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
-  VkPhysicalDeviceDriverProperties vkPhysicalDeviceDriverProperties_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES, nullptr};
-  VkPhysicalDeviceMaintenance6Properties maintenance6Properties_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_PROPERTIES, nullptr};
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
+  VkPhysicalDeviceDriverProperties vkPhysicalDeviceDriverProperties_ = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES,
+                                                                        .pNext = nullptr};
+  VkPhysicalDeviceMaintenance6Properties maintenance6Properties_ = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_PROPERTIES,
+                                                                    .pNext = nullptr};
   // provided by Vulkan 1.4
   VkPhysicalDeviceVulkan14Properties vkPhysicalDeviceVulkan14Properties_ = {
-      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_PROPERTIES,
-      &vkPhysicalDeviceDriverProperties_,
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_PROPERTIES,
+      .pNext = &vkPhysicalDeviceDriverProperties_,
   };
   // provided by Vulkan 1.3
   VkPhysicalDeviceVulkan13Properties vkPhysicalDeviceVulkan13Properties_ = {
-      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_PROPERTIES,
-      &vkPhysicalDeviceDriverProperties_,
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_PROPERTIES,
+      .pNext = &vkPhysicalDeviceDriverProperties_,
   };
   // provided by Vulkan 1.2
   VkPhysicalDeviceVulkan12Properties vkPhysicalDeviceVulkan12Properties_ = {
-      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES,
-      &vkPhysicalDeviceVulkan13Properties_,
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES,
+      .pNext = &vkPhysicalDeviceVulkan13Properties_,
   };
   // provided by Vulkan 1.1
   VkPhysicalDeviceVulkan11Properties vkPhysicalDeviceVulkan11Properties_ = {
-      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES,
-      &vkPhysicalDeviceVulkan12Properties_,
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES,
+      .pNext = &vkPhysicalDeviceVulkan12Properties_,
   };
   VkPhysicalDeviceProperties2 vkPhysicalDeviceProperties2_ = {
-      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
-      &vkPhysicalDeviceVulkan11Properties_,
-      VkPhysicalDeviceProperties{},
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+      .pNext = &vkPhysicalDeviceVulkan11Properties_,
+      .properties = VkPhysicalDeviceProperties{},
   };
 
   std::vector<VkFormat> deviceDepthFormats_;
