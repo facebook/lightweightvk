@@ -3955,8 +3955,8 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
         .bufferRowLength = 0,
         .bufferImageHeight = 0,
         .imageSubresource = VkImageSubresourceLayers{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-        .imageOffset = {offset.x, offset.y, (int32_t)currentZ},
-        .imageExtent = {extent.width, extent.height, batchSlices},
+        .imageOffset = {.x = offset.x, .y = offset.y, .z = (int32_t)currentZ},
+        .imageExtent = {.width = extent.width, .height = extent.height, .depth = batchSlices},
     };
     const VkCopyBufferToImageInfo2 copyInfo = {
         .sType = VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2,
@@ -4918,9 +4918,9 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
     }
 
     const VkBindImagePlaneMemoryInfo bindImagePlaneMemoryInfo[kNumMaxImagePlanes] = {
-        {VK_STRUCTURE_TYPE_BIND_IMAGE_PLANE_MEMORY_INFO, nullptr, VK_IMAGE_ASPECT_PLANE_0_BIT},
-        {VK_STRUCTURE_TYPE_BIND_IMAGE_PLANE_MEMORY_INFO, nullptr, VK_IMAGE_ASPECT_PLANE_1_BIT},
-        {VK_STRUCTURE_TYPE_BIND_IMAGE_PLANE_MEMORY_INFO, nullptr, VK_IMAGE_ASPECT_PLANE_2_BIT},
+        {.sType = VK_STRUCTURE_TYPE_BIND_IMAGE_PLANE_MEMORY_INFO, .pNext = nullptr, .planeAspect = VK_IMAGE_ASPECT_PLANE_0_BIT},
+        {.sType = VK_STRUCTURE_TYPE_BIND_IMAGE_PLANE_MEMORY_INFO, .pNext = nullptr, .planeAspect = VK_IMAGE_ASPECT_PLANE_1_BIT},
+        {.sType = VK_STRUCTURE_TYPE_BIND_IMAGE_PLANE_MEMORY_INFO, .pNext = nullptr, .planeAspect = VK_IMAGE_ASPECT_PLANE_2_BIT},
     };
     const VkBindImageMemoryInfo bindInfo[kNumMaxImagePlanes] = {
         lvk::getBindImageMemoryInfo(isDisjoint ? &bindImagePlaneMemoryInfo[0] : nullptr, img, image.vkMemory_[0]),
@@ -5301,10 +5301,10 @@ const VkSamplerYcbcrConversionInfo* lvk::VulkanContext::getOrCreateYcbcrConversi
       .format = vkFormat,
       .ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709,
       .ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW,
-      .components = {VK_COMPONENT_SWIZZLE_IDENTITY,
-                     VK_COMPONENT_SWIZZLE_IDENTITY,
-                     VK_COMPONENT_SWIZZLE_IDENTITY,
-                     VK_COMPONENT_SWIZZLE_IDENTITY},
+      .components = {.r = VK_COMPONENT_SWIZZLE_IDENTITY,
+                     .g = VK_COMPONENT_SWIZZLE_IDENTITY,
+                     .b = VK_COMPONENT_SWIZZLE_IDENTITY,
+                     .a = VK_COMPONENT_SWIZZLE_IDENTITY},
       .xChromaOffset = midpoint ? VK_CHROMA_LOCATION_MIDPOINT : VK_CHROMA_LOCATION_COSITED_EVEN,
       .yChromaOffset = midpoint ? VK_CHROMA_LOCATION_MIDPOINT : VK_CHROMA_LOCATION_COSITED_EVEN,
       .chromaFilter = VK_FILTER_LINEAR,
@@ -7857,11 +7857,11 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   // create Vulkan pipeline cache
   {
     const VkPipelineCacheCreateInfo cacheCi = {
-        VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
-        nullptr,
-        VkPipelineCacheCreateFlags(0),
-        config_.pipelineCacheDataSize,
-        config_.pipelineCacheData,
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = VkPipelineCacheCreateFlags(0),
+        .initialDataSize = config_.pipelineCacheDataSize,
+        .pInitialData = config_.pipelineCacheData,
     };
     vkCreatePipelineCache(vkDevice_, &cacheCi, nullptr, &pipelineCache_);
   }
