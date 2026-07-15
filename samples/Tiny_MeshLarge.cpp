@@ -2054,6 +2054,79 @@ void showTimeGPU() {
 #if LVK_WITH_GLFW
 GLFWkeyfun g_PrevKeyCallback = nullptr;
 GLFWmousebuttonfun g_PrevMouseButtonCallback = nullptr;
+
+void handleKeyInput(int key, bool pressed) {
+  if (key == GLFW_KEY_N && pressed) {
+    drawNormals_ = !drawNormals_;
+  }
+  if (key == GLFW_KEY_C && pressed) {
+    enableComputePass_ = !enableComputePass_;
+  }
+  if (key == GLFW_KEY_T && pressed) {
+    enableWireframe_ = !enableWireframe_;
+  }
+  if (key == GLFW_KEY_P && pressed) {
+    showPerfStats_ = !showPerfStats_;
+  }
+  if (key == GLFW_KEY_W) {
+    positioner_.movement_.forward_ = pressed;
+  }
+  if (key == GLFW_KEY_S) {
+    positioner_.movement_.backward_ = pressed;
+  }
+  if (key == GLFW_KEY_A) {
+    positioner_.movement_.left_ = pressed;
+  }
+  if (key == GLFW_KEY_D) {
+    positioner_.movement_.right_ = pressed;
+  }
+  if (key == GLFW_KEY_1) {
+    positioner_.movement_.up_ = pressed;
+  }
+  if (key == GLFW_KEY_2) {
+    positioner_.movement_.down_ = pressed;
+  }
+  if (key == GLFW_KEY_LEFT_SHIFT || key == GLFW_KEY_RIGHT_SHIFT) {
+    positioner_.movement_.fastSpeed_ = pressed;
+  }
+  if (key == GLFW_KEY_SPACE) {
+    positioner_.setUpVector(vec3(0.0f, 1.0f, 0.0f));
+  }
+}
+
+void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+  if (!ImGui::GetIO().WantCaptureMouse) {
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+      mousePressed_ = (action == GLFW_PRESS);
+    }
+  } else {
+    // release the mouse
+    mousePressed_ = false;
+  }
+  // call the previous installed callback
+  if (g_PrevMouseButtonCallback)
+    g_PrevMouseButtonCallback(window, button, action, mods);
+}
+
+void saveScreenshot();
+
+void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+  const bool pressed = action != GLFW_RELEASE && !ImGui::GetIO().WantCaptureKeyboard;
+  if (key == GLFW_KEY_ESCAPE && pressed) {
+    loaderShouldExit_.store(true, std::memory_order_release);
+    glfwSetWindowShouldClose(window, GLFW_TRUE);
+  }
+  handleKeyInput(key, pressed);
+  if (mods & GLFW_MOD_SHIFT) {
+    positioner_.movement_.fastSpeed_ = pressed;
+  }
+  if (key == GLFW_KEY_F9 && action == GLFW_PRESS) {
+    saveScreenshot();
+  }
+  // call the previous installed callback
+  if (g_PrevKeyCallback)
+    g_PrevKeyCallback(window, key, scancode, action, mods);
+}
 #endif
 
 double getCurrentTimestamp() {
@@ -2064,37 +2137,100 @@ double getCurrentTimestamp() {
 #endif
 }
 
+#if LVK_WITH_SDL3
+void handleSDLKeyInput(SDL_Keycode key, bool pressed) {
+  if (key == SDLK_N && pressed) {
+    drawNormals_ = !drawNormals_;
+  }
+  if (key == SDLK_C && pressed) {
+    enableComputePass_ = !enableComputePass_;
+  }
+  if (key == SDLK_T && pressed) {
+    enableWireframe_ = !enableWireframe_;
+  }
+  if (key == SDLK_P && pressed) {
+    showPerfStats_ = !showPerfStats_;
+  }
+  if (key == SDLK_W) {
+    positioner_.movement_.forward_ = pressed;
+  }
+  if (key == SDLK_S) {
+    positioner_.movement_.backward_ = pressed;
+  }
+  if (key == SDLK_A) {
+    positioner_.movement_.left_ = pressed;
+  }
+  if (key == SDLK_D) {
+    positioner_.movement_.right_ = pressed;
+  }
+  if (key == SDLK_1) {
+    positioner_.movement_.up_ = pressed;
+  }
+  if (key == SDLK_2) {
+    positioner_.movement_.down_ = pressed;
+  }
+  if (key == SDLK_SPACE) {
+    positioner_.setUpVector(vec3(0.0f, 1.0f, 0.0f));
+  }
+}
+#endif
+
+bool findContentFolder() {
+  using namespace std::filesystem;
+#if defined(LVK_PROJECT_ROOT_PATH)
+  path dir = current_path();
+  while (dir != dir.root_path() && !exists(dir / path(LVK_PROJECT_ROOT_PATH) / "lvk")) {
+    dir = dir.parent_path();
+  }
+  const path root = dir / path(LVK_PROJECT_ROOT_PATH);
+  folderThirdParty = (root / path("third-party/deps/src/")).string();
+  folderContentRoot = (root / path("third-party/content/")).string();
+#else
+  path subdir("third-party/content/");
+  path dir = current_path();
+  // find the content somewhere above our current build directory
+  while (dir != current_path().root_path() && !exists(dir / subdir)) {
+    dir = dir.parent_path();
+  }
+  if (!exists(dir / subdir)) {
+    printf("Cannot find the content directory. Run `deploy_content.py` before running this app.");
+    LVK_ASSERT(false);
+    return false;
+  }
+  folderThirdParty = (dir / path("third-party/deps/src/")).string();
+  folderContentRoot = (dir / subdir).string();
+#endif
+  return true;
+}
+
+void saveScreenshot() {
+  ktxTextureCreateInfo createInfo = {
+      .glInternalformat = GL_RGBA8,
+      .vkFormat = VK_FORMAT_B8G8R8A8_UNORM,
+      .baseWidth = static_cast<uint32_t>(width_),
+      .baseHeight = static_cast<uint32_t>(height_),
+      .baseDepth = 1u,
+      .numDimensions = 2u,
+      .numLevels = 1u,
+      .numLayers = 1u,
+      .numFaces = 1u,
+      .generateMipmaps = KTX_FALSE,
+  };
+
+  ktxTexture1* texture = nullptr;
+  (void)LVK_VERIFY(ktxTexture1_Create(&createInfo, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture) == KTX_SUCCESS);
+  ctx_->download(ctx_->getCurrentSwapchainTexture(), {.dimensions = {(uint32_t)width_, (uint32_t)height_}}, texture->pData);
+  ktxTexture_WriteToNamedFile(ktxTexture(texture), "screenshot.ktx");
+  ktxTexture_Destroy(ktxTexture(texture));
+}
+
 int main(int /*argc*/, char* /*argv*/[]) {
 #if defined(LVK_WITH_MINILOG)
   minilog::initialize(nullptr, {.threadNames = false});
 #endif
 
-  // find the content folder
-  {
-    using namespace std::filesystem;
-#if defined(LVK_PROJECT_ROOT_PATH)
-    path dir = current_path();
-    while (dir != dir.root_path() && !exists(dir / path(LVK_PROJECT_ROOT_PATH) / "lvk")) {
-      dir = dir.parent_path();
-    }
-    const path root = dir / path(LVK_PROJECT_ROOT_PATH);
-    folderThirdParty = (root / path("third-party/deps/src/")).string();
-    folderContentRoot = (root / path("third-party/content/")).string();
-#else
-    path subdir("third-party/content/");
-    path dir = current_path();
-    // find the content somewhere above our current build directory
-    while (dir != current_path().root_path() && !exists(dir / subdir)) {
-      dir = dir.parent_path();
-    }
-    if (!exists(dir / subdir)) {
-      printf("Cannot find the content directory. Run `deploy_content.py` before running this app.");
-      LVK_ASSERT(false);
-      return EXIT_FAILURE;
-    }
-    folderThirdParty = (dir / path("third-party/deps/src/")).string();
-    folderContentRoot = (dir / subdir).string();
-#endif
+  if (!findContentFolder()) {
+    return EXIT_FAILURE;
   }
 
   lvk::LVKwindow* window = lvk::initWindow("Vulkan Bistro", width_, height_);
@@ -2135,91 +2271,8 @@ int main(int /*argc*/, char* /*argv*/[]) {
     }
   });
 
-  g_PrevMouseButtonCallback = glfwSetMouseButtonCallback(window, [](auto* window, int button, int action, int mods) {
-    if (!ImGui::GetIO().WantCaptureMouse) {
-      if (button == GLFW_MOUSE_BUTTON_LEFT) {
-        mousePressed_ = (action == GLFW_PRESS);
-      }
-    } else {
-      // release the mouse
-      mousePressed_ = false;
-    }
-    // call the previous installed callback
-    if (g_PrevMouseButtonCallback)
-      g_PrevMouseButtonCallback(window, button, action, mods);
-  });
-
-  g_PrevKeyCallback = glfwSetKeyCallback(window, [](GLFWwindow* window, int key, int scancode, int action, int mods) {
-    const bool pressed = action != GLFW_RELEASE && !ImGui::GetIO().WantCaptureKeyboard;
-    if (key == GLFW_KEY_ESCAPE && pressed) {
-      loaderShouldExit_.store(true, std::memory_order_release);
-      glfwSetWindowShouldClose(window, GLFW_TRUE);
-    }
-    if (key == GLFW_KEY_N && pressed) {
-      drawNormals_ = !drawNormals_;
-    }
-    if (key == GLFW_KEY_C && pressed) {
-      enableComputePass_ = !enableComputePass_;
-    }
-    if (key == GLFW_KEY_T && pressed) {
-      enableWireframe_ = !enableWireframe_;
-    }
-    if (key == GLFW_KEY_P && pressed) {
-      showPerfStats_ = !showPerfStats_;
-    }
-    if (key == GLFW_KEY_ESCAPE && pressed)
-      glfwSetWindowShouldClose(window, GLFW_TRUE);
-    if (key == GLFW_KEY_W) {
-      positioner_.movement_.forward_ = pressed;
-    }
-    if (key == GLFW_KEY_S) {
-      positioner_.movement_.backward_ = pressed;
-    }
-    if (key == GLFW_KEY_A) {
-      positioner_.movement_.left_ = pressed;
-    }
-    if (key == GLFW_KEY_D) {
-      positioner_.movement_.right_ = pressed;
-    }
-    if (key == GLFW_KEY_1) {
-      positioner_.movement_.up_ = pressed;
-    }
-    if (key == GLFW_KEY_2) {
-      positioner_.movement_.down_ = pressed;
-    }
-    if (mods & GLFW_MOD_SHIFT) {
-      positioner_.movement_.fastSpeed_ = pressed;
-    }
-    if (key == GLFW_KEY_LEFT_SHIFT || key == GLFW_KEY_RIGHT_SHIFT) {
-      positioner_.movement_.fastSpeed_ = pressed;
-    }
-    if (key == GLFW_KEY_SPACE) {
-      positioner_.setUpVector(vec3(0.0f, 1.0f, 0.0f));
-    }
-    if (key == GLFW_KEY_F9 && action == GLFW_PRESS) {
-      ktxTextureCreateInfo createInfo = {
-          .glInternalformat = GL_RGBA8,
-          .vkFormat = VK_FORMAT_B8G8R8A8_UNORM,
-          .baseWidth = static_cast<uint32_t>(width_),
-          .baseHeight = static_cast<uint32_t>(height_),
-          .baseDepth = 1u,
-          .numDimensions = 2u,
-          .numLevels = 1u,
-          .numLayers = 1u,
-          .numFaces = 1u,
-          .generateMipmaps = KTX_FALSE,
-      };
-
-      ktxTexture1* texture = nullptr;
-      (void)LVK_VERIFY(ktxTexture1_Create(&createInfo, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture) == KTX_SUCCESS);
-      ctx_->download(ctx_->getCurrentSwapchainTexture(), {.dimensions = {(uint32_t)width_, (uint32_t)height_}}, texture->pData);
-      ktxTexture_WriteToNamedFile(ktxTexture(texture), "screenshot.ktx");
-      ktxTexture_Destroy(ktxTexture(texture));
-    }
-    // call the previous installed callback
-    if (g_PrevKeyCallback)
-      g_PrevKeyCallback(window, key, scancode, action, mods);
-  });
+  g_PrevMouseButtonCallback = glfwSetMouseButtonCallback(window, mouseButtonCallback);
+  g_PrevKeyCallback = glfwSetKeyCallback(window, keyCallback);
 
   // Main loop
   while (!glfwWindowShouldClose(window)) {
@@ -2281,64 +2334,15 @@ int main(int /*argc*/, char* /*argv*/[]) {
       case SDL_EVENT_KEY_DOWN:
       case SDL_EVENT_KEY_UP: {
         const bool pressed = (event.type == SDL_EVENT_KEY_DOWN) && !ImGui::GetIO().WantCaptureMouse;
-        SDL_Keycode key = event.key.key;
+        const SDL_Keycode key = event.key.key;
         if (key == SDLK_ESCAPE && pressed) {
           loaderShouldExit_.store(true, std::memory_order_release);
           running = false;
         }
-        if (key == SDLK_N && pressed) {
-          drawNormals_ = !drawNormals_;
-        }
-        if (key == SDLK_C && pressed) {
-          enableComputePass_ = !enableComputePass_;
-        }
-        if (key == SDLK_T && pressed) {
-          enableWireframe_ = !enableWireframe_;
-        }
-        if (key == SDLK_P && pressed) {
-          showPerfStats_ = !showPerfStats_;
-        }
-        if (key == SDLK_W) {
-          positioner_.movement_.forward_ = pressed;
-        }
-        if (key == SDLK_S) {
-          positioner_.movement_.backward_ = pressed;
-        }
-        if (key == SDLK_A) {
-          positioner_.movement_.left_ = pressed;
-        }
-        if (key == SDLK_D) {
-          positioner_.movement_.right_ = pressed;
-        }
-        if (key == SDLK_1) {
-          positioner_.movement_.up_ = pressed;
-        }
-        if (key == SDLK_2) {
-          positioner_.movement_.down_ = pressed;
-        }
+        handleSDLKeyInput(key, pressed);
         positioner_.movement_.fastSpeed_ = (event.key.mod & SDL_KMOD_SHIFT) != 0;
-        if (key == SDLK_SPACE) {
-          positioner_.setUpVector(vec3(0.0f, 1.0f, 0.0f));
-        }
         if (key == SDLK_F9 && pressed) {
-          ktxTextureCreateInfo createInfo = {
-              .glInternalformat = GL_RGBA8,
-              .vkFormat = VK_FORMAT_B8G8R8A8_UNORM,
-              .baseWidth = static_cast<uint32_t>(width_),
-              .baseHeight = static_cast<uint32_t>(height_),
-              .baseDepth = 1u,
-              .numDimensions = 2u,
-              .numLevels = 1u,
-              .numLayers = 1u,
-              .numFaces = 1u,
-              .generateMipmaps = KTX_FALSE,
-          };
-
-          ktxTexture1* texture = nullptr;
-          (void)LVK_VERIFY(ktxTexture1_Create(&createInfo, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture) == KTX_SUCCESS);
-          ctx_->download(ctx_->getCurrentSwapchainTexture(), {.dimensions = {(uint32_t)width_, (uint32_t)height_}}, texture->pData);
-          ktxTexture_WriteToNamedFile(ktxTexture(texture), "screenshot.ktx");
-          ktxTexture_Destroy(ktxTexture(texture));
+          saveScreenshot();
         }
         break;
       }
