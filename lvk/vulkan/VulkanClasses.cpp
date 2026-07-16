@@ -1060,12 +1060,12 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
       const int32_t nextLevelDepth = mipDepth > 1 ? mipDepth / 2 : 1; // 3D blit downsamples depth (1 for 2D).
 
       const VkOffset3D srcOffsets[2] = {
-          VkOffset3D{0, 0, 0},
-          VkOffset3D{mipWidth, mipHeight, mipDepth},
+          VkOffset3D{.x = 0, .y = 0, .z = 0},
+          VkOffset3D{.x = mipWidth, .y = mipHeight, .z = mipDepth},
       };
       const VkOffset3D dstOffsets[2] = {
-          VkOffset3D{0, 0, 0},
-          VkOffset3D{nextLevelWidth, nextLevelHeight, nextLevelDepth},
+          VkOffset3D{.x = 0, .y = 0, .z = 0},
+          VkOffset3D{.x = nextLevelWidth, .y = nextLevelHeight, .z = nextLevelDepth},
       };
 
       // 2: Blit the image from the prev mip-level (i-1) (VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) to the current mip-level (i)
@@ -2850,7 +2850,8 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
       .pNext = nullptr,
       .flags = 0,
-      .renderArea = {VkOffset2D{(int32_t)scissor.x, (int32_t)scissor.y}, VkExtent2D{scissor.width, scissor.height}},
+      .renderArea = {.offset = {.x = (int32_t)scissor.x, .y = (int32_t)scissor.y},
+                     .extent = {.width = scissor.width, .height = scissor.height}},
       .layerCount = renderPass.layerCount,
       .viewMask = renderPass.viewMask,
       .colorAttachmentCount = numFbColorAttachments,
@@ -2917,8 +2918,8 @@ void lvk::CommandBuffer::cmdBindViewport(const Viewport& viewport) {
 
 void lvk::CommandBuffer::cmdBindScissorRect(const ScissorRect& rect) {
   const VkRect2D scissor = {
-      VkOffset2D{(int32_t)rect.x, (int32_t)rect.y},
-      VkExtent2D{rect.width, rect.height},
+      .offset = {.x = (int32_t)rect.x, .y = (int32_t)rect.y},
+      .extent = {.width = rect.width, .height = rect.height},
   };
   vkCmdSetScissor(wrapper_->cmdBuf_, 0, 1, &scissor);
 }
@@ -4785,7 +4786,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
     return {};
   }
 
-  const VkExtent3D vkExtent{desc.dimensions.width, desc.dimensions.height, desc.dimensions.depth};
+  const VkExtent3D vkExtent{.width = desc.dimensions.width, .height = desc.dimensions.height, .depth = desc.dimensions.depth};
   const uint32_t numLevels = desc.numMipLevels;
 
   if (!LVK_VERIFY(validateImageLimits(vkImageType, vkSamples, vkExtent, getVkPhysicalDeviceProperties().limits, outResult))) {
@@ -6323,18 +6324,19 @@ lvk::Result lvk::VulkanContext::download(lvk::TextureHandle handle, const Textur
     return result; // NOLINT(clang-diagnostic-nrvo)
   }
 
-  stagingDevice_->getImageData(*texture,
-                               VkOffset3D{range.offset.x, range.offset.y, range.offset.z},
-                               VkExtent3D{range.dimensions.width, range.dimensions.height, range.dimensions.depth},
-                               VkImageSubresourceRange{
-                                   .aspectMask = texture->getImageAspectFlags(),
-                                   .baseMipLevel = range.mipLevel,
-                                   .levelCount = range.numMipLevels,
-                                   .baseArrayLayer = range.layer,
-                                   .layerCount = range.numLayers,
-                               },
-                               texture->vkImageFormat_,
-                               outData);
+  stagingDevice_->getImageData(
+      *texture,
+      VkOffset3D{.x = range.offset.x, .y = range.offset.y, .z = range.offset.z},
+      VkExtent3D{.width = range.dimensions.width, .height = range.dimensions.height, .depth = range.dimensions.depth},
+      VkImageSubresourceRange{
+          .aspectMask = texture->getImageAspectFlags(),
+          .baseMipLevel = range.mipLevel,
+          .levelCount = range.numMipLevels,
+          .baseArrayLayer = range.layer,
+          .layerCount = range.numLayers,
+      },
+      texture->vkImageFormat_,
+      outData);
 
   return Result();
 }
@@ -6364,11 +6366,12 @@ lvk::Result lvk::VulkanContext::upload(lvk::TextureHandle handle,
   VkFormat vkFormat = texture->vkImageFormat_;
 
   if (texture->vkType_ == VK_IMAGE_TYPE_3D) {
-    stagingDevice_->imageData3D(*texture,
-                                VkOffset3D{range.offset.x, range.offset.y, range.offset.z},
-                                VkExtent3D{range.dimensions.width, range.dimensions.height, range.dimensions.depth},
-                                vkFormat,
-                                data);
+    stagingDevice_->imageData3D(
+        *texture,
+        VkOffset3D{.x = range.offset.x, .y = range.offset.y, .z = range.offset.z},
+        VkExtent3D{.width = range.dimensions.width, .height = range.dimensions.height, .depth = range.dimensions.depth},
+        vkFormat,
+        data);
   } else {
     const VkRect2D imageRegion = {
         .offset = {.x = range.offset.x, .y = range.offset.y},
