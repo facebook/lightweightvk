@@ -145,7 +145,7 @@ class TarFileReader final {
 double glfwGetTime() {
   timespec t = {0, 0};
   clock_gettime(CLOCK_MONOTONIC, &t);
-  return (double)t.tv_sec + 1.0e-9 * t.tv_nsec;
+  return static_cast<double>(t.tv_sec) + 1.0e-9 * t.tv_nsec;
 }
 
 static const char* cmdToString(int32_t cmd) {
@@ -278,7 +278,7 @@ static void resize_callback(ANativeActivity* activity, ANativeWindow* window) {
 } // extern "C"
 #elif LVK_WITH_SDL3
 double glfwGetTime() {
-  return (double)SDL_GetTicks() * 0.001;
+  return static_cast<double>(SDL_GetTicks()) * 0.001;
 }
 #endif // ANDROID
 
@@ -588,7 +588,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       simulatedTime_ += kTimeQuantum;
     }
     if (ctx_) {
-      const float ratio = width_ / (float)height_;
+      const float ratio = width_ / static_cast<float>(height_);
 
       const bool justPressed = mouseState_.pressedLeft && !imguiLastPressedLeft_;
 
@@ -605,8 +605,8 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       imguiLastPressedLeft_ = mouseState_.pressedLeft;
 
       const RenderView view = {
-          .viewport = {0.0f, 0.0f, (float)width_, (float)height_, 0.0f, 1.0f},
-          .scissorRect = {0, 0, (uint32_t)width_, (uint32_t)height_},
+          .viewport = {0.0f, 0.0f, static_cast<float>(width_), static_cast<float>(height_), 0.0f, 1.0f},
+          .scissorRect = {0, 0, static_cast<uint32_t>(width_), static_cast<uint32_t>(height_)},
           .colorTexture = ctx_->getCurrentSwapchainTexture(),
           .aspectRatio = ratio,
       };
@@ -647,11 +647,11 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       LLOGL("FPS: %.1f\n", fpsCounter_.getFPS());
     }
 
-    const float ratio = width_ / (float)height_;
+    const float ratio = width_ / static_cast<float>(height_);
 
     const RenderView view = {
-        .viewport = {0.0f, 0.0f, (float)width_, (float)height_, 0.0f, 1.0f},
-        .scissorRect = {0, 0, (uint32_t)width_, (uint32_t)height_},
+        .viewport = {0.0f, 0.0f, static_cast<float>(width_), static_cast<float>(height_), 0.0f, 1.0f},
+        .scissorRect = {0, 0, static_cast<uint32_t>(width_), static_cast<uint32_t>(height_)},
         .colorTexture = ctx_->getCurrentSwapchainTexture(),
         .aspectRatio = ratio,
     };
@@ -665,7 +665,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       LLOGL("Saving screenshot...%ux%u\n", dim.width, dim.height);
       if (format != lvk::Format_BGRA_UN8 && format != lvk::Format_BGRA_SRGB8 && format != lvk::Format_RGBA_UN8 &&
           format != lvk::Format_RGBA_SRGB8) {
-        LLOGW("Unsupported pixel format %u\n", (uint32_t)format);
+        LLOGW("Unsupported pixel format %u\n", static_cast<uint32_t>(format));
         break;
       }
       std::vector<uint8_t> pixelsRGBA(static_cast<size_t>(dim.width) * dim.height * 4);
@@ -683,7 +683,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
         pixelsRGB[3 * i + 1] = pixelsRGBA[4 * i + 1];
         pixelsRGB[3 * i + 2] = pixelsRGBA[4 * i + 2];
       }
-      stbi_write_png(cfg_.screenshotFileName, (int)dim.width, (int)dim.height, 3, pixelsRGB.data(), 0);
+      stbi_write_png(cfg_.screenshotFileName, static_cast<int>(dim.width), static_cast<int>(dim.height), 3, pixelsRGB.data(), 0);
       break;
     }
   }
@@ -746,7 +746,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
         else if (event.button.button == SDL_BUTTON_MIDDLE)
           imguiButton = ImGuiMouseButton_Middle;
 
-        io.MousePos = ImVec2((float)event.button.x, (float)event.button.y);
+        io.MousePos = ImVec2(static_cast<float>(event.button.x), static_cast<float>(event.button.y));
         io.MouseDown[imguiButton] = (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
 
         for (auto& cb : callbacksMouseButton) {
@@ -761,9 +761,9 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
         break;
 
       case SDL_EVENT_MOUSE_MOTION:
-        io.MousePos = ImVec2((float)event.motion.x, (float)event.motion.y);
-        mouseState_.pos.x = static_cast<float>(event.motion.x / (float)width_);
-        mouseState_.pos.y = 1.0f - static_cast<float>(event.motion.y / (float)height_);
+        io.MousePos = ImVec2(static_cast<float>(event.motion.x), static_cast<float>(event.motion.y));
+        mouseState_.pos.x = static_cast<float>(event.motion.x / static_cast<float>(width_));
+        mouseState_.pos.y = 1.0f - static_cast<float>(event.motion.y / static_cast<float>(height_));
         break;
 
       case SDL_EVENT_KEY_DOWN:
@@ -803,13 +803,13 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
     if (!ctx_ || !width_ || !height_)
       continue;
 
-    const float ratio = width_ / (float)height_;
+    const float ratio = width_ / static_cast<float>(height_);
 
     positioner_.update(deltaSeconds, mouseState_.pos, ImGui::GetIO().WantCaptureMouse ? false : mouseState_.pressedLeft);
 
     const RenderView view = {
-        .viewport = {0.0f, 0.0f, (float)width_, (float)height_, 0.0f, 1.0f},
-        .scissorRect = {0, 0, (uint32_t)width_, (uint32_t)height_},
+        .viewport = {0.0f, 0.0f, static_cast<float>(width_), static_cast<float>(height_), 0.0f, 1.0f},
+        .scissorRect = {0, 0, static_cast<uint32_t>(width_), static_cast<uint32_t>(height_)},
         .colorTexture = ctx_->getCurrentSwapchainTexture(),
         .aspectRatio = ratio,
     };
@@ -823,7 +823,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       LLOGL("Saving screenshot...%ux%u\n", dim.width, dim.height);
       if (format != lvk::Format_BGRA_UN8 && format != lvk::Format_BGRA_SRGB8 && format != lvk::Format_RGBA_UN8 &&
           format != lvk::Format_RGBA_SRGB8) {
-        LLOGW("Unsupported pixel format %u\n", (uint32_t)format);
+        LLOGW("Unsupported pixel format %u\n", static_cast<uint32_t>(format));
         break;
       }
       std::vector<uint8_t> pixelsRGBA(static_cast<size_t>(dim.width) * dim.height * 4);
@@ -841,7 +841,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
         pixelsRGB[3 * i + 1] = pixelsRGBA[4 * i + 1];
         pixelsRGB[3 * i + 2] = pixelsRGBA[4 * i + 2];
       }
-      stbi_write_png(cfg_.screenshotFileName, (int)dim.width, (int)dim.height, 3, pixelsRGB.data(), 0);
+      stbi_write_png(cfg_.screenshotFileName, static_cast<int>(dim.width), static_cast<int>(dim.height), 3, pixelsRGB.data(), 0);
       break;
     }
   }
@@ -864,7 +864,7 @@ void VulkanApp::drawFPS() {
                    nullptr,
                    ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
                        ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove)) {
-    ImGui::Text("FPS : %i", (int)fpsCounter_.getFPS());
+    ImGui::Text("FPS : %i", static_cast<int>(fpsCounter_.getFPS()));
     ImGui::Text("Ms  : %.1f", fpsCounter_.getFPS() > 0 ? 1000.0 / fpsCounter_.getFPS() : 0);
   }
   ImGui::End();
@@ -943,7 +943,7 @@ void VulkanApp::initOpenXR() {
       exit(1);
     }
     if (XR_FAILED(sysResult)) {
-      LLOGW("OpenXR error: xrGetSystem() returned %s (%d)\n", lvk::xrResultToString(sysResult), (int)sysResult);
+      LLOGW("OpenXR error: xrGetSystem() returned %s (%d)\n", lvk::xrResultToString(sysResult), static_cast<int>(sysResult));
       LVK_ASSERT_MSG(false, "xrGetSystem() failed");
     }
   }
@@ -1106,8 +1106,8 @@ void VulkanApp::initXrSwapchains() {
           VK_FORMAT_R8G8B8A8_UNORM,
           VK_FORMAT_B8G8R8A8_UNORM,
       },
-      VkFormat(formats[0]));
-  LLOGD("OpenXR color format: VkFormat %d\n", (int)vkColorFormat);
+      static_cast<VkFormat>(formats[0]));
+  LLOGD("OpenXR color format: VkFormat %d\n", static_cast<int>(vkColorFormat));
 
   const VkFormat vkDepthFormat = selectFormat(
       {
@@ -1414,13 +1414,13 @@ bool VulkanApp::renderXrFrame(DrawFrameFunc& drawFrame) {
     }
 
     // populate render views
-    const float w = (float)xrSwapchains_[eye].width;
-    const float h = (float)xrSwapchains_[eye].height;
+    const float w = static_cast<float>(xrSwapchains_[eye].width);
+    const float h = static_cast<float>(xrSwapchains_[eye].height);
     renderViews[eye] = {
         .proj = xrCreateProjectionMatrix(xrViews[eye].fov, 0.1f, 100.0f),
         .view = xrCreateViewMatrix(xrViews[eye].pose),
         .viewport = {0.0f, 0.0f, w, h, 0.0f, 1.0f},
-        .scissorRect = {0, 0, (uint32_t)w, (uint32_t)h},
+        .scissorRect = {0, 0, static_cast<uint32_t>(w), static_cast<uint32_t>(h)},
         .colorTexture = xrSwapchains_[eye].textures[colorImageIndices[eye]],
         .depthTexture = hasDepth[eye] ? xrDepthSwapchains_[eye].textures[depthImageIndices[eye]] : lvk::TextureHandle{},
         .aspectRatio = w / h,
@@ -1456,7 +1456,7 @@ bool VulkanApp::renderXrFrame(DrawFrameFunc& drawFrame) {
                 .imageRect =
                     {
                         .offset = {0, 0},
-                        .extent = {(int32_t)xrSwapchains_[eye].width, (int32_t)xrSwapchains_[eye].height},
+                        .extent = {static_cast<int32_t>(xrSwapchains_[eye].width), static_cast<int32_t>(xrSwapchains_[eye].height)},
                     },
             },
     };
