@@ -166,8 +166,8 @@ uint32_t lvk::getTextureBytesPerLayer(uint32_t width, uint32_t height, lvk::Form
     return props.bytesPerBlock * levelWidth * levelHeight;
   }
 
-  const uint32_t blockWidth = std::max((uint32_t)props.blockWidth, 1u);
-  const uint32_t blockHeight = std::max((uint32_t)props.blockHeight, 1u);
+  const uint32_t blockWidth = std::max(static_cast<uint32_t>(props.blockWidth), 1u);
+  const uint32_t blockHeight = std::max(static_cast<uint32_t>(props.blockHeight), 1u);
   const uint32_t widthInBlocks = (levelWidth + blockWidth - 1) / blockWidth;
   const uint32_t heightInBlocks = (levelHeight + blockHeight - 1) / blockHeight;
   return widthInBlocks * heightInBlocks * props.bytesPerBlock;
