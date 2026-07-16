@@ -349,7 +349,7 @@ struct ParticleSystem {
 
   void addSphereExplosion(vec3 pos, const ColorPalette& pal, int count, float speed, int lifetime) {
     for (int i = 0; i < count; i++) {
-      const float theta = random(float(M_PI) * 2.0f);
+      const float theta = random(static_cast<float>(M_PI) * 2.0f);
       const float phi = acosf(randomRange(-1.0f, 1.0f));
       const float r = speed * powf(random(1.0f), 0.33f);
 
@@ -359,7 +359,7 @@ struct ParticleSystem {
       color += vec3(randomRange(-0.1f, 0.1f));
       color = glm::clamp(color, vec3(0.0f), vec3(1.0f));
 
-      const int ttl = lifetime + int(random(30));
+      const int ttl = lifetime + static_cast<int>(random(30));
       const bool core = random(1.0f) < 0.15f;
       const vec3 finalColor = core ? pal.sparkle : color;
       addParticle({
@@ -392,7 +392,7 @@ struct ParticleSystem {
     }
 
     for (int i = 0; i < count; i++) {
-      const float angle = (float(i) / count) * float(M_PI) * 2.0f + random(0.2f);
+      const float angle = (static_cast<float>(i) / count) * static_cast<float>(M_PI) * 2.0f + random(0.2f);
       const float r = speed * randomRange(0.9f, 1.1f);
 
       vec3 velocity = right * (r * cosf(angle)) + up * (r * sinf(angle)) + viewDir * random(0.02f);
@@ -407,7 +407,7 @@ struct ParticleSystem {
 
       const vec3 color = glm::mix(pal.primary, pal.secondary, random(1.0f));
 
-      const int ttl = lifetime + int(random(20));
+      const int ttl = lifetime + static_cast<int>(random(20));
       addParticle({
           .pos = pos,
           .velocity = velocity,
@@ -424,14 +424,14 @@ struct ParticleSystem {
 
   void addWillowExplosion(vec3 pos, const ColorPalette& pal, int count) {
     for (int i = 0; i < count; i++) {
-      const float theta = random(float(M_PI) * 2.0f);
-      const float phi = randomRange(0.3f, float(M_PI) * 0.7f);
+      const float theta = random(static_cast<float>(M_PI) * 2.0f);
+      const float phi = randomRange(0.3f, static_cast<float>(M_PI) * 0.7f);
       const float r = randomRange(0.06f, 0.12f);
 
       const vec3 velocity(r * sinf(phi) * cosf(theta), r * cosf(phi) + 0.05f, r * sinf(phi) * sinf(theta));
       const vec3 color = glm::mix(pal.primary, pal.sparkle, random(0.5f));
 
-      const int ttl = 150 + int(random(50));
+      const int ttl = 150 + static_cast<int>(random(50));
       addParticle({
           .pos = pos,
           .velocity = velocity,
@@ -449,14 +449,14 @@ struct ParticleSystem {
 
   void addChrysanthemumExplosion(vec3 pos, const ColorPalette& pal, int count) {
     for (int i = 0; i < count; i++) {
-      const float theta = random(float(M_PI) * 2.0f);
+      const float theta = random(static_cast<float>(M_PI) * 2.0f);
       const float phi = acosf(randomRange(-1.0f, 1.0f));
       const float r = randomRange(0.08f, 0.14f);
 
       const vec3 velocity(r * sinf(phi) * cosf(theta), r * sinf(phi) * sinf(theta), r * cosf(phi));
       const vec3 color = (random(1.0f) < 0.3f) ? pal.sparkle : pal.primary;
 
-      const int ttl = 100 + int(random(40));
+      const int ttl = 100 + static_cast<int>(random(40));
       addParticle({
           .pos = pos,
           .velocity = velocity,
@@ -471,13 +471,13 @@ struct ParticleSystem {
     }
 
     for (int i = 0; i < 30; i++) {
-      const float theta = random(float(M_PI) * 2.0f);
+      const float theta = random(static_cast<float>(M_PI) * 2.0f);
       const float phi = acosf(randomRange(-1.0f, 1.0f));
       const float r = randomRange(0.03f, 0.05f);
 
       const vec3 velocity(r * sinf(phi) * cosf(theta), r * sinf(phi) * sinf(theta), r * cosf(phi));
 
-      const int sparkleTTL = 30 + int(random(20));
+      const int sparkleTTL = 30 + static_cast<int>(random(20));
       addParticle({
           .pos = pos,
           .velocity = velocity,
@@ -496,13 +496,13 @@ struct ParticleSystem {
     addSphereExplosion(pos, pal, count / 2, 0.08f, 60);
 
     for (int i = 0; i < 25; i++) {
-      const float theta = random(float(M_PI) * 2.0f);
+      const float theta = random(static_cast<float>(M_PI) * 2.0f);
       const float phi = acosf(randomRange(-1.0f, 1.0f));
       const float r = randomRange(0.06f, 0.1f);
 
       const vec3 velocity(r * sinf(phi) * cosf(theta), r * sinf(phi) * sinf(theta), r * cosf(phi));
 
-      const int ttl = 50 + int(random(30));
+      const int ttl = 50 + static_cast<int>(random(30));
       addParticle({
           .pos = pos,
           .velocity = velocity,
@@ -521,14 +521,14 @@ struct ParticleSystem {
 
   void addPalmExplosion(vec3 pos, const ColorPalette& pal, int count) {
     for (int i = 0; i < count; i++) {
-      const float angle = random(float(M_PI) * 2.0f);
+      const float angle = random(static_cast<float>(M_PI) * 2.0f);
       const float spread = randomRange(0.02f, 0.06f);
       const float upward = randomRange(0.1f, 0.15f);
 
       const vec3 velocity(spread * cosf(angle), upward, spread * sinf(angle));
       const vec3 color = glm::mix(pal.primary, pal.secondary, random(1.0f));
 
-      const int ttl = 120 + int(random(40));
+      const int ttl = 120 + static_cast<int>(random(40));
       addParticle({
           .pos = pos,
           .velocity = velocity,
@@ -543,12 +543,12 @@ struct ParticleSystem {
     }
 
     for (int i = 0; i < 50; i++) {
-      const float angle = random(float(M_PI) * 2.0f);
+      const float angle = random(static_cast<float>(M_PI) * 2.0f);
       const float spread = randomRange(0.03f, 0.08f);
 
       const vec3 velocity(spread * cosf(angle), 0.08f + random(0.04f), spread * sinf(angle));
 
-      const int tipTTL = 80 + int(random(30));
+      const int tipTTL = 80 + static_cast<int>(random(30));
       addParticle({
           .pos = pos,
           .velocity = velocity,
@@ -565,7 +565,7 @@ struct ParticleSystem {
 
   void addCrossetteExplosion(vec3 pos, const ColorPalette& pal, int count) {
     for (int i = 0; i < count; i++) {
-      const float theta = (float(i) / count) * float(M_PI) * 2.0f;
+      const float theta = (static_cast<float>(i) / count) * static_cast<float>(M_PI) * 2.0f;
       const float r = randomRange(0.08f, 0.12f);
 
       const vec3 velocity(r * cosf(theta), random(0.04f), r * sinf(theta));
@@ -583,7 +583,7 @@ struct ParticleSystem {
           .emission = true,
           .explosionType = ExplosionType_Sphere,
           .paletteIndex = static_cast<int>(random(LVK_ARRAY_NUM_ELEMENTS(g_Palettes))),
-          .secondaryExplosionTimer = 30 + int(random(20)),
+          .secondaryExplosionTimer = 30 + static_cast<int>(random(20)),
       });
     }
   }
@@ -630,7 +630,7 @@ struct ParticleSystem {
 
     // flash at explosion center
     for (int i = 0; i < 20; i++) {
-      const int flashTTL = 5 + int(random(5));
+      const int flashTTL = 5 + static_cast<int>(random(5));
       addParticle({
           .pos = pos,
           .velocity = vec3(randomRange(-0.01f, 0.01f), randomRange(-0.01f, 0.01f), randomRange(-0.01f, 0.01f)),
@@ -652,7 +652,7 @@ struct ParticleSystem {
 
     const vec3 velocity(randomRange(-0.03f, 0.03f), randomRange(0.22f, 0.32f), randomRange(-0.03f, 0.03f));
 
-    const int flareTTL = 30 + int(random(20));
+    const int flareTTL = 30 + static_cast<int>(random(20));
     addParticle({
         .pos = position,
         .velocity = velocity,
@@ -670,7 +670,7 @@ struct ParticleSystem {
 
     const vec3 trailColor = pal.primary * 0.5f;
     for (int i = 0; i < 5; i++) {
-      const int trailTTL = 10 + int(random(10));
+      const int trailTTL = 10 + static_cast<int>(random(10));
       addParticle({
           .pos = position,
           .velocity = velocity * randomRange(0.1f, 0.3f),
@@ -882,7 +882,7 @@ VULKAN_APP_MAIN {
       if (!vertices.empty()) {
         // Pad to a multiple of kParticlesPerWorkgroup so per-lane reads stay in bounds.
         // Dummy entries have color.rgb=0 and are invisible under additive blending.
-        const size_t paddedSize = (vertices.size() + kParticlesPerWorkgroup - 1) & ~size_t(kParticlesPerWorkgroup - 1);
+        const size_t paddedSize = (vertices.size() + kParticlesPerWorkgroup - 1) & ~static_cast<size_t>(kParticlesPerWorkgroup - 1);
         vertices.resize(paddedSize, Vertex{.pos = vec3(0), .color = vec4(0)});
         bufferIndex = (bufferIndex + 1) % LVK_ARRAY_NUM_ELEMENTS(vb0_);
         ctx->upload(vb0_[bufferIndex], vertices.data(), sizeof(Vertex) * vertices.size());
@@ -929,7 +929,7 @@ VULKAN_APP_MAIN {
       };
       buffer.cmdPushConstants(bindings);
       if (!vertices.empty()) {
-        buffer.cmdDrawMeshTasks({(uint32_t)(vertices.size() / kParticlesPerWorkgroup), 1, 1});
+        buffer.cmdDrawMeshTasks({static_cast<uint32_t>(vertices.size() / kParticlesPerWorkgroup), 1, 1});
       }
       buffer.cmdPopDebugGroupLabel();
 
