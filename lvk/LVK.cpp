@@ -544,14 +544,14 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
         int index = 1;
         for (int type = HWDeviceType_Integrated; type <= HWDeviceType_Software; type++) {
           if (type != preferredDeviceType)
-            priority[index++] = (HWDeviceType)type;
+            priority[index++] = static_cast<HWDeviceType>(type);
         }
       }
       // search devices in priority order
       for (HWDeviceType type : priority) {
         for (uint32_t i = 0; i < numDevices; i++) {
           if (devices[i].type == type)
-            return (int)i;
+            return static_cast<int>(i);
         }
       }
       return 0;
