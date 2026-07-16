@@ -919,7 +919,7 @@ struct Scene final {
 
   void createMaterial(SceneNode* node, const Material& mat) {
     materials.emplace_back(mat);
-    node->materialIdx = (int)materials.size() - 1;
+    node->materialIdx = static_cast<int>(materials.size()) - 1;
   }
 };
 
@@ -1001,7 +1001,7 @@ lvk::Holder<lvk::TextureHandle> loadTextureCubeFromFile(VulkanApp& app, const st
   }
 
   int sourceWidth, sourceHeight;
-  uint8_t* pixels = stbi_load_from_memory(fileData.data(), (int)fileData.size(), &sourceWidth, &sourceHeight, nullptr, 4);
+  uint8_t* pixels = stbi_load_from_memory(fileData.data(), static_cast<int>(fileData.size()), &sourceWidth, &sourceHeight, nullptr, 4);
   SCOPE_EXIT {
     if (pixels)
       stbi_image_free(pixels);
@@ -1052,7 +1052,7 @@ lvk::TextureHandle loadTextureFromFile(VulkanApp& app, const std::string& fileNa
   int numComponents = 0;
 
   stbi_set_flip_vertically_on_load(0);
-  void* pixels = stbi_load_from_memory(fileData.data(), (int)fileData.size(), &w, &h, &numComponents, 4);
+  void* pixels = stbi_load_from_memory(fileData.data(), static_cast<int>(fileData.size()), &w, &h, &numComponents, 4);
 
   if (!pixels) {
     LLOGL("Failed to decode texture `%s`\n", name.c_str());
@@ -1067,7 +1067,7 @@ lvk::TextureHandle loadTextureFromFile(VulkanApp& app, const std::string& fileNa
   lvk::Holder<lvk::TextureHandle> tex = app.ctx_->createTexture({
       .type = lvk::TextureType_2D,
       .format = lvk::Format_RGBA_UN8,
-      .dimensions = {uint32_t(w), uint32_t(h)},
+      .dimensions = {static_cast<uint32_t>(w), static_cast<uint32_t>(h)},
       .usage = lvk::TextureUsageBits_Sampled,
       .data = pixels,
       .debugName = fileName.c_str(),
@@ -1129,7 +1129,7 @@ size_t memFileRead(void* filePtr, void* dst, size_t bytes, void* /*userData*/) {
 }
 unsigned long memFileSize(void* filePtr, void* /*userData*/) {
   MemFile* file = static_cast<MemFile*>(filePtr);
-  return (unsigned long)file->data.size();
+  return static_cast<unsigned long>(file->data.size());
 }
 
 std::vector<GeometryShapes::Vertex> loadMeshFromFile(VulkanApp& app, const char* fileName) {
@@ -1608,7 +1608,7 @@ VULKAN_APP_MAIN {
     vulkanState.texColor.emplace_back(app.ctx_->createTexture({
         .type = lvk::TextureType_2D,
         .format = ctx->getSwapchainFormat(),
-        .dimensions = {uint32_t(app.width_) / 2, uint32_t(app.height_)},
+        .dimensions = {static_cast<uint32_t>(app.width_) / 2, static_cast<uint32_t>(app.height_)},
         .numLayers = 2,
         .usage = lvk::TextureUsageBits_Attachment,
         .debugName = debugName,
@@ -1617,7 +1617,7 @@ VULKAN_APP_MAIN {
   vulkanState.texDepth = app.ctx_->createTexture({
       .type = lvk::TextureType_2D,
       .format = app.getDepthFormat(),
-      .dimensions = {uint32_t(app.width_) / 2, uint32_t(app.height_)},
+      .dimensions = {static_cast<uint32_t>(app.width_) / 2, static_cast<uint32_t>(app.height_)},
       .numLayers = 2,
       .usage = lvk::TextureUsageBits_Attachment,
       .debugName = "Offscreen (depth)",
@@ -1650,11 +1650,11 @@ VULKAN_APP_MAIN {
     std::vector<DrawData> drawData;
 
     for (RenderOp& ROP : renderQueueOpaque) {
-      ROP.idDrawData = (uint32_t)drawData.size();
+      ROP.idDrawData = static_cast<uint32_t>(drawData.size());
       drawData.push_back(ROP.drawData);
     }
     for (RenderOp& ROP : renderQueueTransparent) {
-      ROP.idDrawData = (uint32_t)drawData.size();
+      ROP.idDrawData = static_cast<uint32_t>(drawData.size());
       drawData.push_back(ROP.drawData);
     }
     vulkanState.bufDrawData = ctx->createBuffer({
@@ -1756,14 +1756,23 @@ VULKAN_APP_MAIN {
         const mat4 proj1 = glm::frustum(-aspect * wd2 + D, aspect * wd2 + D, -wd2, wd2, nearPlane, farPlane); // right
         const mat4 T0 = glm::translate(glm::mat4(1.0f), vec3(+1, 0, 0) * IoD * 0.5f);
         const mat4 T1 = glm::translate(glm::mat4(1.0f), vec3(-1, 0, 0) * IoD * 0.5f);
-        const float halfW = float(w) / 2.0f;
+        const float halfW = static_cast<float>(w) / 2.0f;
         return {
-            {proj0, view * T0, lvk::Viewport{0, 0, halfW, float(h)}, lvk::ScissorRect{0, 0, (uint32_t)halfW, (uint32_t)h}},
-            {proj1, view * T1, lvk::Viewport{0, 0, halfW, float(h)}, lvk::ScissorRect{0, 0, (uint32_t)halfW, (uint32_t)h}},
+            {proj0,
+             view * T0,
+             lvk::Viewport{0, 0, halfW, static_cast<float>(h)},
+             lvk::ScissorRect{0, 0, static_cast<uint32_t>(halfW), static_cast<uint32_t>(h)}},
+            {proj1,
+             view * T1,
+             lvk::Viewport{0, 0, halfW, static_cast<float>(h)},
+             lvk::ScissorRect{0, 0, static_cast<uint32_t>(halfW), static_cast<uint32_t>(h)}},
         };
       }
       const mat4 proj = glm::perspective(fov, aspectRatio, nearPlane, farPlane);
-      return {{proj, view, lvk::Viewport{0, 0, float(w), float(h)}, lvk::ScissorRect{0, 0, (uint32_t)w, (uint32_t)h}}};
+      return {{proj,
+               view,
+               lvk::Viewport{0, 0, static_cast<float>(w), static_cast<float>(h)},
+               lvk::ScissorRect{0, 0, static_cast<uint32_t>(w), static_cast<uint32_t>(h)}}};
     }(app.width_, app.height_, aspectRatio, view);
 
     lvk::ICommandBuffer& buf = ctx->acquireCommandBuffer();
@@ -1789,16 +1798,17 @@ VULKAN_APP_MAIN {
       };
       // update per-frame buffers for all render views - we should do it outside of a render pass
       const PerFrameBuffer perFrame =
-          g_MultiViewStereo ? PerFrameBuffer{.proj = {views[0].proj, views[1].proj},
-                                             .view = {views[0].view, views[1].view},
-                                             .time = (float)app.getSimulatedTime()}
-                            : PerFrameBuffer{.proj = {views[0].proj}, .view = {views[0].view}, .time = (float)app.getSimulatedTime()};
+          g_MultiViewStereo
+              ? PerFrameBuffer{.proj = {views[0].proj, views[1].proj},
+                               .view = {views[0].view, views[1].view},
+                               .time = static_cast<float>(app.getSimulatedTime())}
+              : PerFrameBuffer{.proj = {views[0].proj}, .view = {views[0].view}, .time = static_cast<float>(app.getSimulatedTime())};
       buf.cmdUpdateBuffer(vulkanState.bufPerFrame, perFrame);
       buf.cmdBindVertexBuffer(0, vulkanState.bufVertices, 0);
 
       buf.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
                              .depth = {.loadOp = lvk::LoadOp_Clear, .clearDepth = 1.0f},
-                             .layerCount = (uint32_t)views.size(),
+                             .layerCount = static_cast<uint32_t>(views.size()),
                              .viewMask = g_MultiViewStereo ? 0b11 : 0u},
                             fb);
       for (const RenderView& v : views) {
