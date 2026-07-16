@@ -229,9 +229,9 @@ inline bool loadAndCache(VulkanApp& app, const char* cacheFileName, const char* 
   FILE* cacheFile = fopen(cacheFileName, "wb");
   if (!cacheFile)
     return false;
-  const uint32_t numMaterials = (uint32_t)cachedMaterials_.size();
-  const uint32_t numVertices = (uint32_t)vertexData_.size();
-  const uint32_t numIndices = (uint32_t)indexData_.size();
+  const uint32_t numMaterials = static_cast<uint32_t>(cachedMaterials_.size());
+  const uint32_t numVertices = static_cast<uint32_t>(vertexData_.size());
+  const uint32_t numIndices = static_cast<uint32_t>(indexData_.size());
   fwrite(&kMeshCacheVersion, sizeof(kMeshCacheVersion), 1, cacheFile);
   fwrite(&numMaterials, sizeof(numMaterials), 1, cacheFile);
   fwrite(&numVertices, sizeof(numVertices), 1, cacheFile);

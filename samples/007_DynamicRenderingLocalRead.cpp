@@ -496,14 +496,14 @@ VULKAN_APP_MAIN {
         int32_t texWidth = 0;
         int32_t texHeight = 0;
         int32_t channels = 0;
-        uint8_t* pixels = stbi_load_from_memory(fileData.data(), (int)fileData.size(), &texWidth, &texHeight, &channels, 4);
+        uint8_t* pixels = stbi_load_from_memory(fileData.data(), static_cast<int>(fileData.size()), &texWidth, &texHeight, &channels, 4);
         SCOPE_EXIT {
           stbi_image_free(pixels);
         };
         *s.out = ctx->createTexture({
             .type = lvk::TextureType_2D,
             .format = lvk::Format_RGBA_UN8,
-            .dimensions = {(uint32_t)texWidth, (uint32_t)texHeight},
+            .dimensions = {static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight)},
             .usage = lvk::TextureUsageBits_Sampled,
             .data = pixels,
             .generateMipmaps = true,
@@ -583,10 +583,10 @@ VULKAN_APP_MAIN {
     app.run([&](ldr::Span<const RenderView> views, float /*deltaSeconds*/) {
       LVK_PROFILER_FUNCTION();
 
-      const float fov = float(45.0f * (M_PI / 180.0f));
+      const float fov = static_cast<float>(45.0f * (M_PI / 180.0f));
       const mat4 proj = glm::perspectiveLH(fov, views[0].aspectRatio, 0.1f, 500.0f);
       const mat4 view = glm::translate(mat4(1.0f), vec3(0.0f, 0.0f, 5.0f));
-      const mat4 model = glm::rotate(mat4(1.0f), (float)app.getSimulatedTime(), glm::normalize(vec3(1.0f, 1.0f, 1.0f)));
+      const mat4 model = glm::rotate(mat4(1.0f), static_cast<float>(app.getSimulatedTime()), glm::normalize(vec3(1.0f, 1.0f, 1.0f)));
       const vec4 cameraPos = glm::inverse(view) * vec4(0.0f, 0.0f, 0.0f, 1.0f);
       const PerFrame bindingsDeferred = {
           .mvp = proj * view * model,

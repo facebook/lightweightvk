@@ -343,11 +343,11 @@ void createBottomLevelAccelerationStructure() {
       .geometryType = lvk::AccelStructGeomType_Triangles,
       .vertexFormat = lvk::VertexFormat_Float3,
       .vertexBuffer = res.vertexBuffer,
-      .numVertices = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(vertices),
+      .numVertices = static_cast<uint32_t>(LVK_ARRAY_NUM_ELEMENTS(vertices)),
       .indexFormat = lvk::IndexFormat_UI32,
       .indexBuffer = res.indexBuffer,
       .transformBuffer = transformBuffer,
-      .buildRange = {.primitiveCount = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(indices) / 3},
+      .buildRange = {.primitiveCount = static_cast<uint32_t>(LVK_ARRAY_NUM_ELEMENTS(indices)) / 3},
       .debugName = "BLAS",
   });
 }
@@ -409,7 +409,7 @@ lvk::Holder<lvk::TextureHandle> createTextureFromFile(VulkanApp& app, const char
   int32_t texWidth = 0;
   int32_t texHeight = 0;
   int32_t channels = 0;
-  uint8_t* pixels = stbi_load_from_memory(fileData.data(), (int)fileData.size(), &texWidth, &texHeight, &channels, 4);
+  uint8_t* pixels = stbi_load_from_memory(fileData.data(), static_cast<int>(fileData.size()), &texWidth, &texHeight, &channels, 4);
   SCOPE_EXIT {
     stbi_image_free(pixels);
   };

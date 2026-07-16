@@ -311,13 +311,13 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
       }
     } else if (!strcmp(argv[i], "--width")) {
       if (i + 1 < argc) {
-        cfg_.width = (int)strtol(argv[++i], nullptr, 10);
+        cfg_.width = static_cast<int>(strtol(argv[++i], nullptr, 10));
       } else {
         LLOGW("Specify a value for `--width <pixels>`");
       }
     } else if (!strcmp(argv[i], "--height")) {
       if (i + 1 < argc) {
-        cfg_.height = (int)strtol(argv[++i], nullptr, 10);
+        cfg_.height = static_cast<int>(strtol(argv[++i], nullptr, 10));
       } else {
         LLOGW("Specify a value for `--height <pixels>`");
       }
@@ -544,7 +544,7 @@ lvk::TextureHandle VulkanApp::getDepthTexture() const {
     depthTexture_ = ctx_->createTexture({
         .type = lvk::TextureType_2D,
         .format = lvk::Format_Z_F32,
-        .dimensions = {(uint32_t)width_, (uint32_t)height_},
+        .dimensions = {static_cast<uint32_t>(width_), static_cast<uint32_t>(height_)},
         .usage = lvk::TextureUsageBits_Attachment,
         .debugName = "Depth buffer",
     });

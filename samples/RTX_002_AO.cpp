@@ -1172,14 +1172,14 @@ bool initModel(VulkanApp& app) {
       .data = &transformMatrix,
   });
 
-  const uint32_t totalPrimitiveCount = (uint32_t)indexData_.size() / 3;
+  const uint32_t totalPrimitiveCount = static_cast<uint32_t>(indexData_.size()) / 3;
   lvk::AccelStructDesc blasDesc{
       .type = lvk::AccelStructType_BLAS,
       .geometryType = lvk::AccelStructGeomType_Triangles,
       .vertexFormat = lvk::VertexFormat_Float3,
       .vertexBuffer = res.vb0_,
       .vertexStride = sizeof(VertexData),
-      .numVertices = (uint32_t)vertexData_.size(),
+      .numVertices = static_cast<uint32_t>(vertexData_.size()),
       .indexFormat = lvk::IndexFormat_UI32,
       .indexBuffer = res.ib0_,
       .transformBuffer = transformBuffer,
@@ -1211,7 +1211,7 @@ bool initModel(VulkanApp& app) {
   instances.reserve(requiredBlasCount);
   const uint32_t primitiveCount = blasDesc.buildRange.primitiveCount;
   for (uint32_t i = 0; i < totalPrimitiveCount; i += primitiveCount) {
-    const int rest = (int)totalPrimitiveCount - i;
+    const int rest = static_cast<int>(totalPrimitiveCount) - i;
     blasDesc.buildRange.primitiveOffset = i * 3 * sizeof(uint32_t);
     blasDesc.buildRange.primitiveCount = (primitiveCount < rest) ? primitiveCount : rest;
     res.BLAS.emplace_back(ctx_->createAccelerationStructure(blasDesc));

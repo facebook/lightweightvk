@@ -426,8 +426,8 @@ struct StencilState {
   StencilOp depthFailureOp = StencilOp_Keep;
   StencilOp depthStencilPassOp = StencilOp_Keep;
   CompareOp stencilCompareOp = CompareOp_AlwaysPass;
-  uint32_t readMask = (uint32_t)~0;
-  uint32_t writeMask = (uint32_t)~0;
+  uint32_t readMask = static_cast<uint32_t>(~0);
+  uint32_t writeMask = static_cast<uint32_t>(~0);
 };
 
 struct DepthState {

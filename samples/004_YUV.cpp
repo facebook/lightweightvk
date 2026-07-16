@@ -100,14 +100,14 @@ void createDemo(VulkanApp& app, const char* name, lvk::Format format, const char
     std::terminate();
   }
 
-  LVK_ASSERT(pixels.size() == (size_t)texWidth * texHeight * 3 / 2);
+  LVK_ASSERT(pixels.size() == static_cast<size_t>(texWidth) * texHeight * 3 / 2);
 
   lvk::IContext* ctx = app.ctx_.get();
 
   lvk::Holder<lvk::TextureHandle> texture = ctx->createTexture({
       .type = lvk::TextureType_2D,
       .format = format,
-      .dimensions = {(uint32_t)texWidth, (uint32_t)texHeight},
+      .dimensions = {static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight)},
       .usage = lvk::TextureUsageBits_Sampled,
       .data = pixels.data(),
       .debugName = name,

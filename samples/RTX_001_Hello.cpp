@@ -245,11 +245,11 @@ void createBottomLevelAccelerationStructure() {
       .geometryType = lvk::AccelStructGeomType_Triangles,
       .vertexFormat = lvk::VertexFormat_Float3,
       .vertexBuffer = res.vertexBuffer,
-      .numVertices = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(vertices),
+      .numVertices = static_cast<uint32_t>(LVK_ARRAY_NUM_ELEMENTS(vertices)),
       .indexFormat = lvk::IndexFormat_UI32,
       .indexBuffer = res.indexBuffer,
       .transformBuffer = transformBuffer,
-      .buildRange = {.primitiveCount = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(indices) / 3},
+      .buildRange = {.primitiveCount = static_cast<uint32_t>(LVK_ARRAY_NUM_ELEMENTS(indices)) / 3},
       .debugName = "BLAS",
   });
 }
@@ -304,7 +304,8 @@ VULKAN_APP_MAIN {
     glm::mat4 projInverse;
   } uniformData = {
       .viewInverse = glm::inverse(glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, -5.0f))),
-      .projInverse = glm::inverse(glm::perspective(glm::radians(60.0f), (float)app.width_ / (float)app.height_, 0.1f, 1000.0f)),
+      .projInverse = glm::inverse(
+          glm::perspective(glm::radians(60.0f), static_cast<float>(app.width_) / static_cast<float>(app.height_), 0.1f, 1000.0f)),
   };
 
   res.ubo = ctx_->createBuffer(lvk::BufferDesc{

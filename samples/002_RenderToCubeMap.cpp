@@ -227,10 +227,10 @@ VULKAN_APP_MAIN {
     app.run([&](ldr::Span<const RenderView> views, float /*deltaSeconds*/) {
       LVK_PROFILER_FUNCTION();
 
-      const float fov = float(45.0f * (M_PI / 180.0f));
+      const float fov = static_cast<float>(45.0f * (M_PI / 180.0f));
       const mat4 proj = glm::perspectiveLH(fov, views[0].aspectRatio, 0.1f, 500.0f);
       const mat4 view = glm::translate(mat4(1.0f), vec3(0.0f, 0.0f, 5.0f));
-      const mat4 model = glm::rotate(mat4(1.0f), (float)app.getSimulatedTime(), glm::normalize(vec3(1.0f, 1.0f, 1.0f)));
+      const mat4 model = glm::rotate(mat4(1.0f), static_cast<float>(app.getSimulatedTime()), glm::normalize(vec3(1.0f, 1.0f, 1.0f)));
 
       lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
 
@@ -255,7 +255,7 @@ VULKAN_APP_MAIN {
           float time;
         } pc = {
             .face = face,
-            .time = 10.0f * (float)app.getSimulatedTime(),
+            .time = 10.0f * static_cast<float>(app.getSimulatedTime()),
         };
         buffer.cmdPushConstants(pc);
         buffer.cmdDraw(3);

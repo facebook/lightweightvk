@@ -314,7 +314,7 @@ VULKAN_APP_MAIN {
     int32_t texWidth = 0;
     int32_t texHeight = 0;
     int32_t channels = 0;
-    uint8_t* pixels = stbi_load_from_memory(fileData.data(), (int)fileData.size(), &texWidth, &texHeight, &channels, 4);
+    uint8_t* pixels = stbi_load_from_memory(fileData.data(), static_cast<int>(fileData.size()), &texWidth, &texHeight, &channels, 4);
     SCOPE_EXIT {
       stbi_image_free(pixels);
     };
@@ -324,7 +324,7 @@ VULKAN_APP_MAIN {
     texture1_ = ctx->createTexture({
         .type = lvk::TextureType_2D,
         .format = lvk::Format_RGBA_UN8,
-        .dimensions = {(uint32_t)texWidth, (uint32_t)texHeight},
+        .dimensions = {static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight)},
         .usage = lvk::TextureUsageBits_Sampled,
         .data = pixels,
         .debugName = "wood_polished_01_diff.png",
@@ -417,11 +417,12 @@ VULKAN_APP_MAIN {
 
     // rotate objects around random axes
     for (uint32_t i = 0; i != kNumObjects; i++) {
-      const float direction = powf(-1, (float)(i + 1));
-      const uint32_t cubesInLine = (uint32_t)sqrtf((float)kNumObjects);
-      const vec3 offset = vec3(
-          -1.5f * sqrtf((float)kNumObjects) + 4.0f * (i % cubesInLine), -1.5f * sqrtf((float)kNumObjects) + 4.0f * (i / cubesInLine), 0);
-      modelMatrices[i] = glm::rotate(glm::translate(mat4(1.0f), offset), float(direction * app.getSimulatedTime()), axis_[i]);
+      const float direction = powf(-1, static_cast<float>(i + 1));
+      const uint32_t cubesInLine = static_cast<uint32_t>(sqrtf(static_cast<float>(kNumObjects)));
+      const vec3 offset = vec3(-1.5f * sqrtf(static_cast<float>(kNumObjects)) + 4.0f * (i % cubesInLine),
+                               -1.5f * sqrtf(static_cast<float>(kNumObjects)) + 4.0f * (i / cubesInLine),
+                               0);
+      modelMatrices[i] = glm::rotate(glm::translate(mat4(1.0f), offset), static_cast<float>(direction * app.getSimulatedTime()), axis_[i]);
     }
 
     lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();

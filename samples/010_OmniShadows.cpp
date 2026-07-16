@@ -594,7 +594,7 @@ VULKAN_APP_MAIN {
         });
     {
       buffer.cmdBindRenderPipeline(renderPipelineState_Shadow_);
-      buffer.cmdBindViewport({0.0f, 0.0f, (float)shadowMapSize, (float)shadowMapSize, 0.0f, +1.0f});
+      buffer.cmdBindViewport({0.0f, 0.0f, static_cast<float>(shadowMapSize), static_cast<float>(shadowMapSize), 0.0f, +1.0f});
       buffer.cmdBindScissorRect({0, 0, shadowMapSize, shadowMapSize});
       buffer.cmdPushDebugGroupLabel("Render Shadow", 0xff0000ff);
       buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
