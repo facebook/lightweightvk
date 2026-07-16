@@ -403,7 +403,7 @@ VULKAN_APP_MAIN {
   app.run([&](ldr::Span<const RenderView> views, float /*deltaSeconds*/) {
     LVK_PROFILER_FUNCTION();
 
-    const float fov = float(45.0f * (M_PI / 180.0f));
+    const float fov = static_cast<float>(45.0f * (M_PI / 180.0f));
     const PerFrame perFrame = {
         .proj = glm::perspectiveLH(fov, views[0].aspectRatio, 0.1f, 100.0f),
         // place the "camera" behind the objects, the distance depends on the total number of objects
@@ -469,7 +469,7 @@ VULKAN_APP_MAIN {
     ImGui::SetNextWindowPos({0, 30}, ImGuiCond_Once);
     ImGui::Begin("Present Mode", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
     if (availableModes.size() > 1) {
-      for (int i = 0; i != (int)availableModes.size(); i++) {
+      for (int i = 0; i != static_cast<int>(availableModes.size()); i++) {
         if (ImGui::RadioButton(presentModeToString(availableModes[i]), &currentPresentModeIdx, i)) {
           (void)ctx->setCurrentPresentMode(availableModes[i]);
         }
