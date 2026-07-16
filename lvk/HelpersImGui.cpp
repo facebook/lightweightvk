@@ -228,7 +228,7 @@ void ImGuiRenderer::updateFont(const char* defaultFontTTF, const void* fontData,
     font = io.Fonts->AddFontFromFileTTF(defaultFontTTF, cfg.SizePixels, &cfg);
   } else if (fontData && fontDataSize) {
     cfg.FontDataOwnedByAtlas = false;
-    font = io.Fonts->AddFontFromMemoryTTF(const_cast<void*>(fontData), (int)fontDataSize, cfg.SizePixels, &cfg);
+    font = io.Fonts->AddFontFromMemoryTTF(const_cast<void*>(fontData), static_cast<int>(fontDataSize), cfg.SizePixels, &cfg);
   } else {
     font = io.Fonts->AddFontDefault(&cfg);
   }
@@ -259,7 +259,7 @@ void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
 #endif // LVK_WITH_GLFW || LVK_WITH_SDL3
   {
     const lvk::Dimensions dim = ctx_.getDimensions(desc.color[0].texture);
-    io.DisplaySize = ImVec2((float)dim.width, (float)dim.height);
+    io.DisplaySize = ImVec2(static_cast<float>(dim.width), static_cast<float>(dim.height));
   }
   ImGui::NewFrame();
 }
@@ -293,12 +293,12 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
         pimpl_->textures_.emplace_back(ctx_.createTexture({
             .type = lvk::TextureType_2D,
             .format = lvk::Format_RGBA_UN8,
-            .dimensions = {(uint32_t)tex->Width, (uint32_t)tex->Height},
+            .dimensions = {static_cast<uint32_t>(tex->Width), static_cast<uint32_t>(tex->Height)},
             .usage = lvk::TextureUsageBits_Sampled,
             .data = tex->Pixels,
             .debugName = "ImGuiTexture",
         }));
-        tex->SetTexID((ImTextureID)pimpl_->textures_.back().index());
+        tex->SetTexID(static_cast<ImTextureID>(pimpl_->textures_.back().index()));
         tex->BackendUserData = pimpl_->textures_.back().handleAsVoid();
         tex->SetStatus(ImTextureStatus_OK);
         continue;
@@ -371,8 +371,8 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
 
   // upload vertex/index buffers
   {
-    ImDrawVert* vtx = (ImDrawVert*)ctx_.getMappedPtr(drawableData.vb_);
-    uint16_t* idx = (uint16_t*)ctx_.getMappedPtr(drawableData.ib_);
+    ImDrawVert* vtx = reinterpret_cast<ImDrawVert*>(ctx_.getMappedPtr(drawableData.vb_));
+    uint16_t* idx = reinterpret_cast<uint16_t*>(ctx_.getMappedPtr(drawableData.ib_));
     for (const ImDrawList* cmdList : dd->CmdLists) {
       memcpy(vtx, cmdList->VtxBuffer.Data, cmdList->VtxBuffer.Size * sizeof(ImDrawVert));
       memcpy(idx, cmdList->IdxBuffer.Data, cmdList->IdxBuffer.Size * sizeof(ImDrawIdx));
@@ -426,9 +426,11 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
           .samplerId = samplerClamp_.index(),
       };
       cmdBuffer.cmdPushConstants(bindData);
-      cmdBuffer.cmdBindScissorRect(
-          {uint32_t(clipMin.x), uint32_t(clipMin.y), uint32_t(clipMax.x - clipMin.x), uint32_t(clipMax.y - clipMin.y)});
-      cmdBuffer.cmdDrawIndexed(cmd.ElemCount, 1u, idxOffset + cmd.IdxOffset, int32_t(vtxOffset + cmd.VtxOffset));
+      cmdBuffer.cmdBindScissorRect({static_cast<uint32_t>(clipMin.x),
+                                    static_cast<uint32_t>(clipMin.y),
+                                    static_cast<uint32_t>(clipMax.x - clipMin.x),
+                                    static_cast<uint32_t>(clipMax.y - clipMin.y)});
+      cmdBuffer.cmdDrawIndexed(cmd.ElemCount, 1u, idxOffset + cmd.IdxOffset, static_cast<int32_t>(vtxOffset + cmd.VtxOffset));
     }
     idxOffset += cmdList->IdxBuffer.Size;
     vtxOffset += cmdList->VtxBuffer.Size;
