@@ -277,7 +277,7 @@ VkFormat lvk::formatToVkFormat(lvk::Format format) {
     return VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
   }
 #if defined(_MSC_VER) || defined(__GNUC__)
-  LVK_ASSERT_MSG(false, "TextureFormat value not handled: %d", (int)format);
+  LVK_ASSERT_MSG(false, "TextureFormat value not handled: %d", static_cast<int>(format));
   return VK_FORMAT_UNDEFINED;
 #endif // _MSC_VER
 }
@@ -293,7 +293,7 @@ lvk::ColorSpace lvk::vkColorSpaceToColorSpace(VkColorSpaceKHR colorSpace) {
   case VK_COLOR_SPACE_BT709_LINEAR_EXT:
     return ColorSpace_BT709_LINEAR;
   default:
-    LVK_ASSERT_MSG(false, "Unsupported color space %u", (uint32_t)colorSpace);
+    LVK_ASSERT_MSG(false, "Unsupported color space %u", static_cast<uint32_t>(colorSpace));
     return ColorSpace_SRGB_NONLINEAR;
   }
 }
@@ -368,7 +368,7 @@ lvk::Format lvk::vkFormatToFormat(VkFormat format) {
     return Format_YUV_420p;
   default:;
   }
-  LVK_ASSERT_MSG(false, "VkFormat value not handled: %d", (int)format);
+  LVK_ASSERT_MSG(false, "VkFormat value not handled: %d", static_cast<int>(format));
   return Format_Invalid;
 }
 
@@ -504,12 +504,12 @@ VmaAllocator lvk::createVmaAllocator(VkPhysicalDevice physDev, VkDevice device, 
 glslang_resource_t lvk::getGlslangResource(const VkPhysicalDeviceLimits& limits) {
   const glslang_resource_t resource = {
       .max_lights = 32,
-      .max_clip_planes = (int)limits.maxClipDistances,
+      .max_clip_planes = static_cast<int>(limits.maxClipDistances),
       .max_texture_units = 32,
       .max_texture_coords = 32,
-      .max_vertex_attribs = (int)limits.maxVertexInputAttributes,
-      .max_vertex_uniform_components = (int)limits.maxUniformBufferRange / 4,
-      .max_varying_floats = (int)std::min(limits.maxVertexOutputComponents, limits.maxFragmentInputComponents),
+      .max_vertex_attribs = static_cast<int>(limits.maxVertexInputAttributes),
+      .max_vertex_uniform_components = static_cast<int>(limits.maxUniformBufferRange) / 4,
+      .max_varying_floats = static_cast<int>(std::min(limits.maxVertexOutputComponents, limits.maxFragmentInputComponents)),
       .max_vertex_texture_image_units = 32,
       .max_combined_texture_image_units = 80,
       .max_texture_image_units = 32,
@@ -518,27 +518,27 @@ glslang_resource_t lvk::getGlslangResource(const VkPhysicalDeviceLimits& limits)
       .max_vertex_uniform_vectors = 128,
       .max_varying_vectors = 8,
       .max_fragment_uniform_vectors = 16,
-      .max_vertex_output_vectors = (int)limits.maxVertexOutputComponents / 4,
-      .max_fragment_input_vectors = (int)limits.maxFragmentInputComponents / 4,
+      .max_vertex_output_vectors = static_cast<int>(limits.maxVertexOutputComponents) / 4,
+      .max_fragment_input_vectors = static_cast<int>(limits.maxFragmentInputComponents) / 4,
       .min_program_texel_offset = limits.minTexelOffset,
-      .max_program_texel_offset = (int)limits.maxTexelOffset,
-      .max_clip_distances = (int)limits.maxClipDistances,
-      .max_compute_work_group_count_x = (int)limits.maxComputeWorkGroupCount[0],
-      .max_compute_work_group_count_y = (int)limits.maxComputeWorkGroupCount[1],
-      .max_compute_work_group_count_z = (int)limits.maxComputeWorkGroupCount[2],
-      .max_compute_work_group_size_x = (int)limits.maxComputeWorkGroupSize[0],
-      .max_compute_work_group_size_y = (int)limits.maxComputeWorkGroupSize[1],
-      .max_compute_work_group_size_z = (int)limits.maxComputeWorkGroupSize[2],
+      .max_program_texel_offset = static_cast<int>(limits.maxTexelOffset),
+      .max_clip_distances = static_cast<int>(limits.maxClipDistances),
+      .max_compute_work_group_count_x = static_cast<int>(limits.maxComputeWorkGroupCount[0]),
+      .max_compute_work_group_count_y = static_cast<int>(limits.maxComputeWorkGroupCount[1]),
+      .max_compute_work_group_count_z = static_cast<int>(limits.maxComputeWorkGroupCount[2]),
+      .max_compute_work_group_size_x = static_cast<int>(limits.maxComputeWorkGroupSize[0]),
+      .max_compute_work_group_size_y = static_cast<int>(limits.maxComputeWorkGroupSize[1]),
+      .max_compute_work_group_size_z = static_cast<int>(limits.maxComputeWorkGroupSize[2]),
       .max_compute_uniform_components = 1024,
       .max_compute_texture_image_units = 16,
       .max_compute_image_uniforms = 8,
       .max_compute_atomic_counters = 8,
       .max_compute_atomic_counter_buffers = 1,
       .max_varying_components = 60,
-      .max_vertex_output_components = (int)limits.maxVertexOutputComponents,
-      .max_geometry_input_components = (int)limits.maxGeometryInputComponents,
-      .max_geometry_output_components = (int)limits.maxGeometryOutputComponents,
-      .max_fragment_input_components = (int)limits.maxFragmentInputComponents,
+      .max_vertex_output_components = static_cast<int>(limits.maxVertexOutputComponents),
+      .max_geometry_input_components = static_cast<int>(limits.maxGeometryInputComponents),
+      .max_geometry_output_components = static_cast<int>(limits.maxGeometryOutputComponents),
+      .max_fragment_input_components = static_cast<int>(limits.maxFragmentInputComponents),
       .max_image_units = 8,
       .max_combined_image_units_and_fragment_outputs = 8,
       .max_combined_shader_output_resources = 8,
@@ -550,23 +550,23 @@ glslang_resource_t lvk::getGlslangResource(const VkPhysicalDeviceLimits& limits)
       .max_fragment_image_uniforms = 8,
       .max_combined_image_uniforms = 8,
       .max_geometry_texture_image_units = 16,
-      .max_geometry_output_vertices = (int)limits.maxGeometryOutputVertices,
-      .max_geometry_total_output_components = (int)limits.maxGeometryTotalOutputComponents,
+      .max_geometry_output_vertices = static_cast<int>(limits.maxGeometryOutputVertices),
+      .max_geometry_total_output_components = static_cast<int>(limits.maxGeometryTotalOutputComponents),
       .max_geometry_uniform_components = 1024,
       .max_geometry_varying_components = 64,
-      .max_tess_control_input_components = (int)limits.maxTessellationControlPerVertexInputComponents,
-      .max_tess_control_output_components = (int)limits.maxTessellationControlPerVertexOutputComponents,
+      .max_tess_control_input_components = static_cast<int>(limits.maxTessellationControlPerVertexInputComponents),
+      .max_tess_control_output_components = static_cast<int>(limits.maxTessellationControlPerVertexOutputComponents),
       .max_tess_control_texture_image_units = 16,
       .max_tess_control_uniform_components = 1024,
       .max_tess_control_total_output_components = 4096,
-      .max_tess_evaluation_input_components = (int)limits.maxTessellationEvaluationInputComponents,
-      .max_tess_evaluation_output_components = (int)limits.maxTessellationEvaluationOutputComponents,
+      .max_tess_evaluation_input_components = static_cast<int>(limits.maxTessellationEvaluationInputComponents),
+      .max_tess_evaluation_output_components = static_cast<int>(limits.maxTessellationEvaluationOutputComponents),
       .max_tess_evaluation_texture_image_units = 16,
       .max_tess_evaluation_uniform_components = 1024,
       .max_tess_patch_components = 120,
       .max_patch_vertices = 32,
       .max_tess_gen_level = 64,
-      .max_viewports = (int)limits.maxViewports,
+      .max_viewports = static_cast<int>(limits.maxViewports),
       .max_vertex_atomic_counters = 0,
       .max_tess_control_atomic_counters = 0,
       .max_tess_evaluation_atomic_counters = 0,
@@ -583,8 +583,8 @@ glslang_resource_t lvk::getGlslangResource(const VkPhysicalDeviceLimits& limits)
       .max_atomic_counter_buffer_size = 16384,
       .max_transform_feedback_buffers = 4,
       .max_transform_feedback_interleaved_components = 64,
-      .max_cull_distances = (int)limits.maxCullDistances,
-      .max_combined_clip_and_cull_distances = (int)limits.maxCombinedClipAndCullDistances,
+      .max_cull_distances = static_cast<int>(limits.maxCullDistances),
+      .max_combined_clip_and_cull_distances = static_cast<int>(limits.maxCombinedClipAndCullDistances),
       .max_samples = 4,
       .max_mesh_output_vertices_nv = 256,
       .max_mesh_output_primitives_nv = 512,
@@ -631,7 +631,7 @@ VkFilter samplerFilterToVkFilter(lvk::SamplerFilter filter) {
   case lvk::SamplerFilter_Linear:
     return VK_FILTER_LINEAR;
   }
-  LVK_ASSERT_MSG(false, "SamplerFilter value not handled: %d", (int)filter);
+  LVK_ASSERT_MSG(false, "SamplerFilter value not handled: %d", static_cast<int>(filter));
   return VK_FILTER_LINEAR;
 }
 
@@ -643,7 +643,7 @@ VkSamplerMipmapMode samplerMipMapToVkSamplerMipmapMode(lvk::SamplerMip filter) {
   case lvk::SamplerMip_Linear:
     return VK_SAMPLER_MIPMAP_MODE_LINEAR;
   }
-  LVK_ASSERT_MSG(false, "SamplerMipMap value not handled: %d", (int)filter);
+  LVK_ASSERT_MSG(false, "SamplerMipMap value not handled: %d", static_cast<int>(filter));
   return VK_SAMPLER_MIPMAP_MODE_NEAREST;
 }
 
@@ -660,7 +660,7 @@ VkSamplerAddressMode samplerWrapModeToVkSamplerAddressMode(lvk::SamplerWrap mode
   case lvk::SamplerWrap_MirrorClampToEdge:
     return VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
   }
-  LVK_ASSERT_MSG(false, "SamplerWrapMode value not handled: %d", (int)mode);
+  LVK_ASSERT_MSG(false, "SamplerWrapMode value not handled: %d", static_cast<int>(mode));
   return VK_SAMPLER_ADDRESS_MODE_REPEAT;
 }
 
@@ -669,8 +669,8 @@ VkSamplerAddressMode samplerWrapModeToVkSamplerAddressMode(lvk::SamplerWrap mode
 VkSamplerCreateInfo lvk::samplerStateDescToVkSamplerCreateInfo(const lvk::SamplerStateDesc& desc, const VkPhysicalDeviceLimits& limits) {
   LVK_ASSERT_MSG(desc.mipLodMax >= desc.mipLodMin,
                  "mipLodMax (%d) must be greater than or equal to mipLodMin (%d)",
-                 (int)desc.mipLodMax,
-                 (int)desc.mipLodMin);
+                 static_cast<int>(desc.mipLodMax),
+                 static_cast<int>(desc.mipLodMin));
 
   VkSamplerCreateInfo ci = {
       .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -687,8 +687,8 @@ VkSamplerCreateInfo lvk::samplerStateDescToVkSamplerCreateInfo(const lvk::Sample
       .maxAnisotropy = 0.0f,
       .compareEnable = desc.depthCompareEnabled ? VK_TRUE : VK_FALSE,
       .compareOp = desc.depthCompareEnabled ? lvk::compareOpToVkCompareOp(desc.depthCompareOp) : VK_COMPARE_OP_ALWAYS,
-      .minLod = float(desc.mipLodMin),
-      .maxLod = desc.mipMap == lvk::SamplerMip_Disabled ? float(desc.mipLodMin) : float(desc.mipLodMax),
+      .minLod = static_cast<float>(desc.mipLodMin),
+      .maxLod = desc.mipMap == lvk::SamplerMip_Disabled ? static_cast<float>(desc.mipLodMin) : static_cast<float>(desc.mipLodMax),
       .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
       .unnormalizedCoordinates = VK_FALSE,
   };
@@ -704,7 +704,7 @@ VkSamplerCreateInfo lvk::samplerStateDescToVkSamplerCreateInfo(const lvk::Sample
           "%.0f",
           static_cast<double>(limits.maxSamplerAnisotropy));
     }
-    ci.maxAnisotropy = std::min((float)limits.maxSamplerAnisotropy, (float)desc.maxAnisotropic);
+    ci.maxAnisotropy = std::min(static_cast<float>(limits.maxSamplerAnisotropy), static_cast<float>(desc.maxAnisotropic));
   }
 
   return ci;
@@ -1222,7 +1222,7 @@ uint32_t lvk::getBytesPerPixel(VkFormat format) {
     return 16;
   default:;
   }
-  LVK_ASSERT_MSG(false, "VkFormat value not handled: %d", (int)format);
+  LVK_ASSERT_MSG(false, "VkFormat value not handled: %d", static_cast<int>(format));
   return 1;
 }
 
@@ -1275,7 +1275,7 @@ VkCompareOp lvk::compareOpToVkCompareOp(lvk::CompareOp func) {
   case lvk::CompareOp_AlwaysPass:
     return VK_COMPARE_OP_ALWAYS;
   }
-  LVK_ASSERT_MSG(false, "CompareFunction value not handled: %d", (int)func);
+  LVK_ASSERT_MSG(false, "CompareFunction value not handled: %d", static_cast<int>(func));
   return VK_COMPARE_OP_ALWAYS;
 }
 
