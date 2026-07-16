@@ -217,7 +217,7 @@ VkPrimitiveTopology topologyToVkPrimitiveTopology(lvk::Topology t) {
   case lvk::Topology_Patch:
     return VK_PRIMITIVE_TOPOLOGY_PATCH_LIST;
   }
-  LVK_ASSERT_MSG(false, "Implement Topology = %u", (uint32_t)t);
+  LVK_ASSERT_MSG(false, "Implement Topology = %u", static_cast<uint32_t>(t));
   return VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
 }
 
@@ -1041,9 +1041,9 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
   transitionLayout(commandBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VkImageSubresourceRange{imageAspectFlags, 0, 1, 0, numLayers_});
 
   for (uint32_t layer = 0; layer < numLayers_; ++layer) {
-    int32_t mipWidth = (int32_t)vkExtent_.width;
-    int32_t mipHeight = (int32_t)vkExtent_.height;
-    int32_t mipDepth = (int32_t)vkExtent_.depth; // 3D textures downsample depth too (1 for 2D/array/cube).
+    int32_t mipWidth = static_cast<int32_t>(vkExtent_.width);
+    int32_t mipHeight = static_cast<int32_t>(vkExtent_.height);
+    int32_t mipDepth = static_cast<int32_t>(vkExtent_.depth); // 3D textures downsample depth too (1 for 2D/array/cube).
 
     for (uint32_t i = 1; i < numLevels_; ++i) {
       // 1: Transition the i-th level to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; it will be copied into from the (i-1)-th layer
@@ -1859,7 +1859,7 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
       }
       LLOGW("VkDeviceFaultVendorBinaryHeaderVersionOne:");
       LLOGW("   headerSize        : %u\n", header->headerSize);
-      LLOGW("   headerVersion     : %u\n", (uint32_t)header->headerVersion);
+      LLOGW("   headerVersion     : %u\n", static_cast<uint32_t>(header->headerVersion));
       LLOGW("   vendorID          : %u\n", header->vendorID);
       LLOGW("   deviceID          : %u\n", header->deviceID);
       LLOGW("   driverVersion     : %u\n", header->driverVersion);
@@ -2839,7 +2839,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
 
   const uint32_t width = std::max(fbWidth >> mipLevel, 1u);
   const uint32_t height = std::max(fbHeight >> mipLevel, 1u);
-  const lvk::Viewport viewport = {0.0f, 0.0f, (float)width, (float)height, 0.0f, +1.0f};
+  const lvk::Viewport viewport = {0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f, +1.0f};
   const lvk::ScissorRect scissor = {0, 0, width, height};
 
   VkRenderingAttachmentInfo stencilAttachment = depthAttachment;
@@ -2850,7 +2850,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
       .pNext = nullptr,
       .flags = 0,
-      .renderArea = {.offset = {.x = (int32_t)scissor.x, .y = (int32_t)scissor.y},
+      .renderArea = {.offset = {.x = static_cast<int32_t>(scissor.x), .y = static_cast<int32_t>(scissor.y)},
                      .extent = {.width = scissor.width, .height = scissor.height}},
       .layerCount = renderPass.layerCount,
       .viewMask = renderPass.viewMask,
@@ -2918,7 +2918,7 @@ void lvk::CommandBuffer::cmdBindViewport(const Viewport& viewport) {
 
 void lvk::CommandBuffer::cmdBindScissorRect(const ScissorRect& rect) {
   const VkRect2D scissor = {
-      .offset = {.x = (int32_t)rect.x, .y = (int32_t)rect.y},
+      .offset = {.x = static_cast<int32_t>(rect.x), .y = static_cast<int32_t>(rect.y)},
       .extent = {.width = rect.width, .height = rect.height},
   };
   vkCmdSetScissor(wrapper_->cmdBuf_, 0, 1, &scissor);
@@ -3037,7 +3037,7 @@ void lvk::CommandBuffer::cmdPushConstants(const void* data, size_t size, size_t 
   VkShaderStageFlags shaderStageFlags = stateGraphics ? stateGraphics->shaderStageFlags_
                                                       : (stateCompute ? VK_SHADER_STAGE_COMPUTE_BIT : stateRayTracing->shaderStageFlags_);
 
-  vkCmdPushConstants(wrapper_->cmdBuf_, layout, shaderStageFlags, (uint32_t)offset, (uint32_t)size, data);
+  vkCmdPushConstants(wrapper_->cmdBuf_, layout, shaderStageFlags, static_cast<uint32_t>(offset), static_cast<uint32_t>(size), data);
 }
 
 void lvk::CommandBuffer::cmdFillBuffer(BufferHandle buffer, size_t bufferOffset, size_t size, uint32_t data) {
@@ -3780,7 +3780,7 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
     layerStorageSize += mipSize;
   }
 
-  const uint64_t storageSize = (uint64_t)layerStorageSize * numLayers;
+  const uint64_t storageSize = static_cast<uint64_t>(layerStorageSize) * numLayers;
 
   ensureStagingBufferSize(storageSize);
 
@@ -3910,11 +3910,11 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
   LVK_PROFILER_FUNCTION();
   LVK_ASSERT_MSG(image.numLevels_ == 1, "Can handle only 3D images with exactly 1 mip-level");
 
-  const uint64_t sliceBytes64 = (uint64_t)extent.width * extent.height * getBytesPerPixel(format);
+  const uint64_t sliceBytes64 = static_cast<uint64_t>(extent.width) * extent.height * getBytesPerPixel(format);
   LVK_ASSERT_MSG(sliceBytes64 <= UINT32_MAX, "Single depth slice exceeds 4 GB");
-  const uint32_t sliceBytes = (uint32_t)sliceBytes64;
+  const uint32_t sliceBytes = static_cast<uint32_t>(sliceBytes64);
 
-  const uint32_t maxSlicesPerBatch = std::max(1u, (uint32_t)(ctx_.config_.maxStagingBufferSize / sliceBytes));
+  const uint32_t maxSlicesPerBatch = std::max(1u, static_cast<uint32_t>(ctx_.config_.maxStagingBufferSize / sliceBytes));
 
   ensureStagingBufferSize((VkDeviceSize)sliceBytes * maxSlicesPerBatch);
 
@@ -3956,7 +3956,7 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
         .bufferRowLength = 0,
         .bufferImageHeight = 0,
         .imageSubresource = VkImageSubresourceLayers{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-        .imageOffset = {.x = offset.x, .y = offset.y, .z = (int32_t)currentZ},
+        .imageOffset = {.x = offset.x, .y = offset.y, .z = static_cast<int32_t>(currentZ)},
         .imageExtent = {.width = extent.width, .height = extent.height, .depth = batchSlices},
     };
     const VkCopyBufferToImageInfo2 copyInfo = {
@@ -5491,11 +5491,11 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
     const VkPushConstantRange range = {
         .stageFlags = rps->shaderStageFlags_,
         .offset = 0,
-        .size = (uint32_t)getAlignedSize(pushConstantsSize, 16),
+        .size = static_cast<uint32_t>(getAlignedSize(pushConstantsSize, 16)),
     };
     const VkPipelineLayoutCreateInfo ci = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(dsls),
+        .setLayoutCount = static_cast<uint32_t>(LVK_ARRAY_NUM_ELEMENTS(dsls)),
         .pSetLayouts = dsls,
         .pushConstantRangeCount = pushConstantsSize ? 1u : 0u,
         .pPushConstantRanges = pushConstantsSize ? &range : nullptr,
@@ -5628,7 +5628,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
 
     const VkPushConstantRange range = {
         .stageFlags = rtps->shaderStageFlags_,
-        .size = (uint32_t)getAlignedSize(pushConstantsSize, 16),
+        .size = static_cast<uint32_t>(getAlignedSize(pushConstantsSize, 16)),
     };
 
     const VkPipelineLayoutCreateInfo ciPipelineLayout = {
@@ -5842,7 +5842,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(ComputePipelineHandle handle) {
       const VkPushConstantRange range = {
           .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
           .offset = 0,
-          .size = (uint32_t)getAlignedSize(sm->pushConstantsSize, 16),
+          .size = static_cast<uint32_t>(getAlignedSize(sm->pushConstantsSize, 16)),
       };
       const VkPipelineLayoutCreateInfo ci = {
           .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -6228,7 +6228,7 @@ uint64_t lvk::VulkanContext::gpuAddress(AccelStructHandle handle) const {
 
   LVK_ASSERT(as && as->deviceAddress);
 
-  return as ? (uint64_t)as->deviceAddress : 0u;
+  return as ? static_cast<uint64_t>(as->deviceAddress) : 0u;
 }
 
 lvk::Result lvk::VulkanContext::upload(lvk::BufferHandle handle, const void* data, size_t size, size_t offset) {
@@ -6294,7 +6294,7 @@ uint64_t lvk::VulkanContext::gpuAddress(BufferHandle handle, size_t offset) cons
 
   LVK_ASSERT(buf && buf->vkDeviceAddress_);
 
-  return buf ? (uint64_t)buf->vkDeviceAddress_ + offset : 0u;
+  return buf ? static_cast<uint64_t>(buf->vkDeviceAddress_ + offset) : 0u;
 }
 
 void lvk::VulkanContext::flushMappedMemory(BufferHandle handle, size_t offset, size_t size) const {
@@ -7004,7 +7004,7 @@ lvk::Result lvk::VulkanContext::createInstance() {
 #undef LAYER_SETTINGS_BOOL32
   const VkLayerSettingsCreateInfoEXT layerSettingsCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
-      .settingCount = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(settings),
+      .settingCount = static_cast<uint32_t>(LVK_ARRAY_NUM_ELEMENTS(settings)),
       .pSettings = settings,
   };
 
