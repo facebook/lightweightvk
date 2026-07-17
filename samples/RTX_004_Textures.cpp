@@ -419,7 +419,7 @@ lvk::Holder<lvk::TextureHandle> createTextureFromFile(VulkanApp& app, const char
   return ctx_->createTexture({
       .type = lvk::TextureType_2D,
       .format = lvk::Format_RGBA_UN8,
-      .dimensions = {(uint32_t)texWidth, (uint32_t)texHeight},
+      .dimensions = {static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight)},
       .usage = lvk::TextureUsageBits_Sampled,
       .data = pixels,
       .debugName = fileName,
@@ -453,7 +453,8 @@ VULKAN_APP_MAIN {
     glm::mat4 projInverse;
   } uniformData = {
       .viewInverse = glm::inverse(glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, -8.0f))),
-      .projInverse = glm::inverse(glm::perspective(glm::radians(40.0f), (float)app.width_ / (float)app.height_, 0.1f, 1000.0f)),
+      .projInverse = glm::inverse(
+          glm::perspective(glm::radians(40.0f), static_cast<float>(app.width_) / static_cast<float>(app.height_), 0.1f, 1000.0f)),
   };
 
   res.ubo = ctx_->createBuffer(lvk::BufferDesc{
@@ -468,7 +469,7 @@ VULKAN_APP_MAIN {
       lvk::TextureDesc{
           .type = lvk::TextureType_2D,
           .format = lvk::Format_BGRA_UN8,
-          .dimensions = {(uint32_t)app.width_, (uint32_t)app.height_, 1u},
+          .dimensions = {static_cast<uint32_t>(app.width_), static_cast<uint32_t>(app.height_), 1u},
           .numLayers = 1,
           .numSamples = 1,
           .usage = lvk::TextureUsageBits_Storage,
@@ -505,11 +506,11 @@ VULKAN_APP_MAIN {
     const uint32_t height = views[0].scissorRect.height;
     lvk::ICommandBuffer& buffer = ctx_->acquireCommandBuffer();
 
-    const glm::mat3x4 transformMatrix = glm::rotate(glm::mat4(1.0f), (float)app.getSimulatedTime(), glm::vec3(1, 1, 1));
+    const glm::mat3x4 transformMatrix = glm::rotate(glm::mat4(1.0f), static_cast<float>(app.getSimulatedTime()), glm::vec3(1, 1, 1));
 
     glm::mat3x4 transforms[2] = {
-        glm::rotate(glm::mat4(1.0f), +(float)app.getSimulatedTime(), glm::vec3(1, 1, 1)),
-        glm::rotate(glm::mat4(1.0f), -(float)app.getSimulatedTime(), glm::vec3(1, 1, 1)),
+        glm::rotate(glm::mat4(1.0f), +static_cast<float>(app.getSimulatedTime()), glm::vec3(1, 1, 1)),
+        glm::rotate(glm::mat4(1.0f), -static_cast<float>(app.getSimulatedTime()), glm::vec3(1, 1, 1)),
     };
     // set translation directly in the 3x4 matrices
     transforms[0][0][3] = -2.0f;
@@ -536,7 +537,7 @@ VULKAN_APP_MAIN {
         .texBackground = res.texBackground.index(),
         .texObject = res.texObject.index(),
         .tlas = res.TLAS.index(),
-        .time = (float)app.getSimulatedTime(),
+        .time = static_cast<float>(app.getSimulatedTime()),
     };
 
     buffer.cmdUpdateTLAS(res.TLAS, res.instancesBuffer);
