@@ -938,7 +938,7 @@ lvk::Result lvk::compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
     Slang::ComPtr<slang::IBlob> diagnosticBlob;
     slangModule = session->loadModuleFromSourceString("", "", code, diagnosticBlob.writeRef());
     if (diagnosticBlob) {
-      LLOGW("%s", (const char*)diagnosticBlob->getBufferPointer());
+      LLOGW("%s", static_cast<const char*>(diagnosticBlob->getBufferPointer()));
     }
     if (!slangModule) {
       return Result(Result::Code::RuntimeError, "slang::loadModuleFromSourceString() failed");
@@ -988,7 +988,7 @@ lvk::Result lvk::compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
     SlangResult result = session->createCompositeComponentType(
         componentTypes.getBuffer(), componentTypes.getCount(), composedProgram.writeRef(), diagnosticBlob.writeRef());
     if (diagnosticBlob) {
-      LLOGW("%s\n", (const char*)diagnosticBlob->getBufferPointer());
+      LLOGW("%s\n", static_cast<const char*>(diagnosticBlob->getBufferPointer()));
     }
     if (SLANG_FAILED(result)) {
       LVK_ASSERT_MSG(false, "slang::createCompositeComponentType() failed");
@@ -1002,7 +1002,7 @@ lvk::Result lvk::compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
     const int entryPointIndex = 0;
     const SlangResult result = composedProgram->getEntryPointCode(entryPointIndex, 0, spirvCode.writeRef(), diagnosticBlob.writeRef());
     if (diagnosticBlob) {
-      LLOGW("%s\n", (const char*)diagnosticBlob->getBufferPointer());
+      LLOGW("%s\n", static_cast<const char*>(diagnosticBlob->getBufferPointer()));
     }
     if (SLANG_FAILED(result)) {
       LVK_ASSERT_MSG(false, "slang::getEntryPointCode() failed");

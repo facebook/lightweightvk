@@ -130,7 +130,7 @@ size_t bistroMemFileRead(void* filePtr, void* dst, size_t bytes, void* /*userDat
 }
 unsigned long bistroMemFileSize(void* filePtr, void* /*userData*/) {
   BistroMemFile* file = static_cast<BistroMemFile*>(filePtr);
-  return (unsigned long)file->data.size();
+  return static_cast<unsigned long>(file->data.size());
 }
 
 inline bool loadAndCache(VulkanApp& app, const char* cacheFileName, const char* modelFileName) {
@@ -182,7 +182,7 @@ inline bool loadAndCache(VulkanApp& app, const char* cacheFileName, const char* 
           .position = vec3(p[0], p[1], p[2]),
           .uv = glm::packHalf2x16(vec2(t[0], t[1])),
           .normal = packOctahedral16(vec3(n[0], n[1], n[2])),
-          .mtlIndex = (uint16_t)mesh->face_materials[face],
+          .mtlIndex = static_cast<uint16_t>(mesh->face_materials[face]),
       });
     }
   }
