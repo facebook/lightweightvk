@@ -5986,8 +5986,10 @@ lvk::Holder<lvk::RenderPipelineHandle> lvk::VulkanContext::createRenderPipeline(
   for (uint32_t i = 0; i != rps.numAttributes_; i++) {
     const VertexInput::VertexAttribute& attr = vstate.attributes[i];
 
-    rps.vkAttributes_[i] = {
-        .location = attr.location, .binding = attr.binding, .format = vertexFormatToVkFormat(attr.format), .offset = (uint32_t)attr.offset};
+    rps.vkAttributes_[i] = {.location = attr.location,
+                            .binding = attr.binding,
+                            .format = vertexFormatToVkFormat(attr.format),
+                            .offset = static_cast<uint32_t>(attr.offset)};
 
     if (!bufferAlreadyBound[attr.binding]) {
       bufferAlreadyBound[attr.binding] = true;
@@ -7037,9 +7039,9 @@ lvk::Result lvk::VulkanContext::createInstance() {
       .pNext = &layerSettingsCreateInfo,
       .flags = hasPortabilityEnumeration ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR : 0u,
       .pApplicationInfo = &appInfo,
-      .enabledLayerCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(kDefaultValidationLayers) : 0u,
+      .enabledLayerCount = config_.enableValidation ? static_cast<uint32_t>(LVK_ARRAY_NUM_ELEMENTS(kDefaultValidationLayers)) : 0u,
       .ppEnabledLayerNames = config_.enableValidation ? kDefaultValidationLayers : nullptr,
-      .enabledExtensionCount = (uint32_t)enabledInstanceExtensionNames_.size(),
+      .enabledExtensionCount = static_cast<uint32_t>(enabledInstanceExtensionNames_.size()),
       .ppEnabledExtensionNames = enabledInstanceExtensionNames_.data(),
   };
   VK_ASSERT(vkCreateInstance(&ci, nullptr, &vkInstance_));
@@ -7835,7 +7837,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .pNext = createInfoNext,
       .queueCreateInfoCount = numQueues,
       .pQueueCreateInfos = ciQueue,
-      .enabledExtensionCount = (uint32_t)enabledDeviceExtensionNames_.size(),
+      .enabledExtensionCount = static_cast<uint32_t>(enabledDeviceExtensionNames_.size()),
       .ppEnabledExtensionNames = enabledDeviceExtensionNames_.data(),
       .pEnabledFeatures = &deviceFeatures10,
   };
@@ -8118,7 +8120,7 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(VulkanContext::DescriptorSet&
       lvk::getDSLBinding(kBinding_StorageImages, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxTextures, stageFlags),
       lvk::getDSLBinding(kBinding_YUVImages,
                          VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                         (uint32_t)immutableSamplers.size() ? (workaround_noYcbcrSamplerArray_ ? 1u : maxTextures) : 0,
+                         static_cast<uint32_t>(immutableSamplers.size()) ? (workaround_noYcbcrSamplerArray_ ? 1u : maxTextures) : 0,
                          stageFlags,
                          immutableSamplersData),
       lvk::getDSLBinding(kBinding_AccelerationStructures, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxAccelStructs, stageFlags),
@@ -8131,14 +8133,14 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(VulkanContext::DescriptorSet&
   }
   const VkDescriptorSetLayoutBindingFlagsCreateInfo setLayoutBindingFlagsCI = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT,
-      .bindingCount = uint32_t(has_KHR_acceleration_structure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
+      .bindingCount = static_cast<uint32_t>(has_KHR_acceleration_structure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
       .pBindingFlags = bindingFlags,
   };
   const VkDescriptorSetLayoutCreateInfo dslci = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
       .pNext = &setLayoutBindingFlagsCI,
       .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT,
-      .bindingCount = uint32_t(has_KHR_acceleration_structure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
+      .bindingCount = static_cast<uint32_t>(has_KHR_acceleration_structure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
       .pBindings = bindings,
   };
   VK_ASSERT(vkCreateDescriptorSetLayout(vkDevice_, &dslci, nullptr, &dset.vkDSL));
@@ -8448,7 +8450,7 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
 
   VkWriteDescriptorSetAccelerationStructureKHR writeAccelStruct = {
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
-      .accelerationStructureCount = (uint32_t)handlesAccelStructs.size(),
+      .accelerationStructureCount = static_cast<uint32_t>(handlesAccelStructs.size()),
       .pAccelerationStructures = handlesAccelStructs.data(),
   };
 
@@ -8462,7 +8464,7 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
         .dstSet = dset.vkDSet,
         .dstBinding = kBinding_AccelerationStructures,
         .dstArrayElement = 0,
-        .descriptorCount = (uint32_t)handlesAccelStructs.size(),
+        .descriptorCount = static_cast<uint32_t>(handlesAccelStructs.size()),
         .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
     };
   }
@@ -8473,7 +8475,7 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
         .dstSet = dset.vkDSet,
         .dstBinding = kBinding_Textures,
         .dstArrayElement = 0,
-        .descriptorCount = (uint32_t)infoSampledImages.size(),
+        .descriptorCount = static_cast<uint32_t>(infoSampledImages.size()),
         .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
         .pImageInfo = infoSampledImages.data(),
     };
@@ -8485,7 +8487,7 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
         .dstSet = dset.vkDSet,
         .dstBinding = kBinding_Samplers,
         .dstArrayElement = 0,
-        .descriptorCount = (uint32_t)infoSamplers.size(),
+        .descriptorCount = static_cast<uint32_t>(infoSamplers.size()),
         .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
         .pImageInfo = infoSamplers.data(),
     };
@@ -8497,7 +8499,7 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
         .dstSet = dset.vkDSet,
         .dstBinding = kBinding_StorageImages,
         .dstArrayElement = 0,
-        .descriptorCount = (uint32_t)infoStorageImages.size(),
+        .descriptorCount = static_cast<uint32_t>(infoStorageImages.size()),
         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
         .pImageInfo = infoStorageImages.data(),
     };
@@ -8509,7 +8511,7 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
         .dstSet = dset.vkDSet,
         .dstBinding = kBinding_YUVImages,
         .dstArrayElement = 0,
-        .descriptorCount = (uint32_t)infoYUVImages.size(),
+        .descriptorCount = static_cast<uint32_t>(infoYUVImages.size()),
         .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         .pImageInfo = infoYUVImages.data(),
     };
