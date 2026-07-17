@@ -293,7 +293,7 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
         pimpl_->textures_.emplace_back(ctx_.createTexture({
             .type = lvk::TextureType_2D,
             .format = lvk::Format_RGBA_UN8,
-            .dimensions = {static_cast<uint32_t>(tex->Width), static_cast<uint32_t>(tex->Height)},
+            .dimensions = {.width = static_cast<uint32_t>(tex->Width), .height = static_cast<uint32_t>(tex->Height)},
             .usage = lvk::TextureUsageBits_Sampled,
             .data = tex->Pixels,
             .debugName = "ImGuiTexture",
@@ -307,8 +307,8 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
         LVK_ASSERT(tex->BytesPerPixel == 4);
         ctx_.upload(TextureHandle(tex->BackendUserData),
                     TextureRangeDesc{
-                        .offset = {tex->UpdateRect.x, tex->UpdateRect.y, 0},
-                        .dimensions = {tex->UpdateRect.w, tex->UpdateRect.h, 1},
+                        .offset = {.x = tex->UpdateRect.x, .y = tex->UpdateRect.y, .z = 0},
+                        .dimensions = {.width = tex->UpdateRect.w, .height = tex->UpdateRect.h, .depth = 1},
                     },
                     tex->GetPixelsAt(tex->UpdateRect.x, tex->UpdateRect.y),
                     tex->Width);
