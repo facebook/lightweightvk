@@ -188,7 +188,7 @@ VULKAN_APP_MAIN {
     lvk::Holder<lvk::TextureHandle> texture_ = ctx->createTexture({
         .type = lvk::TextureType_Cube,
         .format = lvk::Format_BGRA_UN8,
-        .dimensions = {512, 512},
+        .dimensions = {.width = 512, .height = 512},
         .usage = lvk::TextureUsageBits_Sampled | lvk::TextureUsageBits_Attachment,
         .debugName = "CubeMap",
     });
