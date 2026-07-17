@@ -427,7 +427,7 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
     glfwSetWindowUserPointer(window_, this);
 
     glfwSetFramebufferSizeCallback(window_, [](GLFWwindow* window, int width, int height) {
-      VulkanApp* app = (VulkanApp*)glfwGetWindowUserPointer(window);
+      VulkanApp* app = static_cast<VulkanApp*>(glfwGetWindowUserPointer(window));
       if (app->width_ == width && app->height_ == height)
         return;
       app->width_ = width;
@@ -436,7 +436,7 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
       app->depthTexture_.reset();
     });
     glfwSetMouseButtonCallback(window_, [](GLFWwindow* window, int button, int action, int mods) {
-      VulkanApp* app = (VulkanApp*)glfwGetWindowUserPointer(window);
+      VulkanApp* app = static_cast<VulkanApp*>(glfwGetWindowUserPointer(window));
       if (button == GLFW_MOUSE_BUTTON_LEFT) {
         app->mouseState_.pressedLeft = action == GLFW_PRESS;
       }
@@ -445,13 +445,13 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
       }
     });
     glfwSetCursorPosCallback(window_, [](GLFWwindow* window, double x, double y) {
-      VulkanApp* app = (VulkanApp*)glfwGetWindowUserPointer(window);
+      VulkanApp* app = static_cast<VulkanApp*>(glfwGetWindowUserPointer(window));
       const ImVec2 size = ImGui::GetIO().DisplaySize;
       app->mouseState_.pos.x = static_cast<float>(x / size.x);
       app->mouseState_.pos.y = 1.0f - static_cast<float>(y / size.y);
     });
     glfwSetKeyCallback(window_, [](GLFWwindow* window, int key, int scancode, int action, int mods) {
-      VulkanApp* app = (VulkanApp*)glfwGetWindowUserPointer(window);
+      VulkanApp* app = static_cast<VulkanApp*>(glfwGetWindowUserPointer(window));
       const bool pressed = action != GLFW_RELEASE && !ImGui::GetIO().WantCaptureKeyboard;
       if (key == GLFW_KEY_ESCAPE && pressed)
         glfwSetWindowShouldClose(window, GLFW_TRUE);

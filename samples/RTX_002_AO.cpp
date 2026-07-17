@@ -1238,7 +1238,7 @@ bool initModel(VulkanApp& app) {
       .type = lvk::AccelStructType_TLAS,
       .geometryType = lvk::AccelStructGeomType_Instances,
       .instancesBuffer = res.sbInstances_,
-      .buildRange = {.primitiveCount = (uint32_t)instances.size()},
+      .buildRange = {.primitiveCount = static_cast<uint32_t>(instances.size())},
       .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
   });
 

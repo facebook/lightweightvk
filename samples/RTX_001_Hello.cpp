@@ -320,7 +320,7 @@ VULKAN_APP_MAIN {
       lvk::TextureDesc{
           .type = lvk::TextureType_2D,
           .format = lvk::Format_BGRA_UN8,
-          .dimensions = {(uint32_t)app.width_, (uint32_t)app.height_, 1u},
+          .dimensions = {static_cast<uint32_t>(app.width_), static_cast<uint32_t>(app.height_), 1u},
           .numLayers = 1,
           .numSamples = 1,
           .usage = lvk::TextureUsageBits_Storage,
@@ -348,7 +348,7 @@ VULKAN_APP_MAIN {
     const uint32_t height = views[0].scissorRect.height;
     lvk::ICommandBuffer& buffer = ctx_->acquireCommandBuffer();
 
-    const glm::mat3x4 transformMatrix = glm::rotate(glm::mat4(1.0f), (float)app.getSimulatedTime(), glm::vec3(1, 1, 1));
+    const glm::mat3x4 transformMatrix = glm::rotate(glm::mat4(1.0f), static_cast<float>(app.getSimulatedTime()), glm::vec3(1, 1, 1));
     ctx_->upload(res.instancesBuffer, &transformMatrix, sizeof(transformMatrix), offsetof(lvk::AccelStructInstance, transform));
 
     struct {
@@ -360,7 +360,7 @@ VULKAN_APP_MAIN {
         .camBuffer = ctx_->gpuAddress(res.ubo),
         .outTexture = res.storageImage.index(),
         .tlas = res.TLAS.index(),
-        .time = (float)app.getSimulatedTime(),
+        .time = static_cast<float>(app.getSimulatedTime()),
     };
 
     buffer.cmdUpdateTLAS(res.TLAS, res.instancesBuffer);

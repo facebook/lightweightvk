@@ -589,7 +589,7 @@ bool initModel(VulkanApp& app) {
       .type = lvk::AccelStructType_TLAS,
       .geometryType = lvk::AccelStructGeomType_Instances,
       .instancesBuffer = res.sbInstances_,
-      .buildRange = {.primitiveCount = (uint32_t)instances.size()},
+      .buildRange = {.primitiveCount = static_cast<uint32_t>(instances.size())},
       .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
   });
 
@@ -622,7 +622,7 @@ VULKAN_APP_MAIN {
   res.rayTracingOutputImage_ = ctx_->createTexture(lvk::TextureDesc{
       .type = lvk::TextureType_2D,
       .format = lvk::Format_BGRA_UN8,
-      .dimensions = {(uint32_t)app.width_, (uint32_t)app.height_},
+      .dimensions = {static_cast<uint32_t>(app.width_), static_cast<uint32_t>(app.height_)},
       .usage = lvk::TextureUsageBits_Sampled | lvk::TextureUsageBits_Storage,
       .debugName = "Ray-Tracing Output Image",
   });
