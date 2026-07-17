@@ -503,7 +503,7 @@ VULKAN_APP_MAIN {
         *s.out = ctx->createTexture({
             .type = lvk::TextureType_2D,
             .format = lvk::Format_RGBA_UN8,
-            .dimensions = {static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight)},
+            .dimensions = {.width = static_cast<uint32_t>(texWidth), .height = static_cast<uint32_t>(texHeight)},
             .usage = lvk::TextureUsageBits_Sampled,
             .data = pixels,
             .generateMipmaps = true,
