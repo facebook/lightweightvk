@@ -156,7 +156,7 @@ VULKAN_APP_MAIN {
                              {.color = {{.texture = ctx->getCurrentSwapchainTexture()}}});
     buffer.cmdBindRenderPipeline(res.renderPipelineState_Triangle_);
     buffer.cmdPushDebugGroupLabel("Render Triangle", 0xff0000ff);
-    buffer.cmdDrawMeshTasks({1, 1, 1});
+    buffer.cmdDrawMeshTasks({.width = 1, .height = 1, .depth = 1});
 
     buffer.cmdPopDebugGroupLabel();
     buffer.cmdEndRendering();
