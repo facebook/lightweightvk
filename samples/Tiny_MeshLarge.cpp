@@ -1228,7 +1228,7 @@ void render(double delta) {
       ImGui::SetNextWindowBgAlpha(0.30f);
       ImGui::SetNextWindowSize(ImVec2(ImGui::CalcTextSize("FPS : _______").x, 0));
       if (ImGui::Begin("##FPS", nullptr, flags)) {
-        ImGui::Text("FPS : %i", (int)fps_.getFPS());
+        ImGui::Text("FPS : %i", static_cast<int>(fps_.getFPS()));
         ImGui::Text("Ms  : %.1f", 1000.0 / fps_.getFPS());
       }
       ImGui::End();
