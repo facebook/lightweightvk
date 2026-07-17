@@ -10,6 +10,7 @@
 #include "LVK.h"
 
 #include <assert.h>
+#include <type_traits>
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -111,6 +112,16 @@ static constexpr TextureFormatProperties properties[] = {
 
 static_assert(sizeof(TextureFormatProperties) <= sizeof(uint32_t));
 static_assert(LVK_ARRAY_NUM_ELEMENTS(properties) == lvk::Format_YUV_420p + 1);
+
+static_assert(std::is_trivially_copyable_v<lvk::ScissorRect>);
+static_assert(std::is_trivially_copyable_v<lvk::Viewport>);
+static_assert(std::is_trivially_copyable_v<lvk::Dimensions>);
+static_assert(std::is_trivially_copyable_v<lvk::StencilState>);
+static_assert(std::is_trivially_copyable_v<lvk::DepthState>);
+static_assert(std::is_trivially_copyable_v<lvk::Offset3D>);
+static_assert(std::is_trivially_copyable_v<lvk::TextureLayers>);
+static_assert(std::is_trivially_copyable_v<lvk::TextureRangeDesc>);
+static_assert(std::is_trivially_copyable_v<lvk::ComponentMapping>);
 
 bool lvk::isDepthOrStencilFormat(lvk::Format format) {
   return properties[format].depth || properties[format].stencil;
