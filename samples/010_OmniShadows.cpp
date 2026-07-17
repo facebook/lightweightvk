@@ -500,7 +500,7 @@ VULKAN_APP_MAIN {
   lvk::Holder<lvk::TextureHandle> shadowMap = ctx->createTexture({
       .type = lvk::TextureType_Cube,
       .format = lvk::Format_Z_UN16, // `Mali-G925` does not work with VK_FORMAT_D32_SFLOAT
-      .dimensions = {shadowMapSize, shadowMapSize},
+      .dimensions = {.width = shadowMapSize, .height = shadowMapSize},
       .usage = lvk::TextureUsageBits_Sampled | lvk::TextureUsageBits_Attachment,
       .debugName = "Texture: shadow map",
   });
@@ -594,8 +594,13 @@ VULKAN_APP_MAIN {
         });
     {
       buffer.cmdBindRenderPipeline(renderPipelineState_Shadow_);
-      buffer.cmdBindViewport({0.0f, 0.0f, static_cast<float>(shadowMapSize), static_cast<float>(shadowMapSize), 0.0f, +1.0f});
-      buffer.cmdBindScissorRect({0, 0, shadowMapSize, shadowMapSize});
+      buffer.cmdBindViewport({.x = 0.0f,
+                              .y = 0.0f,
+                              .width = static_cast<float>(shadowMapSize),
+                              .height = static_cast<float>(shadowMapSize),
+                              .minDepth = 0.0f,
+                              .maxDepth = +1.0f});
+      buffer.cmdBindScissorRect({.x = 0, .y = 0, .width = shadowMapSize, .height = shadowMapSize});
       buffer.cmdPushDebugGroupLabel("Render Shadow", 0xff0000ff);
       buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
       drawMesh(bufPerFrameShadow);
