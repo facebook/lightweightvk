@@ -761,7 +761,7 @@ VULKAN_APP_MAIN {
   lvk::Holder<lvk::TextureHandle> texture_ = ctx->createTexture({
       .type = lvk::TextureType_2D,
       .format = lvk::Format_R_UN8,
-      .dimensions = {64, 64},
+      .dimensions = {.width = 64, .height = 64},
       .usage = lvk::TextureUsageBits_Sampled,
       .data = particleTextureData,
       .debugName = "Particle",
@@ -929,7 +929,7 @@ VULKAN_APP_MAIN {
       };
       buffer.cmdPushConstants(bindings);
       if (!vertices.empty()) {
-        buffer.cmdDrawMeshTasks({static_cast<uint32_t>(vertices.size() / kParticlesPerWorkgroup), 1, 1});
+        buffer.cmdDrawMeshTasks({.width = static_cast<uint32_t>(vertices.size() / kParticlesPerWorkgroup), .height = 1, .depth = 1});
       }
       buffer.cmdPopDebugGroupLabel();
 
