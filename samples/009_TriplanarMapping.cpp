@@ -294,7 +294,7 @@ VULKAN_APP_MAIN {
     texture0_ = ctx->createTexture({
         .type = lvk::TextureType_2D,
         .format = lvk::Format_BGRA_UN8,
-        .dimensions = {texWidth, texHeight},
+        .dimensions = {.width = texWidth, .height = texHeight},
         .usage = lvk::TextureUsageBits_Sampled,
         .data = pixels.data(),
         .debugName = "XOR pattern",
@@ -324,7 +324,7 @@ VULKAN_APP_MAIN {
     texture1_ = ctx->createTexture({
         .type = lvk::TextureType_2D,
         .format = lvk::Format_RGBA_UN8,
-        .dimensions = {static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight)},
+        .dimensions = {.width = static_cast<uint32_t>(texWidth), .height = static_cast<uint32_t>(texHeight)},
         .usage = lvk::TextureUsageBits_Sampled,
         .data = pixels,
         .debugName = "wood_polished_01_diff.png",
