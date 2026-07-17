@@ -1573,7 +1573,7 @@ VULKAN_APP_MAIN {
 
     if (mesh.mesh->firstVertex == -1) {
       // pack all different mesh objects into one giant vertex buffer
-      mesh.mesh->firstVertex = (int)allVertices.size();
+      mesh.mesh->firstVertex = static_cast<int>(allVertices.size());
       allVertices.reserve(allVertices.size() + mesh.mesh->vertices.size());
       allVertices.insert(allVertices.end(), mesh.mesh->vertices.begin(), mesh.mesh->vertices.end());
     }
@@ -1583,12 +1583,12 @@ VULKAN_APP_MAIN {
     flatRenderQueue.push_back(RenderOp{
         .pipeline = m.pipeline,
         .pipelineW = m.pipelineW ? m.pipelineW : m.pipeline,
-        .firstVertex = (uint32_t)mesh.mesh->firstVertex,
-        .numVertices = (uint32_t)mesh.mesh->vertices.size(),
+        .firstVertex = static_cast<uint32_t>(mesh.mesh->firstVertex),
+        .numVertices = static_cast<uint32_t>(mesh.mesh->vertices.size()),
         .drawData =
             {
-                .idMatrix = (uint32_t)i,
-                .idMaterial = (uint32_t)materialIdx,
+                .idMatrix = static_cast<uint32_t>(i),
+                .idMaterial = static_cast<uint32_t>(materialIdx),
             },
     });
   }
