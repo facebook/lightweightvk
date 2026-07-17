@@ -826,7 +826,7 @@ bool loadAndCache(const char* cacheFileName) {
           .position = vec3(p[0], p[1], p[2]),
           .uv = glm::packHalf2x16(vec2(t[0], t[1])),
           .normal = packOctahedral16(vec3(n[0], n[1], n[2])),
-          .mtlIndex = (uint16_t)mesh->face_materials[face],
+          .mtlIndex = static_cast<uint16_t>(mesh->face_materials[face]),
       });
     }
   }
@@ -873,9 +873,9 @@ bool loadAndCache(const char* cacheFileName) {
   if (!cacheFile) {
     return false;
   }
-  const uint32_t numMaterials = (uint32_t)cachedMaterials_.size();
-  const uint32_t numVertices = (uint32_t)vertexData_.size();
-  const uint32_t numIndices = (uint32_t)indexData_.size();
+  const uint32_t numMaterials = static_cast<uint32_t>(cachedMaterials_.size());
+  const uint32_t numVertices = static_cast<uint32_t>(vertexData_.size());
+  const uint32_t numIndices = static_cast<uint32_t>(indexData_.size());
   fwrite(&kMeshCacheVersion, sizeof(kMeshCacheVersion), 1, cacheFile);
   fwrite(&numMaterials, sizeof(numMaterials), 1, cacheFile);
   fwrite(&numVertices, sizeof(numVertices), 1, cacheFile);
@@ -1243,7 +1243,7 @@ void render(double delta) {
   timestampBeginRendering = getCurrentTimestamp();
 
   const float fov = float(45.0f * (M_PI / 180.0f));
-  const float aspectRatio = (float)width_ / (float)height_;
+  const float aspectRatio = static_cast<float>(width_) / static_cast<float>(height_);
 
   const mat4 shadowProj = glm::perspective(float(60.0f * (M_PI / 180.0f)), 1.0f, 10.0f, 4000.0f);
   const mat4 shadowView = mat4(vec4(0.772608519f, 0.532385886f, -0.345892131f, 0),
@@ -1370,14 +1370,14 @@ void render(double delta) {
         uint32_t height;
       } bindings = {
           .texture = tex.index(),
-          .width = (uint32_t)width_,
-          .height = (uint32_t)height_,
+          .width = static_cast<uint32_t>(width_),
+          .height = static_cast<uint32_t>(height_),
       };
       buffer.cmdPushConstants(bindings);
       buffer.cmdDispatch(
           {
-              .width = 1 + (uint32_t)width_ / 16,
-              .height = 1 + (uint32_t)height_ / 16,
+              .width = 1 + static_cast<uint32_t>(width_) / 16,
+              .height = 1 + static_cast<uint32_t>(height_) / 16,
               .depth = 1u,
           },
           {
@@ -1473,8 +1473,8 @@ void generateCompressedTexture(const LoadedImage& img) {
     ktxTexture_GetImageOffset(ktxTexture(textureKTX2), i, 0, 0, &offset);
 
     stbir_resize_uint8_linear((const unsigned char*)img.pixels,
-                              (int)img.w,
-                              (int)img.h,
+                              static_cast<int>(img.w),
+                              static_cast<int>(img.h),
                               0,
                               ktxTexture_GetData(ktxTexture(textureKTX2)) + offset,
                               w,
@@ -1560,9 +1560,9 @@ LoadedImage loadImage(const char* fileName, int channels) {
   uint8_t* pixels = stbi_load(fileName, &w, &h, nullptr, channels);
 
   const LoadedImage img = {
-      .w = (uint32_t)w,
-      .h = (uint32_t)h,
-      .channels = (uint32_t)channels,
+      .w = static_cast<uint32_t>(w),
+      .h = static_cast<uint32_t>(h),
+      .channels = static_cast<uint32_t>(channels),
       .pixels = pixels,
       .debugName = debugName,
       .compressedFileName = convertFileName(fileName),
@@ -1616,7 +1616,7 @@ void loadMaterial(size_t i) {
 void loadMaterials() {
   stbi_set_flip_vertically_on_load(1);
 
-  remainingMaterialsToLoad_ = (uint32_t)cachedMaterials_.size();
+  remainingMaterialsToLoad_ = static_cast<uint32_t>(cachedMaterials_.size());
 
   textures_.resize(cachedMaterials_.size());
   for (size_t i = 0; i != cachedMaterials_.size(); i++) {
@@ -2133,7 +2133,7 @@ double getCurrentTimestamp() {
 #if LVK_WITH_GLFW
   return glfwGetTime();
 #elif LVK_WITH_SDL3
-  return (double)SDL_GetTicks() * 0.001;
+  return static_cast<double>(SDL_GetTicks()) * 0.001;
 #endif
 }
 
@@ -2219,7 +2219,8 @@ void saveScreenshot() {
 
   ktxTexture1* texture = nullptr;
   (void)LVK_VERIFY(ktxTexture1_Create(&createInfo, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture) == KTX_SUCCESS);
-  ctx_->download(ctx_->getCurrentSwapchainTexture(), {.dimensions = {(uint32_t)width_, (uint32_t)height_}}, texture->pData);
+  ctx_->download(
+      ctx_->getCurrentSwapchainTexture(), {.dimensions = {static_cast<uint32_t>(width_), static_cast<uint32_t>(height_)}}, texture->pData);
   ktxTexture_WriteToNamedFile(ktxTexture(texture), "screenshot.ktx");
   ktxTexture_Destroy(ktxTexture(texture));
 }
@@ -2317,7 +2318,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
         resize();
         break;
       case SDL_EVENT_MOUSE_MOTION:
-        mousePos_ = vec2((float)event.motion.x / width_, 1.0f - (float)event.motion.y / height_);
+        mousePos_ = vec2(static_cast<float>(event.motion.x) / width_, 1.0f - static_cast<float>(event.motion.y) / height_);
         break;
       case SDL_EVENT_MOUSE_BUTTON_DOWN:
       case SDL_EVENT_MOUSE_BUTTON_UP: {
@@ -2373,7 +2374,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
 double getCurrentTimestamp() {
   timespec t = {0, 0};
   clock_gettime(CLOCK_MONOTONIC, &t);
-  return (double)t.tv_sec + 1.0e-9 * t.tv_nsec;
+  return static_cast<double>(t.tv_sec) + 1.0e-9 * t.tv_nsec;
 }
 
 extern "C" {
