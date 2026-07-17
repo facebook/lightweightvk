@@ -50,13 +50,13 @@ extern "C" VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL lvp_GetInstanceProcAddr(VkIn
 uint32_t lvk::VulkanPipelineBuilder::numPipelinesCreated_ = 0;
 
 static_assert(lvk::HWDeviceDesc::LVK_MAX_PHYSICAL_DEVICE_NAME_SIZE == VK_MAX_PHYSICAL_DEVICE_NAME_SIZE);
-static_assert(lvk::Swizzle_Default == (uint32_t)VK_COMPONENT_SWIZZLE_IDENTITY);
-static_assert(lvk::Swizzle_0 == (uint32_t)VK_COMPONENT_SWIZZLE_ZERO);
-static_assert(lvk::Swizzle_1 == (uint32_t)VK_COMPONENT_SWIZZLE_ONE);
-static_assert(lvk::Swizzle_R == (uint32_t)VK_COMPONENT_SWIZZLE_R);
-static_assert(lvk::Swizzle_G == (uint32_t)VK_COMPONENT_SWIZZLE_G);
-static_assert(lvk::Swizzle_B == (uint32_t)VK_COMPONENT_SWIZZLE_B);
-static_assert(lvk::Swizzle_A == (uint32_t)VK_COMPONENT_SWIZZLE_A);
+static_assert(lvk::Swizzle_Default == static_cast<uint32_t>(VK_COMPONENT_SWIZZLE_IDENTITY));
+static_assert(lvk::Swizzle_0 == static_cast<uint32_t>(VK_COMPONENT_SWIZZLE_ZERO));
+static_assert(lvk::Swizzle_1 == static_cast<uint32_t>(VK_COMPONENT_SWIZZLE_ONE));
+static_assert(lvk::Swizzle_R == static_cast<uint32_t>(VK_COMPONENT_SWIZZLE_R));
+static_assert(lvk::Swizzle_G == static_cast<uint32_t>(VK_COMPONENT_SWIZZLE_G));
+static_assert(lvk::Swizzle_B == static_cast<uint32_t>(VK_COMPONENT_SWIZZLE_B));
+static_assert(lvk::Swizzle_A == static_cast<uint32_t>(VK_COMPONENT_SWIZZLE_A));
 static_assert(sizeof(lvk::AccelStructInstance) == sizeof(VkAccelerationStructureInstanceKHR));
 static_assert(sizeof(lvk::mat3x4) == sizeof(VkTransformMatrixKHR));
 static_assert(sizeof(lvk::ClearColorValue) == sizeof(VkClearColorValue));
@@ -2556,10 +2556,10 @@ void lvk::CommandBuffer::cmdPushDebugGroupLabel(const char* label, uint32_t colo
       .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
       .pNext = nullptr,
       .pLabelName = label,
-      .color = {float((colorRGBA >> 0) & 0xff) / 255.0f,
-                float((colorRGBA >> 8) & 0xff) / 255.0f,
-                float((colorRGBA >> 16) & 0xff) / 255.0f,
-                float((colorRGBA >> 24) & 0xff) / 255.0f},
+      .color = {static_cast<float>((colorRGBA >> 0) & 0xff) / 255.0f,
+                static_cast<float>((colorRGBA >> 8) & 0xff) / 255.0f,
+                static_cast<float>((colorRGBA >> 16) & 0xff) / 255.0f,
+                static_cast<float>((colorRGBA >> 24) & 0xff) / 255.0f},
   };
   vkCmdBeginDebugUtilsLabelEXT(wrapper_->cmdBuf_, &utilsLabel);
 }
@@ -2574,10 +2574,10 @@ void lvk::CommandBuffer::cmdInsertDebugEventLabel(const char* label, uint32_t co
       .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
       .pNext = nullptr,
       .pLabelName = label,
-      .color = {float((colorRGBA >> 0) & 0xff) / 255.0f,
-                float((colorRGBA >> 8) & 0xff) / 255.0f,
-                float((colorRGBA >> 16) & 0xff) / 255.0f,
-                float((colorRGBA >> 24) & 0xff) / 255.0f},
+      .color = {static_cast<float>((colorRGBA >> 0) & 0xff) / 255.0f,
+                static_cast<float>((colorRGBA >> 8) & 0xff) / 255.0f,
+                static_cast<float>((colorRGBA >> 16) & 0xff) / 255.0f,
+                static_cast<float>((colorRGBA >> 24) & 0xff) / 255.0f},
   };
   vkCmdInsertDebugUtilsLabelEXT(wrapper_->cmdBuf_, &utilsLabel);
 }
@@ -3471,14 +3471,14 @@ void lvk::CommandBuffer::cmdCopyImage(TextureHandle src,
       .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
       .srcSubresource = regionCopy.srcSubresource,
       .srcOffsets = {{},
-                     {.x = int32_t(srcOffset.x + imgSrc->vkExtent_.width),
-                      .y = int32_t(srcOffset.y + imgSrc->vkExtent_.height),
-                      .z = int32_t(srcOffset.z + imgSrc->vkExtent_.depth)}},
+                     {.x = static_cast<int32_t>(srcOffset.x + imgSrc->vkExtent_.width),
+                      .y = static_cast<int32_t>(srcOffset.y + imgSrc->vkExtent_.height),
+                      .z = static_cast<int32_t>(srcOffset.z + imgSrc->vkExtent_.depth)}},
       .dstSubresource = regionCopy.dstSubresource,
       .dstOffsets = {{},
-                     {.x = int32_t(dstOffset.x + imgDst->vkExtent_.width),
-                      .y = int32_t(dstOffset.y + imgDst->vkExtent_.height),
-                      .z = int32_t(dstOffset.z + imgDst->vkExtent_.depth)}},
+                     {.x = static_cast<int32_t>(dstOffset.x + imgDst->vkExtent_.width),
+                      .y = static_cast<int32_t>(dstOffset.y + imgDst->vkExtent_.height),
+                      .z = static_cast<int32_t>(dstOffset.z + imgDst->vkExtent_.depth)}},
   };
 
   const bool isCompatible = getBytesPerPixel(imgSrc->vkImageFormat_) == getBytesPerPixel(imgDst->vkImageFormat_);
@@ -3916,7 +3916,7 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
 
   const uint32_t maxSlicesPerBatch = std::max(1u, static_cast<uint32_t>(ctx_.config_.maxStagingBufferSize / sliceBytes));
 
-  ensureStagingBufferSize((VkDeviceSize)sliceBytes * maxSlicesPerBatch);
+  ensureStagingBufferSize(static_cast<VkDeviceSize>(sliceBytes) * maxSlicesPerBatch);
 
   const uint8_t* srcPtr = static_cast<const uint8_t*>(data);
   uint32_t remainingSlices = extent.depth;
@@ -3926,7 +3926,7 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
 
   while (remainingSlices) {
     const uint32_t batchSlices = std::min(remainingSlices, maxSlicesPerBatch);
-    const VkDeviceSize batchBytes = (VkDeviceSize)batchSlices * sliceBytes;
+    const VkDeviceSize batchBytes = static_cast<VkDeviceSize>(batchSlices) * sliceBytes;
 
     MemoryRegionDesc desc = getNextFreeOffset(batchBytes);
     if (desc.size_ < batchBytes) {
@@ -4959,10 +4959,10 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   }
 
   const VkComponentMapping components = {
-      .r = VkComponentSwizzle(desc.components.r),
-      .g = VkComponentSwizzle(desc.components.g),
-      .b = VkComponentSwizzle(desc.components.b),
-      .a = VkComponentSwizzle(desc.components.a),
+      .r = static_cast<VkComponentSwizzle>(desc.components.r),
+      .g = static_cast<VkComponentSwizzle>(desc.components.g),
+      .b = static_cast<VkComponentSwizzle>(desc.components.b),
+      .a = static_cast<VkComponentSwizzle>(desc.components.a),
   };
 
   // a sampled view of a multiplanar (YUV) format always needs the Y'CbCr conversion chained in, regardless of whether the image is disjoint
@@ -5056,10 +5056,10 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
   }
 
   const VkComponentMapping components = {
-      .r = VkComponentSwizzle(desc.components.r),
-      .g = VkComponentSwizzle(desc.components.g),
-      .b = VkComponentSwizzle(desc.components.b),
-      .a = VkComponentSwizzle(desc.components.a),
+      .r = static_cast<VkComponentSwizzle>(desc.components.r),
+      .g = static_cast<VkComponentSwizzle>(desc.components.g),
+      .b = static_cast<VkComponentSwizzle>(desc.components.b),
+      .a = static_cast<VkComponentSwizzle>(desc.components.a),
   };
 
   LVK_ASSERT_MSG(lvk::getNumImagePlanes(image.vkImageFormat_) == 1, "Unsupported multiplanar image");
@@ -6820,7 +6820,7 @@ uint32_t lvk::VulkanContext::getFramebufferMSAABitMask() const {
 }
 
 double lvk::VulkanContext::getTimestampPeriodToMs() const {
-  return double(getVkPhysicalDeviceProperties().limits.timestampPeriod) * 1e-6;
+  return static_cast<double>(getVkPhysicalDeviceProperties().limits.timestampPeriod) * 1e-6;
 }
 
 bool lvk::VulkanContext::getQueryPoolResults(QueryPoolHandle pool,
