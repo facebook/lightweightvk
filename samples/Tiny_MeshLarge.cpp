@@ -1874,8 +1874,9 @@ lvk::TextureHandle createTexture(const LoadedImage& img) {
       .dimensions = {img.w, img.h},
       .usage = lvk::TextureUsageBits_Sampled,
       .numMipLevels = lvk::calcNumMipLevels(img.w, img.h),
-      .components = (img.channels == 1) ? lvk::ComponentMapping{lvk::Swizzle_R, lvk::Swizzle_R, lvk::Swizzle_R, lvk::Swizzle_R}
-                                        : lvk::ComponentMapping{},
+      .components = (img.channels == 1)
+                        ? lvk::ComponentMapping{.r = lvk::Swizzle_R, .g = lvk::Swizzle_R, .b = lvk::Swizzle_R, .a = lvk::Swizzle_R}
+                        : lvk::ComponentMapping{},
       .data = initialData,
       .dataNumMipLevels = initialDataNumMipLevels,
       .generateMipmaps = generateMipmaps,

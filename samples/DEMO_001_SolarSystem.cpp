@@ -1760,19 +1760,19 @@ VULKAN_APP_MAIN {
         return {
             {proj0,
              view * T0,
-             lvk::Viewport{0, 0, halfW, static_cast<float>(h)},
-             lvk::ScissorRect{0, 0, static_cast<uint32_t>(halfW), static_cast<uint32_t>(h)}},
+             lvk::Viewport{.x = 0, .y = 0, .width = halfW, .height = static_cast<float>(h)},
+             lvk::ScissorRect{.x = 0, .y = 0, .width = static_cast<uint32_t>(halfW), .height = static_cast<uint32_t>(h)}},
             {proj1,
              view * T1,
-             lvk::Viewport{0, 0, halfW, static_cast<float>(h)},
-             lvk::ScissorRect{0, 0, static_cast<uint32_t>(halfW), static_cast<uint32_t>(h)}},
+             lvk::Viewport{.x = 0, .y = 0, .width = halfW, .height = static_cast<float>(h)},
+             lvk::ScissorRect{.x = 0, .y = 0, .width = static_cast<uint32_t>(halfW), .height = static_cast<uint32_t>(h)}},
         };
       }
       const mat4 proj = glm::perspective(fov, aspectRatio, nearPlane, farPlane);
       return {{proj,
                view,
-               lvk::Viewport{0, 0, static_cast<float>(w), static_cast<float>(h)},
-               lvk::ScissorRect{0, 0, static_cast<uint32_t>(w), static_cast<uint32_t>(h)}}};
+               lvk::Viewport{.x = 0, .y = 0, .width = static_cast<float>(w), .height = static_cast<float>(h)},
+               lvk::ScissorRect{.x = 0, .y = 0, .width = static_cast<uint32_t>(w), .height = static_cast<uint32_t>(h)}}};
     }(app.width_, app.height_, aspectRatio, view);
 
     lvk::ICommandBuffer& buf = ctx->acquireCommandBuffer();
