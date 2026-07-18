@@ -159,6 +159,7 @@ uint32_t lvk::getVertexFormatSize(lvk::VertexFormat format) {
     SIZE4(HalfFloat, uint16_t);
   case VertexFormat_Int_2_10_10_10_REV:
     return sizeof(uint32_t);
+  case VertexFormat_Invalid:
   default:
     assert(false);
     return 0;
@@ -187,6 +188,7 @@ uint32_t lvk::getTextureBytesPerLayer(uint32_t width, uint32_t height, lvk::Form
 uint32_t lvk::getTextureBytesPerPlane(uint32_t width, uint32_t height, lvk::Format format, uint32_t plane) {
   (void)LVK_VERIFY(plane < properties[format].numPlanes);
 
+  // NOLINTNEXTLINE(clang-diagnostic-switch-enum)
   switch (format) {
   case Format_YUV_NV12:
     return width * height / (plane + 1);
