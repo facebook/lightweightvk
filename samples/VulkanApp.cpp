@@ -1245,7 +1245,7 @@ void VulkanApp::initXrSwapchains() {
   LLOGL("OpenXR swapchains created: %ux%u per eye, %u images\n",
         xrSwapchains_[0].width,
         xrSwapchains_[0].height,
-        (uint32_t)xrSwapchains_[0].images.size());
+        static_cast<uint32_t>(xrSwapchains_[0].images.size()));
 }
 
 void VulkanApp::destroyXrSwapchains() {
