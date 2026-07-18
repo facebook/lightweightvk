@@ -5666,7 +5666,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   };
 
   const uint32_t kMaxShaderGroups =
-      (uint32_t)(rtps->smRayGen_.size() + rtps->smMiss_.size() + rtps->smCallable_.size() + rtps->hitGroups_.size());
+      static_cast<uint32_t>(rtps->smRayGen_.size() + rtps->smMiss_.size() + rtps->smCallable_.size() + rtps->hitGroups_.size());
   std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups(kMaxShaderGroups);
   uint32_t numShaderGroups = 0;
   uint32_t idxMiss = 0;
@@ -7991,7 +7991,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     const VkDescriptorSetLayoutCreateInfo dslci = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
         .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT,
-        .bindingCount = std::min((uint32_t)LVK_MAX_COLOR_ATTACHMENTS, limits.maxPerStageDescriptorInputAttachments),
+        .bindingCount = std::min(static_cast<uint32_t>(LVK_MAX_COLOR_ATTACHMENTS), limits.maxPerStageDescriptorInputAttachments),
         .pBindings = bindings,
     };
     VK_ASSERT(vkCreateDescriptorSetLayout(vkDevice_, &dslci, nullptr, &dslInputAttachments_));
