@@ -1450,7 +1450,7 @@ VULKAN_APP_MAIN {
 
     buffer.cmdUpdateBuffer(res.ubPerFrame_,
                            UniformsPerFrame{
-                               .proj = glm::perspective(float(45.0f * (M_PI / 180.0f)), views[0].aspectRatio, 0.5f, 500.0f),
+                               .proj = glm::perspective(static_cast<float>(45.0f * (M_PI / 180.0f)), views[0].aspectRatio, 0.5f, 500.0f),
                                .view = app.camera_.getViewMatrix(),
                            });
     buffer.cmdUpdateBuffer(res.ubPerObject_, 0, sizeof(perObject), &perObject);
@@ -1516,7 +1516,7 @@ VULKAN_APP_MAIN {
           .hashSlot = ctx_->gpuAddress(res.sbHashSlot_),
           .sp = spatialHashPixelSize_,
           .smin = spatialHashMinCellSize_,
-          .maxSamples = (uint32_t)spatialHashMaxSamples_,
+          .maxSamples = static_cast<uint32_t>(spatialHashMaxSamples_),
           .hashMapSize = kHashMapSize,
           .resolutionY = views[0].viewport.height,
           .enableFiltering = enableFiltering_ ? 1 : 0,
