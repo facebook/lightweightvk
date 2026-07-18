@@ -4001,7 +4001,7 @@ void lvk::VulkanStagingDevice::getImageData(VulkanImage& image,
   LVK_ASSERT(image.vkImageLayout_ != VK_IMAGE_LAYOUT_UNDEFINED);
   LVK_ASSERT(range.layerCount == 1);
 
-  const uint64_t storageSize = (uint64_t)extent.width * extent.height * extent.depth * getBytesPerPixel(format);
+  const uint64_t storageSize = static_cast<uint64_t>(extent.width) * extent.height * extent.depth * getBytesPerPixel(format);
 
   ensureStagingBufferSize(storageSize);
 
