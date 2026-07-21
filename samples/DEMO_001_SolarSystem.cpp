@@ -8,6 +8,8 @@
  */
 
 #include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <filesystem>
 
 #include "VulkanApp.h"
@@ -1123,7 +1125,7 @@ size_t memFileRead(void* filePtr, void* dst, size_t bytes, void* /*userData*/) {
   MemFile* file = static_cast<MemFile*>(filePtr);
   const size_t remaining = file->data.size() - file->offset;
   const size_t toRead = (bytes < remaining) ? bytes : remaining;
-  memcpy(dst, file->data.data() + file->offset, toRead);
+  std::memcpy(dst, file->data.data() + file->offset, toRead);
   file->offset += toRead;
   return toRead;
 }
@@ -1217,8 +1219,8 @@ Scene createSolarSystemScene(VulkanApp& app) {
         .pipeline = vulkanState.materialDefault,
         .pipelineW = vulkanState.materialDefaultW,
     };
-    const bool isSun = strstr(planets[i].textureName, "_sun") != nullptr;
-    const bool isMoon = strstr(planets[i].textureName, "_moon") != nullptr;
+    const bool isSun = std::strstr(planets[i].textureName, "_sun") != nullptr;
+    const bool isMoon = std::strstr(planets[i].textureName, "_moon") != nullptr;
     if (isSun) {
       Material sunMaterial = planetMaterial;
       sunMaterial.twoSided = true;
@@ -1516,14 +1518,14 @@ VULKAN_APP_MAIN {
 
   for (uint32_t i = 0; i != ctx->getNumSwapchainImages(); i++) {
     char debugName[256] = {0};
-    snprintf(debugName, sizeof(debugName) - 1, "Buffer: bufModelMatrices #%u", i);
+    std::snprintf(debugName, sizeof(debugName) - 1, "Buffer: bufModelMatrices #%u", i);
     vulkanState.bufModelMatrices.emplace_back(ctx->createBuffer({
         .usage = lvk::BufferUsageBits_Storage,
         .storage = lvk::StorageType_HostVisible,
         .size = sizeof(mat4) * scene.meshes.size(),
         .debugName = debugName,
     }));
-    snprintf(debugName, sizeof(debugName) - 1, "Buffer: bufNormalMatrices #%u", i);
+    std::snprintf(debugName, sizeof(debugName) - 1, "Buffer: bufNormalMatrices #%u", i);
     vulkanState.bufNormalMatrices.emplace_back(ctx->createBuffer({
         .usage = lvk::BufferUsageBits_Storage,
         .storage = lvk::StorageType_HostVisible,
@@ -1604,7 +1606,7 @@ VULKAN_APP_MAIN {
   // we need multi-layered framebuffer textures for multiview rendering
   for (uint32_t i = 0; i != ctx->getNumSwapchainImages(); i++) {
     char debugName[256] = {0};
-    snprintf(debugName, sizeof(debugName) - 1, "Offscreen (color #%u)", i);
+    std::snprintf(debugName, sizeof(debugName) - 1, "Offscreen (color #%u)", i);
     vulkanState.texColor.emplace_back(app.ctx_->createTexture({
         .type = lvk::TextureType_2D,
         .format = ctx->getSwapchainFormat(),
