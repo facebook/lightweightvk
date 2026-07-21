@@ -11,6 +11,8 @@
 
 #include "lmath/GeometryShapes.h"
 
+#include <cmath>
+
 // Bilingual: GLSL (default) and Slang. Define the macro LVK_DEMO_WITH_SLANG to switch to Slang.
 
 const char* codeShadowSlang = R"(
@@ -531,7 +533,7 @@ VULKAN_APP_MAIN {
 
     const float fov = glm::radians(45.0f);
     const float fovShadow = glm::radians(90.0f);
-    const vec3 lightPos = vec3(4.5f * cosf(app.getSimulatedTime()), 4.5f * sinf(app.getSimulatedTime()), 5.0f);
+    const vec3 lightPos = vec3(4.5f * std::cos(app.getSimulatedTime()), 4.5f * std::sin(app.getSimulatedTime()), 5.0f);
     const PerLight perLight = {
         .lightPos = vec4(lightPos, 1.0f),
         .shadowNear = 0.1f,
