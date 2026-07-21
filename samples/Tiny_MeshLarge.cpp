@@ -21,9 +21,10 @@
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <mutex>
-#include <stdio.h>
 #include <thread>
 
 #define GLM_ENABLE_EXPERIMENTAL
@@ -779,7 +780,7 @@ void destroy() {
 std::string normalizeTextureName(const char* n) {
   if (!n)
     return std::string();
-  LVK_ASSERT(strlen(n) < MAX_MATERIAL_NAME);
+  LVK_ASSERT(std::strlen(n) < MAX_MATERIAL_NAME);
   std::string name(n);
 #if defined(__linux__) || defined(__APPLE__) || defined(ANDROID)
   std::replace(name.begin(), name.end(), '\\', '/');
@@ -859,11 +860,11 @@ bool loadAndCache(const char* cacheFileName) {
     CachedMaterial mtl;
     mtl.ambient = vec3(m.Ka[0], m.Ka[1], m.Ka[2]);
     mtl.diffuse = vec3(m.Kd[0], m.Kd[1], m.Kd[2]);
-    LVK_ASSERT(strlen(m.name) < MAX_MATERIAL_NAME);
-    strcat(mtl.name, m.name);
-    strcat(mtl.ambient_texname, normalizeTextureName(mesh->textures[m.map_Ka].name).c_str());
-    strcat(mtl.diffuse_texname, normalizeTextureName(mesh->textures[m.map_Kd].name).c_str());
-    strcat(mtl.alpha_texname, normalizeTextureName(mesh->textures[m.map_d].name).c_str());
+    LVK_ASSERT(std::strlen(m.name) < MAX_MATERIAL_NAME);
+    std::strcat(mtl.name, m.name);
+    std::strcat(mtl.ambient_texname, normalizeTextureName(mesh->textures[m.map_Ka].name).c_str());
+    std::strcat(mtl.diffuse_texname, normalizeTextureName(mesh->textures[m.map_Kd].name).c_str());
+    std::strcat(mtl.alpha_texname, normalizeTextureName(mesh->textures[m.map_d].name).c_str());
     cachedMaterials_.push_back(mtl);
   }
 
@@ -1524,9 +1525,9 @@ void generateCompressedTexture(const LoadedImage& img) {
     (void)LVK_VERIFY(ktxTexture_GetImageOffset(ktxTexture(textureKTX1), i, 0, 0, &offset1) == KTX_SUCCESS);
     size_t offset2 = 0;
     (void)LVK_VERIFY(ktxTexture_GetImageOffset(ktxTexture(textureKTX2), i, 0, 0, &offset2) == KTX_SUCCESS);
-    memcpy(ktxTexture_GetData(ktxTexture(textureKTX1)) + offset1,
-           ktxTexture_GetData(ktxTexture(textureKTX2)) + offset2,
-           ktxTexture_GetImageSize(ktxTexture(textureKTX1), i));
+    std::memcpy(ktxTexture_GetData(ktxTexture(textureKTX1)) + offset1,
+                ktxTexture_GetData(ktxTexture(textureKTX2)) + offset2,
+                ktxTexture_GetImageSize(ktxTexture(textureKTX1), i));
   }
 
   ktxTexture_WriteToNamedFile(ktxTexture(textureKTX1), img.compressedFileName.c_str());
@@ -1541,7 +1542,7 @@ LoadedImage loadImage(const char* fileName, int channels) {
 
   char debugStr[512] = {0};
 
-  snprintf(debugStr, sizeof(debugStr) - 1, "%s (%i)", fileName, channels);
+  std::snprintf(debugStr, sizeof(debugStr) - 1, "%s (%i)", fileName, channels);
 
   const std::string debugName(debugStr);
 
@@ -1705,7 +1706,7 @@ ktxTexture1* bitmapToCube(Bitmap& bmp) {
     for (int y = 0; y != h; y++) {
       for (int x = 0; x != w; x++) {
         const vec4 rgba = vec4(src[x + y * w], 1.0f);
-        memcpy(dst, &rgba, sizeof(rgba));
+        std::memcpy(dst, &rgba, sizeof(rgba));
         dst += 4;
       }
     }
@@ -1981,13 +1982,13 @@ void showTimeGPU() {
   stats.updateMinMax();
 
   char text[128];
-  snprintf(text,
-           sizeof(text),
-           "GPU: %6.02f ms   (Scene: %.02f   Compute: %.02f   Present: %.02f)",
-           timeGPU,
-           timeScene,
-           timeCompute,
-           timePresent);
+  std::snprintf(text,
+                sizeof(text),
+                "GPU: %6.02f ms   (Scene: %.02f   Compute: %.02f   Present: %.02f)",
+                timeGPU,
+                timeScene,
+                timeCompute,
+                timePresent);
 
   const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
                                  ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
