@@ -9,6 +9,7 @@
 
 #include "VulkanApp.h"
 
+#include <cmath>
 #include <filesystem>
 
 #include <ldrutils/lutils/ScopeExit.h>
@@ -296,7 +297,7 @@ void createBottomLevelAccelerationStructure() {
   struct Vertex {
     float pos[3];
   };
-  const float t = (1.0f + sqrtf(5.0f)) / 2.0f;
+  const float t = (1.0f + std::sqrt(5.0f)) / 2.0f;
   const Vertex vertices[] = {
       {-1, t, 0},
       {1, t, 0},
