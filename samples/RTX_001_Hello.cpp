@@ -9,6 +9,8 @@
 
 #include "VulkanApp.h"
 
+#include <cmath>
+
 const char* codeSlang = R"(
 [[vk::binding(2, 0)]] RWTexture2D<float4> kTextures2DInOut[];
 
@@ -198,7 +200,7 @@ void createBottomLevelAccelerationStructure() {
   struct Vertex {
     float pos[3];
   };
-  const float t = (1.0f + sqrtf(5.0f)) / 2.0f;
+  const float t = (1.0f + std::sqrt(5.0f)) / 2.0f;
   const Vertex vertices[] = {
       {-1, t, 0},
       {1, t, 0},
