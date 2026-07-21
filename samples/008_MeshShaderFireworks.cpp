@@ -14,6 +14,7 @@
 // we are going to use raw Vulkan here to initialize VK_EXT_mesh_shader
 #include <lvk/vulkan/VulkanUtils.h>
 
+#include <cmath>
 #include <lmath/Random.h>
 
 const char* codeSlang = R"(
@@ -350,10 +351,10 @@ struct ParticleSystem {
   void addSphereExplosion(vec3 pos, const ColorPalette& pal, int count, float speed, int lifetime) {
     for (int i = 0; i < count; i++) {
       const float theta = random(static_cast<float>(M_PI) * 2.0f);
-      const float phi = acosf(randomRange(-1.0f, 1.0f));
-      const float r = speed * powf(random(1.0f), 0.33f);
+      const float phi = std::acos(randomRange(-1.0f, 1.0f));
+      const float r = speed * std::pow(random(1.0f), 0.33f);
 
-      const vec3 velocity(r * sinf(phi) * cosf(theta), r * sinf(phi) * sinf(theta), r * cosf(phi));
+      const vec3 velocity(r * std::sin(phi) * std::cos(theta), r * std::sin(phi) * std::sin(theta), r * std::cos(phi));
 
       vec3 color = glm::mix(pal.primary, pal.secondary, random(1.0f));
       color += vec3(randomRange(-0.1f, 0.1f));
@@ -386,7 +387,7 @@ struct ParticleSystem {
       const vec3 toViewer = viewerPos - pos;
       const float dist = glm::length(toViewer);
       viewDir = dist > 0.001f ? toViewer / dist : vec3(0, 0, 1);
-      const vec3 ref = fabsf(viewDir.y) < 0.99f ? vec3(0, 1, 0) : vec3(1, 0, 0);
+      const vec3 ref = std::fabs(viewDir.y) < 0.99f ? vec3(0, 1, 0) : vec3(1, 0, 0);
       right = glm::normalize(glm::cross(ref, viewDir));
       up = glm::cross(viewDir, right);
     }
@@ -395,13 +396,13 @@ struct ParticleSystem {
       const float angle = (static_cast<float>(i) / count) * static_cast<float>(M_PI) * 2.0f + random(0.2f);
       const float r = speed * randomRange(0.9f, 1.1f);
 
-      vec3 velocity = right * (r * cosf(angle)) + up * (r * sinf(angle)) + viewDir * random(0.02f);
+      vec3 velocity = right * (r * std::cos(angle)) + up * (r * std::sin(angle)) + viewDir * random(0.02f);
 
       // apply tilt on top of the basis
-      const float cx = cosf(tiltX);
-      const float sx = sinf(tiltX);
-      const float cz = cosf(tiltZ);
-      const float sz = sinf(tiltZ);
+      const float cx = std::cos(tiltX);
+      const float sx = std::sin(tiltX);
+      const float cz = std::cos(tiltZ);
+      const float sz = std::sin(tiltZ);
       const vec3 v1(velocity.x * cx - velocity.y * sx, velocity.x * sx + velocity.y * cx, velocity.z);
       velocity = vec3(v1.x, v1.y, v1.z * cz - v1.y * sz);
 
@@ -428,7 +429,7 @@ struct ParticleSystem {
       const float phi = randomRange(0.3f, static_cast<float>(M_PI) * 0.7f);
       const float r = randomRange(0.06f, 0.12f);
 
-      const vec3 velocity(r * sinf(phi) * cosf(theta), r * cosf(phi) + 0.05f, r * sinf(phi) * sinf(theta));
+      const vec3 velocity(r * std::sin(phi) * std::cos(theta), r * std::cos(phi) + 0.05f, r * std::sin(phi) * std::sin(theta));
       const vec3 color = glm::mix(pal.primary, pal.sparkle, random(0.5f));
 
       const int ttl = 150 + static_cast<int>(random(50));
@@ -450,10 +451,10 @@ struct ParticleSystem {
   void addChrysanthemumExplosion(vec3 pos, const ColorPalette& pal, int count) {
     for (int i = 0; i < count; i++) {
       const float theta = random(static_cast<float>(M_PI) * 2.0f);
-      const float phi = acosf(randomRange(-1.0f, 1.0f));
+      const float phi = std::acos(randomRange(-1.0f, 1.0f));
       const float r = randomRange(0.08f, 0.14f);
 
-      const vec3 velocity(r * sinf(phi) * cosf(theta), r * sinf(phi) * sinf(theta), r * cosf(phi));
+      const vec3 velocity(r * std::sin(phi) * std::cos(theta), r * std::sin(phi) * std::sin(theta), r * std::cos(phi));
       const vec3 color = (random(1.0f) < 0.3f) ? pal.sparkle : pal.primary;
 
       const int ttl = 100 + static_cast<int>(random(40));
@@ -472,10 +473,10 @@ struct ParticleSystem {
 
     for (int i = 0; i < 30; i++) {
       const float theta = random(static_cast<float>(M_PI) * 2.0f);
-      const float phi = acosf(randomRange(-1.0f, 1.0f));
+      const float phi = std::acos(randomRange(-1.0f, 1.0f));
       const float r = randomRange(0.03f, 0.05f);
 
-      const vec3 velocity(r * sinf(phi) * cosf(theta), r * sinf(phi) * sinf(theta), r * cosf(phi));
+      const vec3 velocity(r * std::sin(phi) * std::cos(theta), r * std::sin(phi) * std::sin(theta), r * std::cos(phi));
 
       const int sparkleTTL = 30 + static_cast<int>(random(20));
       addParticle({
@@ -497,10 +498,10 @@ struct ParticleSystem {
 
     for (int i = 0; i < 25; i++) {
       const float theta = random(static_cast<float>(M_PI) * 2.0f);
-      const float phi = acosf(randomRange(-1.0f, 1.0f));
+      const float phi = std::acos(randomRange(-1.0f, 1.0f));
       const float r = randomRange(0.06f, 0.1f);
 
-      const vec3 velocity(r * sinf(phi) * cosf(theta), r * sinf(phi) * sinf(theta), r * cosf(phi));
+      const vec3 velocity(r * std::sin(phi) * std::cos(theta), r * std::sin(phi) * std::sin(theta), r * std::cos(phi));
 
       const int ttl = 50 + static_cast<int>(random(30));
       addParticle({
@@ -525,7 +526,7 @@ struct ParticleSystem {
       const float spread = randomRange(0.02f, 0.06f);
       const float upward = randomRange(0.1f, 0.15f);
 
-      const vec3 velocity(spread * cosf(angle), upward, spread * sinf(angle));
+      const vec3 velocity(spread * std::cos(angle), upward, spread * std::sin(angle));
       const vec3 color = glm::mix(pal.primary, pal.secondary, random(1.0f));
 
       const int ttl = 120 + static_cast<int>(random(40));
@@ -546,7 +547,7 @@ struct ParticleSystem {
       const float angle = random(static_cast<float>(M_PI) * 2.0f);
       const float spread = randomRange(0.03f, 0.08f);
 
-      const vec3 velocity(spread * cosf(angle), 0.08f + random(0.04f), spread * sinf(angle));
+      const vec3 velocity(spread * std::cos(angle), 0.08f + random(0.04f), spread * std::sin(angle));
 
       const int tipTTL = 80 + static_cast<int>(random(30));
       addParticle({
@@ -568,7 +569,7 @@ struct ParticleSystem {
       const float theta = (static_cast<float>(i) / count) * static_cast<float>(M_PI) * 2.0f;
       const float r = randomRange(0.08f, 0.12f);
 
-      const vec3 velocity(r * cosf(theta), random(0.04f), r * sinf(theta));
+      const vec3 velocity(r * std::cos(theta), random(0.04f), r * std::sin(theta));
 
       addParticle({
           .pos = pos,
@@ -707,7 +708,7 @@ void generateParticleTexture(uint8_t* image, int size) {
     for (int x = 0; x < size; x++) {
       const float dx = x - center;
       const float dy = y - center;
-      const float dist = sqrtf(dx * dx + dy * dy);
+      const float dist = std::sqrt(dx * dx + dy * dy);
 
       const float normalizedDist = dist < maxDist ? dist / maxDist : 1.0f;
 
@@ -717,7 +718,7 @@ void generateParticleTexture(uint8_t* image, int size) {
       // use cubic falloff and scale to match the max brightness 255 at the center
       const float value = falloff * falloff * falloff * 255.0f;
 
-      image[y * size + x] = static_cast<uint8_t>(fminf(255.0f, fmaxf(0.0f, value)));
+      image[y * size + x] = static_cast<uint8_t>(std::fmin(255.0f, std::fmax(0.0f, value)));
     }
   }
 }
