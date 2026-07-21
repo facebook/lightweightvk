@@ -26,6 +26,7 @@
 #define _USE_MATH_DEFINES
 #endif // _USE_MATH_DEFINES
 #include <cmath>
+#include <cstring>
 
 #include <filesystem>
 #include <vector>
@@ -95,7 +96,7 @@ inline uint16_t packOctahedral16(vec3 n) {
 inline std::string normalizeTextureName(const char* n) {
   if (!n)
     return std::string();
-  LVK_ASSERT(strlen(n) < MAX_MATERIAL_NAME);
+  LVK_ASSERT(std::strlen(n) < MAX_MATERIAL_NAME);
   std::string name(n);
 #if defined(__linux__) || defined(__APPLE__) || defined(ANDROID)
   std::replace(name.begin(), name.end(), '\\', '/');
@@ -124,7 +125,7 @@ size_t bistroMemFileRead(void* filePtr, void* dst, size_t bytes, void* /*userDat
   BistroMemFile* file = static_cast<BistroMemFile*>(filePtr);
   const size_t remaining = file->data.size() - file->offset;
   const size_t toRead = (bytes < remaining) ? bytes : remaining;
-  memcpy(dst, file->data.data() + file->offset, toRead);
+  std::memcpy(dst, file->data.data() + file->offset, toRead);
   file->offset += toRead;
   return toRead;
 }
@@ -215,11 +216,11 @@ inline bool loadAndCache(VulkanApp& app, const char* cacheFileName, const char* 
     CachedMaterial mtl;
     mtl.ambient = vec3(m.Ka[0], m.Ka[1], m.Ka[2]);
     mtl.diffuse = vec3(m.Kd[0], m.Kd[1], m.Kd[2]);
-    LVK_ASSERT(strlen(m.name) < MAX_MATERIAL_NAME);
-    strcat(mtl.name, m.name);
-    strcat(mtl.ambient_texname, normalizeTextureName(mesh->textures[m.map_Ka].name).c_str());
-    strcat(mtl.diffuse_texname, normalizeTextureName(mesh->textures[m.map_Kd].name).c_str());
-    strcat(mtl.alpha_texname, normalizeTextureName(mesh->textures[m.map_d].name).c_str());
+    LVK_ASSERT(std::strlen(m.name) < MAX_MATERIAL_NAME);
+    std::strcat(mtl.name, m.name);
+    std::strcat(mtl.ambient_texname, normalizeTextureName(mesh->textures[m.map_Ka].name).c_str());
+    std::strcat(mtl.diffuse_texname, normalizeTextureName(mesh->textures[m.map_Kd].name).c_str());
+    std::strcat(mtl.alpha_texname, normalizeTextureName(mesh->textures[m.map_d].name).c_str());
     cachedMaterials_.push_back(mtl);
   }
 
@@ -252,7 +253,7 @@ inline bool loadFromCache(VulkanApp& app, const char* cacheFileName) {
   auto readBytes = [&data, &offset](void* dst, size_t bytes) -> bool {
     if (offset + bytes > data.size())
       return false;
-    memcpy(dst, data.data() + offset, bytes);
+    std::memcpy(dst, data.data() + offset, bytes);
     offset += bytes;
     return true;
   };
