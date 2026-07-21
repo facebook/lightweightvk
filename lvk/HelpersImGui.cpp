@@ -44,7 +44,8 @@
 #endif // !defined(LVK_IMPLOT_EXTERNAL)
 #endif // LVK_WITH_IMPLOT
 
-#include <math.h>
+#include <cmath>
+#include <cstring>
 
 #include <vector>
 
@@ -217,7 +218,7 @@ void ImGuiRenderer::updateFont(const char* defaultFontTTF, const void* fontData,
 
   ImFontConfig cfg = ImFontConfig();
   cfg.RasterizerMultiply = 1.5f;
-  cfg.SizePixels = ceilf(fontSizePixels);
+  cfg.SizePixels = std::ceil(fontSizePixels);
   cfg.PixelSnapH = true;
   cfg.OversampleH = 4;
   cfg.OversampleV = 4;
@@ -374,8 +375,8 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
     ImDrawVert* vtx = reinterpret_cast<ImDrawVert*>(ctx_.getMappedPtr(drawableData.vb_));
     uint16_t* idx = reinterpret_cast<uint16_t*>(ctx_.getMappedPtr(drawableData.ib_));
     for (const ImDrawList* cmdList : dd->CmdLists) {
-      memcpy(vtx, cmdList->VtxBuffer.Data, cmdList->VtxBuffer.Size * sizeof(ImDrawVert));
-      memcpy(idx, cmdList->IdxBuffer.Data, cmdList->IdxBuffer.Size * sizeof(ImDrawIdx));
+      std::memcpy(vtx, cmdList->VtxBuffer.Data, cmdList->VtxBuffer.Size * sizeof(ImDrawVert));
+      std::memcpy(idx, cmdList->IdxBuffer.Data, cmdList->IdxBuffer.Size * sizeof(ImDrawIdx));
       vtx += cmdList->VtxBuffer.Size;
       idx += cmdList->IdxBuffer.Size;
     }
