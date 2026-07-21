@@ -11,6 +11,7 @@
 
 #include "lvk/vulkan/VulkanClasses.h"
 
+#include <cmath>
 #include <filesystem>
 
 #include <ldrutils/lutils/ScopeExit.h>
@@ -227,7 +228,7 @@ VULKAN_APP_MAIN {
 
   // clang-format off
   // icosahedron
-  const float t = (1.0f + sqrtf(5.0f)) / 2.0f;
+  const float t = (1.0f + std::sqrt(5.0f)) / 2.0f;
   const VertexPosUvw vertexData[] = {
     {{-1,  t, 0}, {0, 1, 0}},
     {{ 1,  t, 0}, {1, 1, 0}},
@@ -407,7 +408,7 @@ VULKAN_APP_MAIN {
     const PerFrame perFrame = {
         .proj = glm::perspectiveLH(fov, views[0].aspectRatio, 0.1f, 100.0f),
         // place the "camera" behind the objects, the distance depends on the total number of objects
-        .view = glm::translate(mat4(1.0f), vec3(0.0f, 0.0f, sqrtf(kNumObjects / 16) * 14.0f * t)),
+        .view = glm::translate(mat4(1.0f), vec3(0.0f, 0.0f, std::sqrt(kNumObjects / 16) * 14.0f * t)),
         .texture0 = texture0_.index(),
         .texture1 = texture1_.index(),
         .sampler = sampler_.index(),
@@ -417,10 +418,10 @@ VULKAN_APP_MAIN {
 
     // rotate objects around random axes
     for (uint32_t i = 0; i != kNumObjects; i++) {
-      const float direction = powf(-1, static_cast<float>(i + 1));
-      const uint32_t cubesInLine = static_cast<uint32_t>(sqrtf(static_cast<float>(kNumObjects)));
-      const vec3 offset = vec3(-1.5f * sqrtf(static_cast<float>(kNumObjects)) + 4.0f * (i % cubesInLine),
-                               -1.5f * sqrtf(static_cast<float>(kNumObjects)) + 4.0f * (i / cubesInLine),
+      const float direction = std::pow(-1, static_cast<float>(i + 1));
+      const uint32_t cubesInLine = static_cast<uint32_t>(std::sqrt(static_cast<float>(kNumObjects)));
+      const vec3 offset = vec3(-1.5f * std::sqrt(static_cast<float>(kNumObjects)) + 4.0f * (i % cubesInLine),
+                               -1.5f * std::sqrt(static_cast<float>(kNumObjects)) + 4.0f * (i / cubesInLine),
                                0);
       modelMatrices[i] = glm::rotate(glm::translate(mat4(1.0f), offset), static_cast<float>(direction * app.getSimulatedTime()), axis_[i]);
     }
