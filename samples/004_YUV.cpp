@@ -10,6 +10,7 @@
 #include "VulkanApp.h"
 #include <ldrutils/lutils/ScopeExit.h>
 
+#include <cstdio>
 #include <filesystem>
 
 const char* codeSlang = R"(
@@ -96,7 +97,7 @@ void createDemo(VulkanApp& app, const char* name, lvk::Format format, const char
 
   LVK_ASSERT_MSG(!pixels.empty(), "Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
   if (pixels.empty()) {
-    printf("Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
+    std::printf("Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
     std::terminate();
   }
 
