@@ -11,6 +11,8 @@
 
 #include "VulkanApp.h"
 
+#include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <vector>
 
@@ -75,9 +77,9 @@ class TarFileReader final {
 
   const FileData& getFile(const char* name) const {
     static const FileData empty = {};
-    const std::vector<FileData>::const_iterator it =
-        std::lower_bound(entries_.begin(), entries_.end(), name, [](const FileData& e, const char* n) { return strcmp(e.name, n) < 0; });
-    if (it != entries_.end() && strcmp(it->name, name) == 0)
+    const std::vector<FileData>::const_iterator it = std::lower_bound(
+        entries_.begin(), entries_.end(), name, [](const FileData& e, const char* n) { return std::strcmp(e.name, n) < 0; });
+    if (it != entries_.end() && std::strcmp(it->name, name) == 0)
       return *it;
     return empty;
   }
@@ -109,7 +111,7 @@ class TarFileReader final {
       // GNU long name: the data block contains the real file name, next header is the actual file
       if (fileType == 'L') {
         longName = header + 512;
-        longNameLen = strnlen(longName, fileSize);
+        longNameLen = std::strnlen(longName, fileSize);
         pos += 512 + blocks * 512;
         continue;
       }
@@ -120,9 +122,9 @@ class TarFileReader final {
             .size = fileSize,
         };
         if (longName) {
-          memcpy(entry.name, longName, longNameLen < FileData::kMaxPath ? longNameLen : FileData::kMaxPath - 1);
+          std::memcpy(entry.name, longName, longNameLen < FileData::kMaxPath ? longNameLen : FileData::kMaxPath - 1);
         } else {
-          memcpy(entry.name, header, strnlen(header, 100));
+          std::memcpy(entry.name, header, std::strnlen(header, 100));
         }
         if (entry.name[0] != '\0')
           entries_.push_back(entry);
@@ -133,7 +135,7 @@ class TarFileReader final {
       pos += 512 + blocks * 512;
     }
 
-    std::sort(entries_.begin(), entries_.end(), [](const FileData& a, const FileData& b) { return strcmp(a.name, b.name) < 0; });
+    std::sort(entries_.begin(), entries_.end(), [](const FileData& a, const FileData& b) { return std::strcmp(a.name, b.name) < 0; });
   }
 
   int fd_ = -1;
@@ -289,33 +291,33 @@ VulkanApp::VulkanApp(android_app* androidApp, const VulkanAppConfig& cfg) : andr
 VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(cfg) {
   const char* logFileName = nullptr;
   for (int i = 1; i < argc; i++) {
-    if (!strcmp(argv[i], "--headless")) {
+    if (!std::strcmp(argv[i], "--headless")) {
       cfg_.contextConfig.enableHeadlessSurface = true;
-    } else if (!strcmp(argv[i], "--log-file")) {
+    } else if (!std::strcmp(argv[i], "--log-file")) {
       if (i + 1 < argc) {
         logFileName = argv[++i];
       } else {
         LLOGW("Specify a file name for `--log-file <filename>`");
       }
-    } else if (!strcmp(argv[i], "--screenshot-frame")) {
+    } else if (!std::strcmp(argv[i], "--screenshot-frame")) {
       if (i + 1 < argc) {
         cfg_.screenshotFrameNumber = strtoull(argv[++i], nullptr, 10);
       } else {
         LLOGW("Specify a frame number for `--screenshot-frame <framenumber>`");
       }
-    } else if (!strcmp(argv[i], "--screenshot-file")) {
+    } else if (!std::strcmp(argv[i], "--screenshot-file")) {
       if (i + 1 < argc) {
         cfg_.screenshotFileName = argv[++i];
       } else {
         LLOGW("Specify a file name for `--screenshot-file <filename>`");
       }
-    } else if (!strcmp(argv[i], "--width")) {
+    } else if (!std::strcmp(argv[i], "--width")) {
       if (i + 1 < argc) {
         cfg_.width = static_cast<int>(strtol(argv[++i], nullptr, 10));
       } else {
         LLOGW("Specify a value for `--width <pixels>`");
       }
-    } else if (!strcmp(argv[i], "--height")) {
+    } else if (!std::strcmp(argv[i], "--height")) {
       if (i + 1 < argc) {
         cfg_.height = static_cast<int>(strtol(argv[++i], nullptr, 10));
       } else {
@@ -1150,8 +1152,8 @@ void VulkanApp::initXrSwapchains() {
       for (uint32_t i = 0; i < numImages; i++) {
         char debugNameImage[256];
         char debugNameView[256];
-        snprintf(debugNameImage, sizeof(debugNameImage), "Image: XR eye%u color %u", eye, i);
-        snprintf(debugNameView, sizeof(debugNameView), "Image View: XR eye%u color %u", eye, i);
+        std::snprintf(debugNameImage, sizeof(debugNameImage), "Image: XR eye%u color %u", eye, i);
+        std::snprintf(debugNameView, sizeof(debugNameView), "Image View: XR eye%u color %u", eye, i);
 
         lvk::VulkanImage image = {
             .vkImage_ = sc.images[i].image,
@@ -1208,8 +1210,8 @@ void VulkanApp::initXrSwapchains() {
       for (uint32_t i = 0; i < numImages; i++) {
         char debugNameImage[256];
         char debugNameView[256];
-        snprintf(debugNameImage, sizeof(debugNameImage), "Image: XR eye%u depth %u", eye, i);
-        snprintf(debugNameView, sizeof(debugNameView), "Image View: XR eye%u depth %u", eye, i);
+        std::snprintf(debugNameImage, sizeof(debugNameImage), "Image: XR eye%u depth %u", eye, i);
+        std::snprintf(debugNameView, sizeof(debugNameView), "Image View: XR eye%u depth %u", eye, i);
 
         lvk::VulkanImage image = {
             .vkImage_ = dsc.images[i].image,
