@@ -772,7 +772,7 @@ void destroy() {
   queryPoolTimestamps_ = nullptr;
   ctx_ = nullptr;
 
-  printf("Waiting for the loader thread to exit...\n");
+  std::printf("Waiting for the loader thread to exit...\n");
 
   loaderPool_ = nullptr;
 }
@@ -1438,7 +1438,7 @@ void generateCompressedTexture(const LoadedImage& img) {
     return;
   }
 
-  printf("...compressing texture to %s\n", img.compressedFileName.c_str());
+  std::printf("...compressing texture to %s\n", img.compressedFileName.c_str());
 
   const uint32_t mipmapLevelCount = lvk::calcNumMipLevels(img.w, img.h);
 
@@ -1851,7 +1851,7 @@ lvk::TextureHandle createTexture(const LoadedImage& img) {
     // uploading the texture
     if (!LVK_VERIFY(ktxTexture_CreateFromNamedFile(img.compressedFileName.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &texture) ==
                     KTX_SUCCESS)) {
-      printf("Failed to load %s\n", img.compressedFileName.c_str());
+      std::printf("Failed to load %s\n", img.compressedFileName.c_str());
       assert(0);
     }
     initialData = texture->pData;
@@ -2195,7 +2195,7 @@ bool findContentFolder() {
     dir = dir.parent_path();
   }
   if (!exists(dir / subdir)) {
-    printf("Cannot find the content directory. Run `deploy_content.py` before running this app.");
+    std::printf("Cannot find the content directory. Run `deploy_content.py` before running this app.");
     LVK_ASSERT(false);
     return false;
   }
@@ -2249,7 +2249,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
   }
 
   if (kEnableCompression) {
-    printf("Compressing textures... It can take a while in debug builds...(needs to be done once)\n");
+    std::printf("Compressing textures... It can take a while in debug builds...(needs to be done once)\n");
   }
 
   if (!init(window)) {
