@@ -874,7 +874,7 @@ void VulkanApp::drawFPS() {
 
 std::vector<uint8_t> VulkanApp::loadFile(const char* filePath) const {
 #if defined(ANDROID)
-  if (tarReader_ && strncmp(filePath, tarBasePath_.c_str(), tarBasePath_.size()) == 0) {
+  if (tarReader_ && std::strncmp(filePath, tarBasePath_.c_str(), tarBasePath_.size()) == 0) {
     const TarFileReader::FileData& fd = tarReader_->getFile(filePath + tarBasePath_.size());
     if (fd.ptr)
       return std::vector<uint8_t>(fd.ptr, fd.ptr + fd.size);
@@ -1322,10 +1322,10 @@ void VulkanApp::pollXrEvents() {
 }
 
 mat4 VulkanApp::xrCreateProjectionMatrix(const XrFovf& fov, float nearZ, float farZ) {
-  const float tanL = tanf(fov.angleLeft);
-  const float tanR = tanf(fov.angleRight);
-  const float tanU = tanf(fov.angleUp);
-  const float tanD = tanf(fov.angleDown);
+  const float tanL = std::tan(fov.angleLeft);
+  const float tanR = std::tan(fov.angleRight);
+  const float tanU = std::tan(fov.angleUp);
+  const float tanD = std::tan(fov.angleDown);
 
   const float tanW = tanR - tanL;
   const float tanH = tanU - tanD;
