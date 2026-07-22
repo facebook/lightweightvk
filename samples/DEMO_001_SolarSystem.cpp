@@ -838,7 +838,7 @@ struct OrbitAnimator final {
   , rotationAngle(angle) {}
 
   void update(float deltaSeconds) {
-    rotationAngle = fmodf(rotationAngle + rotationSpeed * deltaSeconds, 360.0f);
+    rotationAngle = std::fmod(rotationAngle + rotationSpeed * deltaSeconds, 360.0f);
     transform = glm::rotate(mat4(1.0f), glm::radians(rotationAngle), normalizedRotationAxis);
   }
 
