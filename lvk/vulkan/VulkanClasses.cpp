@@ -7,6 +7,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -94,10 +95,10 @@ uint64_t getAlignedAddress(uint64_t addr, uint64_t align) {
 }
 
 void replaceAll(std::string& s, const char* oldStr, const char* newStr) {
-  const size_t oldLen = strlen(oldStr);
-  const size_t newLen = strlen(newStr);
+  const size_t oldLen = std::strlen(oldStr);
+  const size_t newLen = std::strlen(newStr);
   size_t offset = 0;
-  while (const char* pos = strstr(s.c_str() + offset, oldStr)) {
+  while (const char* pos = std::strstr(s.c_str() + offset, oldStr)) {
     offset = pos - s.c_str();
     s.replace(offset, oldLen, newStr);
     offset += newLen;
@@ -107,9 +108,9 @@ void replaceAll(std::string& s, const char* oldStr, const char* newStr) {
 // Erases every "[...]" that immediately follows `varName` in `s`.
 // Example: stripArrayIndex("kSamplersYUV[textureId]", "kSamplersYUV") rewrites "kSamplersYUV[textureId]" to "kSamplersYUV".
 void stripArrayIndex(std::string& s, const char* varName) {
-  const size_t nameLen = strlen(varName);
+  const size_t nameLen = std::strlen(varName);
   size_t offset = 0;
-  while (const char* pos = strstr(s.c_str() + offset, varName)) {
+  while (const char* pos = std::strstr(s.c_str() + offset, varName)) {
     offset = pos - s.c_str() + nameLen;
     if (offset < s.size() && s[offset] == '[') {
       const char* close = strchr(s.c_str() + offset, ']');
@@ -131,7 +132,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
   const bool isError = (msgSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0;
   const bool isWarning = (msgSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) != 0;
 
-  const size_t len = cbData->pMessage ? strlen(cbData->pMessage) : 128u;
+  const size_t len = cbData->pMessage ? std::strlen(cbData->pMessage) : 128u;
 
   LVK_ASSERT(len < 65536);
 
@@ -150,7 +151,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
 #endif // LVK_WITH_MINILOG
 
   if (!isError && !isWarning && cbData->pMessageIdName) {
-    if (strcmp(cbData->pMessageIdName, "Loader Message") == 0) {
+    if (std::strcmp(cbData->pMessageIdName, "Loader Message") == 0) {
       return VK_FALSE;
     }
   }
@@ -672,7 +673,7 @@ void getDeviceExtensionProps(VkPhysicalDevice dev, std::vector<VkExtensionProper
 
 bool hasExtension(const char* ext, const std::vector<VkExtensionProperties>& props) {
   for (const VkExtensionProperties& p : props) {
-    if (strcmp(ext, p.extensionName) == 0)
+    if (std::strcmp(ext, p.extensionName) == 0)
       return true;
   }
   return false;
@@ -878,7 +879,7 @@ void lvk::VulkanBuffer::getBufferSubData(const VulkanContext& ctx, size_t offset
   }
 
   const uint8_t* src = static_cast<uint8_t*>(mappedPtr_) + offset;
-  memcpy(data, src, size);
+  std::memcpy(data, src, size);
 }
 
 void lvk::VulkanBuffer::bufferSubData(const VulkanContext& ctx, size_t offset, size_t size, const void* data) {
@@ -892,9 +893,9 @@ void lvk::VulkanBuffer::bufferSubData(const VulkanContext& ctx, size_t offset, s
   LVK_ASSERT(offset + size <= bufferSize_);
 
   if (data) {
-    memcpy((uint8_t*)mappedPtr_ + offset, data, size);
+    std::memcpy((uint8_t*)mappedPtr_ + offset, data, size);
   } else {
-    memset((uint8_t*)mappedPtr_ + offset, 0, size);
+    std::memset((uint8_t*)mappedPtr_ + offset, 0, size);
   }
 
   if (!isCoherentMemory_) {
@@ -1151,13 +1152,13 @@ VkImageView lvk::VulkanImage::getOrCreateVkImageViewForFramebuffer(VulkanContext
   }
 
   char debugNameImageView[320] = {0};
-  (void)snprintf(debugNameImageView,
-                 sizeof(debugNameImageView) - 1,
-                 "Image View: '%s' imageViewForFramebuffer[%u][%u][%u]",
-                 debugName_,
-                 level,
-                 layer,
-                 viewMask);
+  (void)std::snprintf(debugNameImageView,
+                      sizeof(debugNameImageView) - 1,
+                      "Image View: '%s' imageViewForFramebuffer[%u][%u][%u]",
+                      debugName_,
+                      level,
+                      layer,
+                      viewMask);
 
   const uint32_t numViews = viewMask ?
 #if defined(_MSC_VER)
@@ -1367,12 +1368,12 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
 
     if (!ctx_.has_KHR_swapchain_maintenance1_) {
       char debugNameFence[256] = {0};
-      (void)snprintf(debugNameFence, sizeof(debugNameFence) - 1, "Fence: swapchain %u", i);
+      (void)std::snprintf(debugNameFence, sizeof(debugNameFence) - 1, "Fence: swapchain %u", i);
       acquireFence_[i] = lvk::createFence(device_, debugNameFence, true);
     }
 
-    (void)snprintf(debugNameImage, sizeof(debugNameImage) - 1, "Image: swapchain %u", i);
-    (void)snprintf(debugNameImageView, sizeof(debugNameImageView) - 1, "Image View: swapchain %u", i);
+    (void)std::snprintf(debugNameImage, sizeof(debugNameImage) - 1, "Image: swapchain %u", i);
+    (void)std::snprintf(debugNameImageView, sizeof(debugNameImageView) - 1, "Image View: swapchain %u", i);
     VulkanImage image = {
         .vkImage_ = swapchainImages[i],
         .vkUsageFlags_ = usageFlags,
@@ -1577,8 +1578,8 @@ lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device,
     char fenceName[256] = {0};
     char semaphoreName[256] = {0};
     if (debugName) {
-      (void)snprintf(fenceName, sizeof(fenceName) - 1, "Fence: %s (cmdbuf %u)", debugName, i);
-      (void)snprintf(semaphoreName, sizeof(semaphoreName) - 1, "Semaphore: %s (cmdbuf %u)", debugName, i);
+      (void)std::snprintf(fenceName, sizeof(fenceName) - 1, "Fence: %s (cmdbuf %u)", debugName, i);
+      (void)std::snprintf(semaphoreName, sizeof(semaphoreName) - 1, "Semaphore: %s (cmdbuf %u)", debugName, i);
     }
     buf.semaphore_ = lvk::createSemaphore(device, semaphoreName);
     buf.fence_ = lvk::createFence(device, fenceName);
@@ -1589,7 +1590,7 @@ lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device,
 
   char timelineName[256] = {0};
   if (debugName) {
-    (void)snprintf(timelineName, sizeof(timelineName) - 1, "Semaphore: %s (timeline)", debugName);
+    (void)std::snprintf(timelineName, sizeof(timelineName) - 1, "Semaphore: %s (timeline)", debugName);
   }
   submitTimelineSemaphore_ = lvk::createSemaphoreTimeline(device, 0, timelineName);
 }
@@ -2780,7 +2781,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
         .loadOp = loadOpToVkAttachmentLoadOp(descColor.loadOp),
         .storeOp = storeOpToVkAttachmentStoreOp(descColor.storeOp),
     };
-    memcpy(&colorAttachments[i].clearValue.color, &descColor.clearColor, sizeof(descColor.clearColor));
+    std::memcpy(&colorAttachments[i].clearValue.color, &descColor.clearColor, sizeof(descColor.clearColor));
     // handle MSAA
     if (attachment.resolveTexture) {
       LVK_ASSERT(colorSamples > 1);
@@ -4069,7 +4070,7 @@ void lvk::VulkanStagingDevice::getImageData(VulkanImage& image,
   }
 
   // 3. Copy data from staging buffer into data
-  memcpy(outData, stagingBuffer->getMappedPtr() + desc.offset_, storageSize);
+  std::memcpy(outData, stagingBuffer->getMappedPtr() + desc.offset_, storageSize);
 
   // 4. Transition back to the initial image layout
   const lvk::VulkanImmediateCommands::CommandBufferWrapper& wrapper2 = ctx_.immediate_->acquire();
@@ -4116,7 +4117,7 @@ void lvk::VulkanStagingDevice::ensureStagingBufferSize(VkDeviceSize sizeNeeded) 
   stagingBufferSize_ = sizeNeeded;
 
   char debugName[256] = {0};
-  (void)snprintf(debugName, sizeof(debugName) - 1, "Buffer: staging buffer %u", stagingBufferCounter_++);
+  (void)std::snprintf(debugName, sizeof(debugName) - 1, "Buffer: staging buffer %u", stagingBufferCounter_++);
 
   stagingBuffer_ = {&ctx_,
                     ctx_.createBuffer(stagingBufferSize_,
@@ -4755,8 +4756,8 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   char debugNameImageView[256] = {0};
 
   if (hasDebugName) {
-    (void)snprintf(debugNameImage, sizeof(debugNameImage) - 1, "Image: %s", desc.debugName);
-    (void)snprintf(debugNameImageView, sizeof(debugNameImageView) - 1, "Image View: %s", desc.debugName);
+    (void)std::snprintf(debugNameImage, sizeof(debugNameImage) - 1, "Image: %s", desc.debugName);
+    (void)std::snprintf(debugNameImageView, sizeof(debugNameImageView) - 1, "Image View: %s", desc.debugName);
   }
 
   VkImageCreateFlags vkCreateFlags = 0;
@@ -4814,7 +4815,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
 
   if (hasDebugName) {
     // store debug name
-    (void)snprintf(image.debugName_, sizeof(image.debugName_) - 1, "%s", desc.debugName);
+    (void)std::snprintf(image.debugName_, sizeof(image.debugName_) - 1, "%s", desc.debugName);
   }
 
   const uint32_t numPlanes = lvk::getNumImagePlanes(desc.format);
@@ -5023,9 +5024,9 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
   image.isOwningVkImage_ = false;
 
   // drop all existing image views - they belong to the base image
-  memset(&image.imageViewStorage_, 0, sizeof(image.imageViewStorage_));
-  memset(&image.imageViewForFramebuffer_, 0, sizeof(image.imageViewForFramebuffer_));
-  memset(&image.imageViewForFramebufferMultiview_, 0, sizeof(image.imageViewForFramebufferMultiview_));
+  std::memset(&image.imageViewStorage_, 0, sizeof(image.imageViewStorage_));
+  std::memset(&image.imageViewForFramebuffer_, 0, sizeof(image.imageViewForFramebuffer_));
+  std::memset(&image.imageViewForFramebufferMultiview_, 0, sizeof(image.imageViewForFramebufferMultiview_));
 
   VkImageAspectFlags aspect = 0;
   if (image.isDepthFormat_ || image.isStencilFormat_) {
@@ -5113,7 +5114,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
 
   char debugNameBuffer[256] = {0};
   if (desc.debugName) {
-    (void)snprintf(debugNameBuffer, sizeof(debugNameBuffer) - 1, "Buffer: %s", desc.debugName);
+    (void)std::snprintf(debugNameBuffer, sizeof(debugNameBuffer) - 1, "Buffer: %s", desc.debugName);
   }
   lvk::AccelerationStructure accelStruct = {
       .buildRangeInfo =
@@ -5186,7 +5187,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
 
   char debugNameBuffer[256] = {0};
   if (desc.debugName) {
-    (void)snprintf(debugNameBuffer, sizeof(debugNameBuffer) - 1, "Buffer: %s", desc.debugName);
+    (void)std::snprintf(debugNameBuffer, sizeof(debugNameBuffer) - 1, "Buffer: %s", desc.debugName);
   }
   lvk::AccelerationStructure accelStruct = {
       .isTLAS = true,
@@ -5503,7 +5504,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
     VK_ASSERT(vkCreatePipelineLayout(vkDevice_, &ci, nullptr, &layout));
     char pipelineLayoutName[256] = {0};
     if (rps->desc_.debugName) {
-      (void)snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s", rps->desc_.debugName);
+      (void)std::snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s", rps->desc_.debugName);
     }
     VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_PIPELINE_LAYOUT, (uint64_t)layout, pipelineLayoutName));
   }
@@ -5641,7 +5642,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     VK_ASSERT(vkCreatePipelineLayout(vkDevice_, &ciPipelineLayout, nullptr, &rtps->pipelineLayout_));
     char pipelineLayoutName[256] = {0};
     if (rtps->debugName_) {
-      (void)snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s", rtps->debugName_);
+      (void)std::snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s", rtps->debugName_);
     }
     VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_PIPELINE_LAYOUT, (uint64_t)rtps->pipelineLayout_, pipelineLayoutName));
   }
@@ -5766,7 +5767,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   // repack SBT respecting `shaderGroupBaseAlignment`
   std::vector<uint8_t> sbtStorage(sbtBufferSize);
   for (uint32_t i = 0; i != numShaderGroups; i++) {
-    memcpy(sbtStorage.data() + i * sbtEntrySizeAligned, shaderHandleStorage.data() + i * handleSizeAligned, handleSize);
+    std::memcpy(sbtStorage.data() + i * sbtEntrySizeAligned, shaderHandleStorage.data() + i * handleSizeAligned, handleSize);
   }
 
   rtps->sbt = createBuffer(
@@ -5854,7 +5855,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(ComputePipelineHandle handle) {
       VK_ASSERT(vkCreatePipelineLayout(vkDevice_, &ci, nullptr, &cps->pipelineLayout_));
       char pipelineLayoutName[256] = {0};
       if (cps->desc_.debugName) {
-        (void)snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s", cps->desc_.debugName);
+        (void)std::snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s", cps->desc_.debugName);
       }
       VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_PIPELINE_LAYOUT, (uint64_t)cps->pipelineLayout_, pipelineLayoutName));
     }
@@ -5885,7 +5886,7 @@ lvk::Holder<lvk::ComputePipelineHandle> lvk::VulkanContext::createComputePipelin
   if (desc.specInfo.data && desc.specInfo.dataSize) {
     // copy into a local storage
     cps.specConstantDataStorage_ = malloc(desc.specInfo.dataSize);
-    memcpy(cps.specConstantDataStorage_, desc.specInfo.data, desc.specInfo.dataSize);
+    std::memcpy(cps.specConstantDataStorage_, desc.specInfo.data, desc.specInfo.dataSize);
     cps.desc_.specInfo.data = cps.specConstantDataStorage_;
   }
 
@@ -5913,7 +5914,7 @@ lvk::Holder<lvk::RayTracingPipelineHandle> lvk::VulkanContext::createRayTracingP
   if (desc.specInfo.data && desc.specInfo.dataSize) {
     // copy into a local storage
     rtps.specConstantDataStorage_ = malloc(desc.specInfo.dataSize);
-    memcpy(rtps.specConstantDataStorage_, desc.specInfo.data, desc.specInfo.dataSize);
+    std::memcpy(rtps.specConstantDataStorage_, desc.specInfo.data, desc.specInfo.dataSize);
     rtps.specInfo_.data = rtps.specConstantDataStorage_;
   }
 
@@ -6004,7 +6005,7 @@ lvk::Holder<lvk::RenderPipelineHandle> lvk::VulkanContext::createRenderPipeline(
   if (desc.specInfo.data && desc.specInfo.dataSize) {
     // copy into a local storage
     rps.specConstantDataStorage_ = malloc(desc.specInfo.dataSize);
-    memcpy(rps.specConstantDataStorage_, desc.specInfo.data, desc.specInfo.dataSize);
+    std::memcpy(rps.specConstantDataStorage_, desc.specInfo.data, desc.specInfo.dataSize);
     rps.desc_.specInfo.data = rps.specConstantDataStorage_;
   }
 
@@ -6452,7 +6453,7 @@ lvk::Holder<lvk::ShaderModuleHandle> lvk::VulkanContext::createShaderModule(cons
   auto isSlang = [](const char* code) {
     if (!code)
       return false;
-    return strstr(code, "[shader(\"") != nullptr;
+    return std::strstr(code, "[shader(\"") != nullptr;
   };
   ShaderModuleState sm =
       desc.dataSize ? createShaderModuleFromSPIRV(desc.data, desc.dataSize, desc.debugName, &result) // binary
@@ -6500,7 +6501,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSPIRV(const voi
       .pCode = (const uint32_t*)malloc(numBytes),
   };
 
-  memcpy((void*)ci.pCode, spirv, numBytes);
+  std::memcpy((void*)ci.pCode, spirv, numBytes);
 
   return {
       .ci = ci,
@@ -6525,12 +6526,12 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
   }
 
   auto addCode = [source, &sourcePatched](const char* substr, const char* code) -> void {
-    if (strstr(source, substr)) {
+    if (std::strstr(source, substr)) {
       sourcePatched.append(code);
     }
   };
 
-  if (strstr(source, "#version ") == nullptr) {
+  if (std::strstr(source, "#version ") == nullptr) {
     if (vkStage == VK_SHADER_STAGE_TASK_BIT_EXT || vkStage == VK_SHADER_STAGE_MESH_BIT_EXT) {
       sourcePatched +=
           "#version 460\n"
@@ -6622,7 +6623,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
   }
 
   // Adreno GPUs: rewrite unbounded kTLAS[] to fixed-size kTLAS[128]
-  if (workaround_fixedSizeAccelStructArray_ && strstr(source, "kTLAS[]")) {
+  if (workaround_fixedSizeAccelStructArray_ && std::strstr(source, "kTLAS[]")) {
     if (sourcePatched.empty()) {
       sourcePatched = source;
     }
@@ -6631,7 +6632,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
   }
 
   // Adreno 840: strip array indexing from kSamplersYUV (YCbCr combined image samplers cannot be arrays)
-  if (workaround_noYcbcrSamplerArray_ && strstr(source, "kSamplersYUV[")) {
+  if (workaround_noYcbcrSamplerArray_ && std::strstr(source, "kSamplersYUV[")) {
     if (sourcePatched.empty()) {
       sourcePatched = source;
     }
@@ -6665,7 +6666,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
   }
 
   auto addCode = [source, &sourcePatched](const char* substr, const char* code) -> void {
-    if (strstr(source, substr)) {
+    if (std::strstr(source, substr)) {
       sourcePatched.append(code);
     }
   };
@@ -6729,13 +6730,13 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
   source = sourcePatched.c_str();
 
   // Adreno GPUs: rewrite unbounded kTLAS[] to fixed-size kTLAS[128]
-  if (workaround_fixedSizeAccelStructArray_ && strstr(source, "kTLAS[]")) {
+  if (workaround_fixedSizeAccelStructArray_ && std::strstr(source, "kTLAS[]")) {
     replaceAll(sourcePatched, "kTLAS[]", "kTLAS[128]");
     source = sourcePatched.c_str();
   }
 
   // Adreno 840: strip array indexing from kSamplersYUV
-  if (workaround_noYcbcrSamplerArray_ && strstr(source, "kSamplersYUV[")) {
+  if (workaround_noYcbcrSamplerArray_ && std::strstr(source, "kSamplersYUV[")) {
     replaceAll(sourcePatched, "kSamplersYUV[]", "kSamplersYUV");
     stripArrayIndex(sourcePatched, "kSamplersYUV");
     source = sourcePatched.c_str();
@@ -6883,7 +6884,7 @@ lvk::Result lvk::VulkanContext::createInstance() {
     [this, &layerProperties]() -> void {
       for (const VkLayerProperties& props : layerProperties) {
         for (const char* layer : kDefaultValidationLayers) {
-          if (!strcmp(props.layerName, layer)) {
+          if (!std::strcmp(props.layerName, layer)) {
             khronosValidationVersion_ = props.specVersion;
             return;
           }
@@ -7174,7 +7175,7 @@ uint32_t lvk::VulkanContext::queryDevices(HWDeviceDesc* outDevices, uint32_t max
 
     if (outDevices && numCompatibleDevices < maxOutDevices) {
       outDevices[numCompatibleDevices] = {.guid = (uintptr_t)vkDevices[i], .type = deviceType};
-      strncpy(outDevices[numCompatibleDevices].name, deviceProperties.deviceName, strlen(deviceProperties.deviceName));
+      strncpy(outDevices[numCompatibleDevices].name, deviceProperties.deviceName, std::strlen(deviceProperties.deviceName));
       numCompatibleDevices++;
     }
   }
@@ -7357,9 +7358,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
 
   const uint32_t apiVersion = vkPhysicalDeviceProperties2_.properties.apiVersion;
 
-  workaround_fixedSizeAccelStructArray_ = strstr(vkPhysicalDeviceProperties2_.properties.deviceName, "Adreno") != nullptr;
+  workaround_fixedSizeAccelStructArray_ = std::strstr(vkPhysicalDeviceProperties2_.properties.deviceName, "Adreno") != nullptr;
   // Adreno 840 cannot handle arrays (of any size) of combined image samplers with YCbCr immutable samplers
-  workaround_noYcbcrSamplerArray_ = strstr(vkPhysicalDeviceProperties2_.properties.deviceName, "Adreno (TM) 840") != nullptr;
+  workaround_noYcbcrSamplerArray_ = std::strstr(vkPhysicalDeviceProperties2_.properties.deviceName, "Adreno (TM) 840") != nullptr;
 
   LLOGL("Vulkan physical device: %s\n", vkPhysicalDeviceProperties2_.properties.deviceName);
   LLOGL("           API version: %i.%i.%i.%i\n",
@@ -8646,11 +8647,11 @@ uint32_t lvk::VulkanContext::getMaxStorageBufferRange() const {
 
 bool lvk::VulkanContext::isExtensionEnabled(const char* ext) const {
   for (const char* name : enabledInstanceExtensionNames_) {
-    if (strcmp(ext, name) == 0)
+    if (std::strcmp(ext, name) == 0)
       return true;
   }
   for (const char* name : enabledDeviceExtensionNames_) {
-    if (strcmp(ext, name) == 0)
+    if (std::strcmp(ext, name) == 0)
       return true;
   }
   return false;
