@@ -9,6 +9,8 @@
 
 #include "VulkanApp.h"
 
+#include <cmath>
+
 #include "lmath/GeometryShapes.h"
 
 #include <cmath>
