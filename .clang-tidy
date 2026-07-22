@@ -4,6 +4,7 @@ Checks: '
 -facebook-hte-CArray,
 -facebook-hte-NullableDereference,
 -facebook-hte-NullableReturn,
+-facebook-security-vulnerable-memcpy,
 -bugprone-easily-swappable-parameters,
 -bugprone-exception-escape,
 -clang-diagnostic-missing-braces,
