@@ -11,6 +11,7 @@
 
 #include "VulkanApp.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
