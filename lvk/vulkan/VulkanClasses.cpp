@@ -113,7 +113,7 @@ void stripArrayIndex(std::string& s, const char* varName) {
   while (const char* pos = std::strstr(s.c_str() + offset, varName)) {
     offset = pos - s.c_str() + nameLen;
     if (offset < s.size() && s[offset] == '[') {
-      const char* close = strchr(s.c_str() + offset, ']');
+      const char* close = std::strchr(s.c_str() + offset, ']');
       if (close) {
         s.erase(offset, close - s.c_str() - offset + 1);
       }
@@ -156,14 +156,14 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
     }
   }
 
-  if (sscanf(cbData->pMessage,
-             "Validation Error: [ %[^]] ] Object %i: handle = %p, type = %127s | MessageID = %p",
-             errorName,
-             &object,
-             &handle,
-             typeName,
-             &messageID) >= 2) {
-    const char* message = strrchr(cbData->pMessage, '|') + 1;
+  if (std::sscanf(cbData->pMessage,
+                  "Validation Error: [ %[^]] ] Object %i: handle = %p, type = %127s | MessageID = %p",
+                  errorName,
+                  &object,
+                  &handle,
+                  typeName,
+                  &messageID) >= 2) {
+    const char* message = std::strrchr(cbData->pMessage, '|') + 1;
 
     MINILOG_LOG_PROC(level,
                      "%sValidation layer:\n Validation Error: %s \n Object %i: handle = %p, type = %s\n "

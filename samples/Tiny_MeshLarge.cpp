@@ -870,28 +870,28 @@ bool loadAndCache(const char* cacheFileName) {
 
   LLOGL("Caching mesh...\n");
 
-  FILE* cacheFile = fopen(cacheFileName, "wb");
+  FILE* cacheFile = std::fopen(cacheFileName, "wb");
   if (!cacheFile) {
     return false;
   }
   const uint32_t numMaterials = static_cast<uint32_t>(cachedMaterials_.size());
   const uint32_t numVertices = static_cast<uint32_t>(vertexData_.size());
   const uint32_t numIndices = static_cast<uint32_t>(indexData_.size());
-  fwrite(&kMeshCacheVersion, sizeof(kMeshCacheVersion), 1, cacheFile);
-  fwrite(&numMaterials, sizeof(numMaterials), 1, cacheFile);
-  fwrite(&numVertices, sizeof(numVertices), 1, cacheFile);
-  fwrite(&numIndices, sizeof(numIndices), 1, cacheFile);
-  fwrite(cachedMaterials_.data(), sizeof(CachedMaterial), numMaterials, cacheFile);
-  fwrite(vertexData_.data(), sizeof(VertexData), numVertices, cacheFile);
-  fwrite(indexData_.data(), sizeof(uint32_t), numIndices, cacheFile);
-  return fclose(cacheFile) == 0;
+  std::fwrite(&kMeshCacheVersion, sizeof(kMeshCacheVersion), 1, cacheFile);
+  std::fwrite(&numMaterials, sizeof(numMaterials), 1, cacheFile);
+  std::fwrite(&numVertices, sizeof(numVertices), 1, cacheFile);
+  std::fwrite(&numIndices, sizeof(numIndices), 1, cacheFile);
+  std::fwrite(cachedMaterials_.data(), sizeof(CachedMaterial), numMaterials, cacheFile);
+  std::fwrite(vertexData_.data(), sizeof(VertexData), numVertices, cacheFile);
+  std::fwrite(indexData_.data(), sizeof(uint32_t), numIndices, cacheFile);
+  return std::fclose(cacheFile) == 0;
 }
 
 bool loadFromCache(const char* cacheFileName) {
-  FILE* cacheFile = fopen(cacheFileName, "rb");
+  FILE* cacheFile = std::fopen(cacheFileName, "rb");
   SCOPE_EXIT {
     if (cacheFile) {
-      fclose(cacheFile);
+      std::fclose(cacheFile);
     }
   };
   if (!cacheFile) {
@@ -902,7 +902,7 @@ bool loadFromCache(const char* cacheFileName) {
     return false;                  \
   }
   uint32_t versionProbe = 0;
-  CHECK_READ(1, fread(&versionProbe, sizeof(versionProbe), 1, cacheFile));
+  CHECK_READ(1, std::fread(&versionProbe, sizeof(versionProbe), 1, cacheFile));
   if (versionProbe != kMeshCacheVersion) {
     LLOGL("Cache file has wrong version id\n");
     return false;
@@ -910,15 +910,15 @@ bool loadFromCache(const char* cacheFileName) {
   uint32_t numMaterials = 0;
   uint32_t numVertices = 0;
   uint32_t numIndices = 0;
-  CHECK_READ(1, fread(&numMaterials, sizeof(numMaterials), 1, cacheFile));
-  CHECK_READ(1, fread(&numVertices, sizeof(numVertices), 1, cacheFile));
-  CHECK_READ(1, fread(&numIndices, sizeof(numIndices), 1, cacheFile));
+  CHECK_READ(1, std::fread(&numMaterials, sizeof(numMaterials), 1, cacheFile));
+  CHECK_READ(1, std::fread(&numVertices, sizeof(numVertices), 1, cacheFile));
+  CHECK_READ(1, std::fread(&numIndices, sizeof(numIndices), 1, cacheFile));
   cachedMaterials_.resize(numMaterials);
   vertexData_.resize(numVertices);
   indexData_.resize(numIndices);
-  CHECK_READ(numMaterials, fread(cachedMaterials_.data(), sizeof(CachedMaterial), numMaterials, cacheFile));
-  CHECK_READ(numVertices, fread(vertexData_.data(), sizeof(VertexData), numVertices, cacheFile));
-  CHECK_READ(numIndices, fread(indexData_.data(), sizeof(uint32_t), numIndices, cacheFile));
+  CHECK_READ(numMaterials, std::fread(cachedMaterials_.data(), sizeof(CachedMaterial), numMaterials, cacheFile));
+  CHECK_READ(numVertices, std::fread(vertexData_.data(), sizeof(VertexData), numVertices, cacheFile));
+  CHECK_READ(numIndices, std::fread(indexData_.data(), sizeof(uint32_t), numIndices, cacheFile));
 #undef CHECK_READ
   // normalize path separators so a `cache.data` generated on Windows works on Android
 #if defined(__linux__) || defined(__APPLE__) || defined(ANDROID)
