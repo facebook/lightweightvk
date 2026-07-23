@@ -1216,7 +1216,7 @@ bool initModel(VulkanApp& app) {
     blasDesc.buildRange.primitiveCount = (primitiveCount < rest) ? primitiveCount : rest;
     res.BLAS.emplace_back(ctx_->createAccelerationStructure(blasDesc));
     instances.emplace_back(lvk::AccelStructInstance{
-        .transform = (const lvk::mat3x4&)transform,
+        .transform = reinterpret_cast<const lvk::mat3x4&>(transform),
         .instanceCustomIndex = 0,
         .mask = 0xff,
         .instanceShaderBindingTableRecordOffset = 0,
