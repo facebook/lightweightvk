@@ -471,10 +471,10 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
   std::unique_ptr<VulkanContext> ctx;
 
 #if defined(ANDROID)
-  ctx = std::make_unique<VulkanContext>(cfg, (void*)window);
+  ctx = std::make_unique<VulkanContext>(cfg, static_cast<void*>(window));
 #elif defined(_WIN32)
 #if defined(LVK_WITH_GLFW)
-  ctx = std::make_unique<VulkanContext>(cfg, (void*)glfwGetWin32Window(window));
+  ctx = std::make_unique<VulkanContext>(cfg, static_cast<void*>(glfwGetWin32Window(window)));
 #elif defined(LVK_WITH_SDL3)
   SDL_PropertiesID props = SDL_GetWindowProperties(window);
   void* hwnd = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
@@ -482,10 +482,10 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
     LVK_ASSERT_MSG(false, "Failed to get Win32 window handle");
     return nullptr;
   }
-  ctx = std::make_unique<VulkanContext>(cfg, (void*)hwnd);
+  ctx = std::make_unique<VulkanContext>(cfg, hwnd);
 #else
   // assume `window` is HWND
-  ctx = std::make_unique<VulkanContext>(cfg, (void*)window);
+  ctx = std::make_unique<VulkanContext>(cfg, static_cast<void*>(window));
 #endif // LVK_WITH_GLFW/LVK_WITH_SDL3
 #elif defined(__linux__)
 #if defined(LVK_WITH_WAYLAND)
@@ -495,7 +495,7 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
     LVK_ASSERT_MSG(false, "Wayland window not found");
     return nullptr;
   }
-  ctx = std::make_unique<VulkanContext>(cfg, (void*)waylandWindow, (void*)glfwGetWaylandDisplay());
+  ctx = std::make_unique<VulkanContext>(cfg, static_cast<void*>(waylandWindow), static_cast<void*>(glfwGetWaylandDisplay()));
 #elif defined(LVK_WITH_SDL3)
   SDL_PropertiesID props = SDL_GetWindowProperties(window);
   void* waylandSurface = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, nullptr);
@@ -504,14 +504,14 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
     LVK_ASSERT_MSG(false, "Failed to get Wayland window/display");
     return nullptr;
   }
-  ctx = std::make_unique<VulkanContext>(cfg, (void*)waylandSurface, (void*)waylandDisplay);
+  ctx = std::make_unique<VulkanContext>(cfg, waylandSurface, waylandDisplay);
 #endif
 #else
 #if defined(LVK_WITH_GLFW_NULL)
   (void)window;
   ctx = std::make_unique<VulkanContext>(cfg, nullptr, nullptr);
 #elif defined(LVK_WITH_GLFW)
-  ctx = std::make_unique<VulkanContext>(cfg, (void*)glfwGetX11Window(window), (void*)glfwGetX11Display());
+  ctx = std::make_unique<VulkanContext>(cfg, reinterpret_cast<void*>(glfwGetX11Window(window)), static_cast<void*>(glfwGetX11Display()));
 #elif defined(LVK_WITH_SDL3)
   SDL_PropertiesID props = SDL_GetWindowProperties(window);
   Sint64 x11Window = SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
@@ -520,12 +520,12 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
     LVK_ASSERT_MSG(false, "Failed to get X11 window/display");
     return nullptr;
   }
-  ctx = std::make_unique<VulkanContext>(cfg, (void*)x11Window, (void*)x11Display);
+  ctx = std::make_unique<VulkanContext>(cfg, reinterpret_cast<void*>(x11Window), x11Display);
 #endif
 #endif
 #elif defined(__APPLE__)
 #if defined(LVK_WITH_GLFW)
-  void* nativeWindow = (void*)glfwGetCocoaWindow(window);
+  void* nativeWindow = static_cast<void*>(glfwGetCocoaWindow(window));
 #elif defined(LVK_WITH_SDL3)
   SDL_PropertiesID props = SDL_GetWindowProperties(window);
   void* nativeWindow = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
