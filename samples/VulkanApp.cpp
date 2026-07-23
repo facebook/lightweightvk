@@ -179,7 +179,7 @@ static const char* cmdToString(int32_t cmd) {
 extern "C" {
 
 static void handle_cmd(android_app* androidApp, int32_t cmd) {
-  VulkanApp* app = (VulkanApp*)androidApp->userData;
+  VulkanApp* app = static_cast<VulkanApp*>(androidApp->userData);
 
   LLOGD("handle_cmd(%s)", cmdToString(cmd));
 
@@ -199,7 +199,7 @@ static void handle_cmd(android_app* androidApp, int32_t cmd) {
 }
 
 static int32_t handle_input(android_app* androidApp, AInputEvent* event) {
-  VulkanApp* app = (VulkanApp*)androidApp->userData;
+  VulkanApp* app = static_cast<VulkanApp*>(androidApp->userData);
 
   if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
     int32_t action = AMotionEvent_getAction(event);
@@ -261,7 +261,7 @@ static int32_t handle_input(android_app* androidApp, AInputEvent* event) {
 static void resize_callback(ANativeActivity* activity, ANativeWindow* window) {
   LLOGD("resize_callback()");
 
-  VulkanApp* app = (VulkanApp*)activity->instance;
+  VulkanApp* app = static_cast<VulkanApp*>(activity->instance);
   const int w = ANativeWindow_getWidth(window) / app->cfg_.framebufferScalar;
   const int h = ANativeWindow_getHeight(window) / app->cfg_.framebufferScalar;
   if (app->width_ != w || app->height_ != h) {
@@ -385,7 +385,7 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
 
   while (!androidApp_->destroyRequested && !ctx_) {
     // poll until a Window is created
-    if (ALooper_pollOnce(1, nullptr, &events, (void**)&source) >= 0) {
+    if (ALooper_pollOnce(1, nullptr, &events, reinterpret_cast<void**>(&source)) >= 0) {
       if (source)
         source->process(androidApp_, source);
     }
@@ -614,7 +614,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       };
       drawFrame({&view, 1}, deltaSeconds);
     }
-    if (ALooper_pollOnce(0, nullptr, &events, (void**)&source) >= 0) {
+    if (ALooper_pollOnce(0, nullptr, &events, reinterpret_cast<void**>(&source)) >= 0) {
       if (source) {
         source->process(androidApp_, source);
       }
@@ -959,8 +959,10 @@ void VulkanApp::initOpenXR() {
   PFN_xrGetVulkanDeviceExtensionsKHR xrGetVulkanDeviceExtensions = nullptr;
 
   // load extension functions
-  XR_ASSERT(xrGetInstanceProcAddr(xrInstance_, "xrGetVulkanInstanceExtensionsKHR", (PFN_xrVoidFunction*)&xrGetVulkanInstanceExtensions));
-  XR_ASSERT(xrGetInstanceProcAddr(xrInstance_, "xrGetVulkanDeviceExtensionsKHR", (PFN_xrVoidFunction*)&xrGetVulkanDeviceExtensions));
+  XR_ASSERT(xrGetInstanceProcAddr(
+      xrInstance_, "xrGetVulkanInstanceExtensionsKHR", reinterpret_cast<PFN_xrVoidFunction*>(&xrGetVulkanInstanceExtensions)));
+  XR_ASSERT(xrGetInstanceProcAddr(
+      xrInstance_, "xrGetVulkanDeviceExtensionsKHR", reinterpret_cast<PFN_xrVoidFunction*>(&xrGetVulkanDeviceExtensions)));
 
   // replace spaces with null terminators in-place so that pointers into the string are valid C strings
   auto parseExtensionString = [](std::string& storage, std::vector<const char*>& outPtrs) {
@@ -1146,7 +1148,8 @@ void VulkanApp::initXrSwapchains() {
       uint32_t numImages = 0;
       XR_ASSERT(xrEnumerateSwapchainImages(sc.swapchain, 0, &numImages, nullptr));
       sc.images.resize(numImages, {.type = XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
-      XR_ASSERT(xrEnumerateSwapchainImages(sc.swapchain, numImages, &numImages, (XrSwapchainImageBaseHeader*)sc.images.data()));
+      XR_ASSERT(
+          xrEnumerateSwapchainImages(sc.swapchain, numImages, &numImages, reinterpret_cast<XrSwapchainImageBaseHeader*>(sc.images.data())));
 
       sc.textures.resize(numImages);
       for (uint32_t i = 0; i < numImages; i++) {
@@ -1204,7 +1207,8 @@ void VulkanApp::initXrSwapchains() {
       uint32_t numImages = 0;
       XR_ASSERT(xrEnumerateSwapchainImages(dsc.swapchain, 0, &numImages, nullptr));
       dsc.images.resize(numImages, {.type = XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
-      XR_ASSERT(xrEnumerateSwapchainImages(dsc.swapchain, numImages, &numImages, (XrSwapchainImageBaseHeader*)dsc.images.data()));
+      XR_ASSERT(xrEnumerateSwapchainImages(
+          dsc.swapchain, numImages, &numImages, reinterpret_cast<XrSwapchainImageBaseHeader*>(dsc.images.data())));
 
       dsc.textures.resize(numImages);
       for (uint32_t i = 0; i < numImages; i++) {
@@ -1283,7 +1287,7 @@ void VulkanApp::pollXrEvents() {
   while (xrPollEvent(xrInstance_, &event) == XR_SUCCESS) {
     switch (event.type) {
     case XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED: {
-      const XrEventDataSessionStateChanged* stateEvent = (XrEventDataSessionStateChanged*)&event;
+      const XrEventDataSessionStateChanged* stateEvent = reinterpret_cast<const XrEventDataSessionStateChanged*>(&event);
       xrSessionState_ = stateEvent->state;
       LLOGL("OpenXR session state: %s\n", lvk::xrSessionStateToString(xrSessionState_));
       switch (xrSessionState_) {
@@ -1470,7 +1474,7 @@ bool VulkanApp::renderXrFrame(DrawFrameFunc& drawFrame) {
       .viewCount = 2,
       .views = projectionViews,
   };
-  const XrCompositionLayerBaseHeader* layers[] = {(XrCompositionLayerBaseHeader*)&projectionLayer};
+  const XrCompositionLayerBaseHeader* layers[] = {reinterpret_cast<const XrCompositionLayerBaseHeader*>(&projectionLayer)};
 
   const XrFrameEndInfo frameEndInfo = {
       .type = XR_TYPE_FRAME_END_INFO,
