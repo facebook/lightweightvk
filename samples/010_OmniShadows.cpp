@@ -13,8 +13,6 @@
 
 #include "lmath/GeometryShapes.h"
 
-#include <cmath>
-
 // Bilingual: GLSL (default) and Slang. Define the macro LVK_DEMO_WITH_SLANG to switch to Slang.
 
 const char* codeShadowSlang = R"(
