@@ -136,7 +136,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
 
   LVK_ASSERT(len < 65536);
 
-  char* errorName = (char*)alloca(len + 1);
+  char* errorName = static_cast<char*>(alloca(len + 1));
   int object = 0;
   void* handle = nullptr;
   char typeName[128] = {};
@@ -834,7 +834,7 @@ void lvk::VulkanBuffer::flushMappedMemory(const VulkanContext& ctx, VkDeviceSize
   }
 
   if (LVK_VULKAN_USE_VMA) {
-    vmaFlushAllocation((VmaAllocator)ctx.getVmaAllocator(), vmaAllocation_, offset, size);
+    vmaFlushAllocation(static_cast<VmaAllocator>(ctx.getVmaAllocator()), vmaAllocation_, offset, size);
   } else {
     const VkMappedMemoryRange range = {
         .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
@@ -893,9 +893,9 @@ void lvk::VulkanBuffer::bufferSubData(const VulkanContext& ctx, size_t offset, s
   LVK_ASSERT(offset + size <= bufferSize_);
 
   if (data) {
-    std::memcpy((uint8_t*)mappedPtr_ + offset, data, size);
+    std::memcpy(static_cast<uint8_t*>(mappedPtr_) + offset, data, size);
   } else {
-    std::memset((uint8_t*)mappedPtr_ + offset, 0, size);
+    std::memset(static_cast<uint8_t*>(mappedPtr_) + offset, 0, size);
   }
 
   if (!isCoherentMemory_) {
@@ -1866,14 +1866,14 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
       LLOGW("   driverVersion     : %u\n", header->driverVersion);
       LLOGW("   pipelineCacheUUID : %s\n", uuid);
       if (header->applicationNameOffset && header->applicationNameOffset < binarySize) {
-        LLOGW("   applicationName   : %s\n", (const char*)info.pVendorBinaryData + header->applicationNameOffset);
+        LLOGW("   applicationName   : %s\n", static_cast<const char*>(info.pVendorBinaryData) + header->applicationNameOffset);
       }
       LLOGW("   applicationVersion: %i.%i.%i\n",
             VK_API_VERSION_MAJOR(header->applicationVersion),
             VK_API_VERSION_MINOR(header->applicationVersion),
             VK_API_VERSION_PATCH(header->applicationVersion));
       if (header->engineNameOffset && header->engineNameOffset < binarySize) {
-        LLOGW("   engineName        : %s\n", (const char*)info.pVendorBinaryData + header->engineNameOffset);
+        LLOGW("   engineName        : %s\n", static_cast<const char*>(info.pVendorBinaryData) + header->engineNameOffset);
       }
       LLOGW("   engineVersion     : %i.%i.%i\n",
             VK_API_VERSION_MAJOR(header->engineVersion),
@@ -3740,7 +3740,7 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
     insertRegion(desc);
 
     size -= chunkSize;
-    data = (uint8_t*)data + chunkSize;
+    data = static_cast<const uint8_t*>(data) + chunkSize;
     dstOffset += chunkSize;
   }
 }
@@ -4868,7 +4868,8 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
     };
 
-    VkResult result = vmaCreateImage((VmaAllocator)getVmaAllocator(), &ci, &vmaAllocInfo, &image.vkImage_, &image.vmaAllocation_, nullptr);
+    VkResult result =
+        vmaCreateImage(static_cast<VmaAllocator>(getVmaAllocator()), &ci, &vmaAllocInfo, &image.vkImage_, &image.vmaAllocation_, nullptr);
 
     if (!LVK_VERIFY(result == VK_SUCCESS)) {
       LLOGW("Failed: error result: %d, memflags: %d,  imageformat: %d\n", result, memFlags, image.vkImageFormat_);
@@ -4878,7 +4879,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
 
     // handle memory-mapped buffers
     if (memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-      vmaMapMemory((VmaAllocator)getVmaAllocator(), image.vmaAllocation_, &image.mappedPtr_);
+      vmaMapMemory(static_cast<VmaAllocator>(getVmaAllocator()), image.vmaAllocation_, &image.mappedPtr_);
     }
   } else {
     // create image
@@ -5968,7 +5969,7 @@ lvk::Holder<lvk::RenderPipelineHandle> lvk::VulkanContext::createRenderPipeline(
       const SpecializationConstantEntry& entry = desc.specInfo.entries[i];
       // some ad hoc guessing...
       if (entry.size == sizeof(uint32_t) && entry.offset + sizeof(uint32_t) <= desc.specInfo.dataSize) {
-        const uint32_t value = *(const uint32_t*)((const uint8_t*)desc.specInfo.data + entry.offset);
+        const uint32_t value = *reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(desc.specInfo.data) + entry.offset);
         if (value < texturesPool_.objects_.size() && lvk::getNumImagePlanes(texturesPool_.objects_[value].vkImageFormat_) > 1) {
           rps.workaround_yuvTextureIndex_ = value;
           break;
@@ -6070,7 +6071,7 @@ void lvk::VulkanContext::destroy(lvk::ShaderModuleHandle handle) {
     return;
   }
 
-  free((void*)state->ci.pCode);
+  free(const_cast<uint32_t*>(state->ci.pCode));
 
   shaderModulesPool_.destroy(handle);
 }
@@ -6100,10 +6101,10 @@ void lvk::VulkanContext::destroy(BufferHandle handle) {
 
   if (LVK_VULKAN_USE_VMA) {
     if (buf->mappedPtr_) {
-      vmaUnmapMemory((VmaAllocator)getVmaAllocator(), buf->vmaAllocation_);
+      vmaUnmapMemory(static_cast<VmaAllocator>(getVmaAllocator()), buf->vmaAllocation_);
     }
     deferredTask(std::packaged_task<void()>([vma = getVmaAllocator(), buffer = buf->vkBuffer_, allocation = buf->vmaAllocation_]() {
-      vmaDestroyBuffer((VmaAllocator)vma, buffer, allocation);
+      vmaDestroyBuffer(static_cast<VmaAllocator>(vma), buffer, allocation);
     }));
   } else {
     if (buf->mappedPtr_) {
@@ -6158,10 +6159,10 @@ void lvk::VulkanContext::destroy(lvk::TextureHandle handle) {
 
   if (tex->vmaAllocation_) {
     if (tex->mappedPtr_) {
-      vmaUnmapMemory((VmaAllocator)getVmaAllocator(), tex->vmaAllocation_);
+      vmaUnmapMemory(static_cast<VmaAllocator>(getVmaAllocator()), tex->vmaAllocation_);
     }
     deferredTask(std::packaged_task<void()>([vma = getVmaAllocator(), image = tex->vkImage_, allocation = tex->vmaAllocation_]() {
-      vmaDestroyImage((VmaAllocator)vma, image, allocation);
+      vmaDestroyImage(static_cast<VmaAllocator>(vma), image, allocation);
     }));
   } else {
     if (tex->mappedPtr_) {
@@ -6498,10 +6499,10 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSPIRV(const voi
   const VkShaderModuleCreateInfo ci = {
       .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
       .codeSize = numBytes,
-      .pCode = (const uint32_t*)malloc(numBytes),
+      .pCode = static_cast<const uint32_t*>(malloc(numBytes)),
   };
 
-  std::memcpy((void*)ci.pCode, spirv, numBytes);
+  std::memcpy(const_cast<uint32_t*>(ci.pCode), spirv, numBytes);
 
   return {
       .ci = ci,
@@ -7093,7 +7094,7 @@ void lvk::VulkanContext::createSurface(void* window, void* display) {
   const VkWin32SurfaceCreateInfoKHR ci = {
       .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
       .hinstance = GetModuleHandle(nullptr),
-      .hwnd = (HWND)window,
+      .hwnd = static_cast<HWND>(window),
   };
   VK_ASSERT(vkCreateWin32SurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
 #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
@@ -7101,23 +7102,23 @@ void lvk::VulkanContext::createSurface(void* window, void* display) {
       .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
       .pNext = nullptr,
       .flags = 0,
-      .window = (ANativeWindow*)window,
+      .window = static_cast<ANativeWindow*>(window),
   };
   VK_ASSERT(vkCreateAndroidSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
   const VkXlibSurfaceCreateInfoKHR ci = {
       .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
       .flags = 0,
-      .dpy = (Display*)display,
-      .window = (Window)window,
+      .dpy = static_cast<Display*>(display),
+      .window = reinterpret_cast<Window>(window),
   };
   VK_ASSERT(vkCreateXlibSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
   const VkWaylandSurfaceCreateInfoKHR ci = {
       .sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
       .flags = 0,
-      .display = (wl_display*)display,
-      .surface = (wl_surface*)window,
+      .display = static_cast<wl_display*>(display),
+      .surface = static_cast<wl_surface*>(window),
   };
   VK_ASSERT(vkCreateWaylandSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
 #elif defined(VK_USE_PLATFORM_MACOS_MVK) || defined(VK_USE_PLATFORM_METAL_EXT)
@@ -7174,7 +7175,7 @@ uint32_t lvk::VulkanContext::queryDevices(HWDeviceDesc* outDevices, uint32_t max
     const HWDeviceType deviceType = convertVulkanDeviceTypeToLVK(deviceProperties.deviceType);
 
     if (outDevices && numCompatibleDevices < maxOutDevices) {
-      outDevices[numCompatibleDevices] = {.guid = (uintptr_t)vkDevices[i], .type = deviceType};
+      outDevices[numCompatibleDevices] = {.guid = reinterpret_cast<uintptr_t>(vkDevices[i]), .type = deviceType};
       strncpy(outDevices[numCompatibleDevices].name, deviceProperties.deviceName, std::strlen(deviceProperties.deviceName));
       numCompatibleDevices++;
     }
@@ -7318,7 +7319,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   }
 
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
-  vkPhysicalDevice_ = (VkPhysicalDevice)desc.guid;
+  vkPhysicalDevice_ = reinterpret_cast<VkPhysicalDevice>(desc.guid);
 
   useStaging_ = !isHostVisibleSingleHeapMemory(vkPhysicalDevice_);
 
@@ -7519,7 +7520,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .pushDescriptor = VK_TRUE,
   };
 
-  void* createInfoNext = config_.vulkanVersion >= VulkanVersion_1_4 ? (void*)&deviceFeatures14 : (void*)&deviceFeatures13;
+  void* createInfoNext = config_.vulkanVersion >= VulkanVersion_1_4 ? static_cast<void*>(&deviceFeatures14)
+                                                                    : static_cast<void*>(&deviceFeatures13);
 
   VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
@@ -8259,11 +8261,11 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
     vmaAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
     vmaAllocInfo.minAlignment = 16;
 
-    vmaCreateBuffer((VmaAllocator)getVmaAllocator(), &ci, &vmaAllocInfo, &buf.vkBuffer_, &buf.vmaAllocation_, nullptr);
+    vmaCreateBuffer(static_cast<VmaAllocator>(getVmaAllocator()), &ci, &vmaAllocInfo, &buf.vkBuffer_, &buf.vmaAllocation_, nullptr);
 
     // handle memory-mapped buffers
     if (memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-      vmaMapMemory((VmaAllocator)getVmaAllocator(), buf.vmaAllocation_, &buf.mappedPtr_);
+      vmaMapMemory(static_cast<VmaAllocator>(getVmaAllocator()), buf.vmaAllocation_, &buf.mappedPtr_);
     }
   } else {
     // create buffer
