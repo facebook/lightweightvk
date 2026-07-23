@@ -1473,7 +1473,7 @@ void generateCompressedTexture(const LoadedImage& img) {
     size_t offset = 0;
     ktxTexture_GetImageOffset(ktxTexture(textureKTX2), i, 0, 0, &offset);
 
-    stbir_resize_uint8_linear((const unsigned char*)img.pixels,
+    stbir_resize_uint8_linear(static_cast<const unsigned char*>(img.pixels),
                               static_cast<int>(img.w),
                               static_cast<int>(img.h),
                               0,
@@ -1703,7 +1703,7 @@ ktxTexture1* bitmapToCube(Bitmap& bmp) {
     const vec3* src = reinterpret_cast<vec3*>(bmp.data_.data()) + face * numFacePixels;
     size_t offset = 0;
     (void)LVK_VERIFY(ktxTexture_GetImageOffset(ktxTexture(texture), 0, 0, face, &offset) == KTX_SUCCESS);
-    float* dst = (float*)(texture->pData + offset);
+    float* dst = reinterpret_cast<float*>(texture->pData + offset);
     for (int y = 0; y != h; y++) {
       for (int x = 0; x != w; x++) {
         const vec4 rgba = vec4(src[x + y * w], 1.0f);
@@ -1789,7 +1789,7 @@ void processCubemap(const std::string& inFilename, const std::string& outFilenam
     constexpr int dstH = 128;
 
     std::vector<vec3> out(dstW * dstH);
-    convolveDiffuse((vec3*)pxs, sourceWidth, sourceHeight, dstW, dstH, out.data(), 1024);
+    convolveDiffuse(reinterpret_cast<vec3*>(pxs), sourceWidth, sourceHeight, dstW, dstH, out.data(), 1024);
 
     Bitmap bmp = convertEquirectangularMapToCubeMapFaces(Bitmap(dstW, dstH, 3, eBitmapFormat_Float, out.data()));
     ktxTexture1* cube = bitmapToCube(bmp);
@@ -2460,7 +2460,7 @@ void android_main(android_app* app) {
     if (ctx_) {
       render(delta);
     }
-    if (ALooper_pollOnce(0, nullptr, &events, (void**)&source) >= 0) {
+    if (ALooper_pollOnce(0, nullptr, &events, reinterpret_cast<void**>(&source)) >= 0) {
       if (source) {
         source->process(app, source);
       }
