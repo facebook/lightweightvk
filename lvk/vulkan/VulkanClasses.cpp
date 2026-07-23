@@ -2001,7 +2001,7 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
   })
 , depthStencilState_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-      .pNext = NULL,
+      .pNext = nullptr,
       .flags = 0,
       .depthTestEnable = VK_FALSE,
       .depthWriteEnable = VK_FALSE,
