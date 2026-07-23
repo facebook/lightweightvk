@@ -11,6 +11,8 @@
 
 #include "VulkanApp.h"
 
+#include <cmath>
+
 // we are going to use raw Vulkan here to initialize VK_EXT_mesh_shader
 #include <lvk/vulkan/VulkanUtils.h>
 
