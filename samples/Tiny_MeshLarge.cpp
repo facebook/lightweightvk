@@ -1583,6 +1583,7 @@ LoadedImage loadImage(const char* fileName, int channels) {
 void loadMaterial(size_t i) {
   LVK_PROFILER_FUNCTION();
 
+  // NOLINTNEXTLINE(facebook-static-object-destructor-check)
   static const std::string pathPrefix = folderContentRoot + "src/bistro/Exterior/";
 
   SCOPE_EXIT {
@@ -1969,6 +1970,7 @@ void showTimeGPU() {
     const char* names[kNumTimelines] = {};
     const vec4 colors[kNumTimelines] = {LC_Red, LC_Green, LC_Green, LC_LightBlue, LC_Red};
   };
+  // NOLINTNEXTLINE(facebook-static-object-destructor-check)
   static sTimeStats stats;
 
   const double timeScene = stats.add(1, " Scene", getTimespan(GPUTimestamp_BeginSceneRendering));
