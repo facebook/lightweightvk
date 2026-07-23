@@ -21,13 +21,18 @@
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
-#define XR_ASSERT(func)                                                                                                             \
-  {                                                                                                                                 \
-    const XrResult xrResult_ = func;                                                                                                \
-    if (XR_FAILED(xrResult_)) {                                                                                                     \
-      LLOGW("OpenXR error: %s:%i\n  %s\n  %s (%d)\n", __FILE__, __LINE__, #func, lvk::xrResultToString(xrResult_), (int)xrResult_); \
-      LVK_ASSERT_MSG(false, "OpenXR call failed");                                                                                  \
-    }                                                                                                                               \
+#define XR_ASSERT(func)                               \
+  {                                                   \
+    const XrResult xrResult_ = func;                  \
+    if (XR_FAILED(xrResult_)) {                       \
+      LLOGW("OpenXR error: %s:%i\n  %s\n  %s (%d)\n", \
+            __FILE__,                                 \
+            __LINE__,                                 \
+            #func,                                    \
+            lvk::xrResultToString(xrResult_),         \
+            static_cast<int>(xrResult_));             \
+      LVK_ASSERT_MSG(false, "OpenXR call failed");    \
+    }                                                 \
   }
 
 namespace lvk {

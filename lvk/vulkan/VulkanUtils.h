@@ -71,7 +71,7 @@ namespace slang {
 struct IGlobalSession;
 };
 
-typedef struct glslang_resource_s glslang_resource_t;
+using glslang_resource_t = struct glslang_resource_s;
 
 struct StageAccess {
   VkPipelineStageFlags2 stage = VK_PIPELINE_STAGE_2_NONE;
