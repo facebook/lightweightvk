@@ -98,8 +98,10 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextXR(XrInstance xrInstance,
   PFN_xrGetVulkanGraphicsRequirementsKHR xrGetVulkanGraphicsRequirements = nullptr;
   PFN_xrGetVulkanGraphicsDeviceKHR xrGetVulkanGraphicsDevice = nullptr;
 
-  XR_ASSERT(xrGetInstanceProcAddr(xrInstance, "xrGetVulkanGraphicsRequirementsKHR", (PFN_xrVoidFunction*)&xrGetVulkanGraphicsRequirements));
-  XR_ASSERT(xrGetInstanceProcAddr(xrInstance, "xrGetVulkanGraphicsDeviceKHR", (PFN_xrVoidFunction*)&xrGetVulkanGraphicsDevice));
+  XR_ASSERT(xrGetInstanceProcAddr(
+      xrInstance, "xrGetVulkanGraphicsRequirementsKHR", reinterpret_cast<PFN_xrVoidFunction*>(&xrGetVulkanGraphicsRequirements)));
+  XR_ASSERT(
+      xrGetInstanceProcAddr(xrInstance, "xrGetVulkanGraphicsDeviceKHR", reinterpret_cast<PFN_xrVoidFunction*>(&xrGetVulkanGraphicsDevice)));
 
   LVK_ASSERT(xrGetVulkanGraphicsRequirements);
   LVK_ASSERT(xrGetVulkanGraphicsDevice);
@@ -123,7 +125,7 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextXR(XrInstance xrInstance,
   // find the matching device index
   const uint32_t selectedDevice = [&devices, numDevices, vkPhysicalDevice]() -> uint32_t {
     for (uint32_t i = 0; i != numDevices; i++) {
-      if (devices[i].guid == (uintptr_t)vkPhysicalDevice) {
+      if (devices[i].guid == reinterpret_cast<uintptr_t>(vkPhysicalDevice)) {
         return i;
       }
     }
