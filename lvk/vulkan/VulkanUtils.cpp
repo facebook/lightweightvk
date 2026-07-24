@@ -1016,6 +1016,10 @@ lvk::Result lvk::compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
 
   return Result();
 #else
+  (void)slangGlobalSession;
+  (void)stage;
+  (void)code;
+  (void)entryPointName;
   LVK_ASSERT_MSG(false, "No Slang support available");
   return Result(Result::Code::RuntimeError, "No Slang support available");
 #endif // defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
@@ -1026,6 +1030,8 @@ void lvk::destroySlangGlobalSession(slang::IGlobalSession* slangGlobalSession) {
   if (slangGlobalSession) {
     slangGlobalSession->release();
   }
+#else
+  (void)slangGlobalSession;
 #endif // defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
 }
 
