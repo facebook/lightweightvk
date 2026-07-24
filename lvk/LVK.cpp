@@ -9,7 +9,7 @@
 
 #include "LVK.h"
 
-#include <assert.h>
+#include <cassert>
 #include <type_traits>
 
 #define NOMINMAX
