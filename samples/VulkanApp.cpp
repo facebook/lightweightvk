@@ -24,10 +24,10 @@
 #include <algorithm>
 #include <android/asset_manager_jni.h>
 #include <android/native_window_jni.h>
+#include <ctime>
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <time.h>
 #include <unistd.h>
 
 // uncompressed TAR: files are stored as-is, so mmap() gives direct zero-copy access to file contents
