@@ -9,6 +9,8 @@
 
 #include "HelpersImGui.h"
 
+#include <cstring>
+
 #if !defined(LVK_IMGUI_EXTERNAL)
 #include "imgui/imgui.cpp"
 #include "imgui/imgui_draw.cpp"
