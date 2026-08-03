@@ -54,8 +54,8 @@
 
 #if defined(ANDROID)
 #include <android_native_app_glue.h>
+#include <ctime>
 #include <jni.h>
-#include <time.h>
 #elif LVK_WITH_GLFW
 #include <GLFW/glfw3.h>
 #elif LVK_WITH_SDL3
