@@ -79,13 +79,15 @@ struct VulkanImage final {
                                                                                 .b = VK_COMPONENT_SWIZZLE_IDENTITY,
                                                                                 .a = VK_COMPONENT_SWIZZLE_IDENTITY},
                                             const VkSamplerYcbcrConversionInfo* ycbcr = nullptr,
+                                            VkImageViewCreateFlags flags = 0,
                                             const char* debugName = nullptr) const;
 
   void generateMipmap(VkCommandBuffer commandBuffer) const;
   void transitionLayout(VkCommandBuffer commandBuffer,
                         VkImageLayout newImageLayout,
                         const VkImageSubresourceRange& subresourceRange,
-                        StageAccess extraDstStage = {}) const;
+                        StageAccess extraDstStage = {},
+                        bool computeOnlyQueue = false) const;
 
   [[nodiscard]] VkImageAspectFlags getImageAspectFlags() const;
 
@@ -194,7 +196,7 @@ class VulkanImmediateCommands final {
     VkFence fence_ = VK_NULL_HANDLE;
     VkSemaphore semaphore_ = VK_NULL_HANDLE;
     mutable uint64_t signaledTimelineValue_ = 0; // value signaled on submitTimelineSemaphore_ by this submission (cross-queue waits)
-    bool isEncoding_ = false;
+    mutable bool isEncoding_ = false;
   };
 
   // returns the current command buffer (creates one if it does not exist)
@@ -401,7 +403,6 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const override;
   void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const override;
   void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const override;
-  void cmdReleaseToAsyncCompute(const ldr::Span<TextureHandle>& textures) const override;
 
   void cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) override;
 
@@ -495,17 +496,10 @@ class CommandBuffer final : public ICommandBuffer {
   void addCrossQueueDependencies(const Dependencies& deps);
   // Completes a cross-queue ownership transfer for `img` if the producing queue armed one; returns true if an acquire was emitted
   bool acquireOwnershipIfPending(lvk::VulkanImage& img, StageAccess dst) const;
+  bool isComputeOnlyQueue() const;
 
  private:
   friend class VulkanContext;
-
-  // One image handed off to the other queue at `submit()` (QFOT release); collected during recording
-  struct PendingRelease {
-    lvk::TextureHandle handle;
-    uint32_t dstQueueFamily = VK_QUEUE_FAMILY_IGNORED;
-    VkImageLayout dstLayout = VK_IMAGE_LAYOUT_UNDEFINED; // rendezvous layout the matching acquire must replay
-    StageAccess srcStage = {}; // producer's last-write scope
-  };
 
   VulkanContext* ctx_ = nullptr;
   const VulkanImmediateCommands::CommandBufferWrapper* wrapper_ = nullptr;
@@ -515,9 +509,6 @@ class CommandBuffer final : public ICommandBuffer {
   uint64_t crossQueueComputeWaitValue_ = 0;
   // Highest graphics timeline value an async-compute CB depends on (from Dependencies::waitGraphics); waited cross-queue at `submit()`
   uint64_t crossQueueGraphicsWaitValue_ = 0;
-  // Images handed off to the other queue (compute->graphics or graphics->compute), released at this CB's `submit()`
-  // The list lives with the CommandBuffer, so it is implicitly cleared when the slot is reset at the end of `submit()`
-  std::vector<PendingRelease> imagesToTransfer_;
   uint32_t queueFamilyIndex_ = 0;
 
   lvk::Framebuffer framebuffer_ = {};
@@ -597,7 +588,7 @@ class VulkanContext final : public IContext {
 
   ICommandBuffer& acquireCommandBuffer(bool dedicatedCompute = false) override;
 
-  SubmitHandle submit(lvk::ICommandBuffer& commandBuffer, TextureHandle present) override;
+  SubmitHandle submit(lvk::ICommandBuffer& commandBuffer, TextureHandle present, const ldr::Span<TextureHandle>& release = {}) override;
   void wait(SubmitHandle handle) override;
 
   Holder<BufferHandle> createBuffer(const BufferDesc& desc, const char* debugName, Result* outResult) override;
@@ -782,11 +773,14 @@ class VulkanContext final : public IContext {
   VkPhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelineProperties_ = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
   VkPhysicalDeviceAccelerationStructurePropertiesKHR accelerationStructureProperties_ = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
-  VkPhysicalDeviceDriverProperties vkPhysicalDeviceDriverProperties_ = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES,
-                                                                        .pNext = nullptr};
-  VkPhysicalDeviceMaintenance6Properties maintenance6Properties_ = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_PROPERTIES,
-                                                                    .pNext = nullptr};
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
+  VkPhysicalDeviceDriverProperties vkPhysicalDeviceDriverProperties_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES, nullptr};
+  VkPhysicalDeviceMaintenance6Properties maintenance6Properties_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_PROPERTIES, nullptr};
+  VkPhysicalDeviceFragmentDensityMapPropertiesEXT fragmentDensityMapProperties_ = {
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_PROPERTIES_EXT};
+  // queried (not chained by default) - only added to vkFeatures10_ when VK_EXT_fragment_density_map is supported
+  VkPhysicalDeviceFragmentDensityMapFeaturesEXT vkFragmentDensityMapFeatures_ = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT};
   // provided by Vulkan 1.4
   VkPhysicalDeviceVulkan14Properties vkPhysicalDeviceVulkan14Properties_ = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_PROPERTIES,
@@ -814,8 +808,8 @@ class VulkanContext final : public IContext {
   };
 
   std::vector<VkFormat> deviceDepthFormats_;
-  std::vector<VkSurfaceFormatKHR> deviceSurfaceFormats_;
-  VkSurfaceCapabilitiesKHR deviceSurfaceCaps_;
+  std::vector<VkSurfaceFormat2KHR> deviceSurfaceFormats_;
+  VkSurfaceCapabilities2KHR deviceSurfaceCaps_ = {.sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR};
   std::vector<VkPresentModeKHR> devicePresentModes_;
 
  public:
@@ -862,6 +856,8 @@ class VulkanContext final : public IContext {
   bool has_KHR_present_mode_fifo_latest_ready_ = false;
   bool has_KHR_maintenance6_ = false; // promoted to Vulkan 1.4
   bool has_EXT_host_image_copy_ = false; // promoted to Vulkan 1.4
+  bool has_EXT_fragment_density_map_ = false;
+  bool has_EXT_fragment_density_map2_ = false;
   std::vector<const char*> enabledInstanceExtensionNames_;
   std::vector<const char*> enabledDeviceExtensionNames_;
 

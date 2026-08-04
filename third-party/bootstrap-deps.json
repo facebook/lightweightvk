@@ -4,7 +4,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/zeux/meshoptimizer.git",
-        "revision": "v1.1"
+        "revision": "v1.2"
     }
 },
 {
@@ -12,7 +12,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/glslang.git",
-        "revision": "16.3.0"
+        "revision": "16.4.0"
     }
 },
 {
@@ -20,7 +20,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/SPIRV-Headers.git",
-        "revision": "vulkan-sdk-1.4.350.0"
+        "revision": "vulkan-sdk-1.4.357.0"
     }
 },
 {
@@ -28,7 +28,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/SPIRV-Tools.git",
-        "revision": "v2026.2"
+        "revision": "a665e21f3061f34064b39937cf00fe8d8769f4ef"
     }
 },
 {
@@ -36,7 +36,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/SPIRV-Reflect.git",
-        "revision": "vulkan-sdk-1.4.350.0"
+        "revision": "vulkan-sdk-1.4.357.0"
     }
 },
 {
@@ -60,7 +60,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/libsdl-org/SDL",
-        "revision": "release-3.4.10"
+        "revision": "release-3.4.12"
     }
 },
 {
@@ -140,7 +140,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/OpenXR-SDK.git",
-        "sha1": "release-1.1.60"
+        "sha1": "release-1.1.61"
     }
 },
 {
@@ -164,7 +164,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/ocornut/imgui.git",
-        "revision": "v1.92.8"
+        "revision": "v1.92.9"
     }
 },
 {
@@ -180,7 +180,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/zeux/volk",
-        "revision": "04a46e2e522e91da0e9d4c146097501afb5d7c83"
+        "revision": "13f95ecee4acd3949c5cceb56cbd43aa9ca6a451"
     }
 },
 {
@@ -188,7 +188,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/Vulkan-Headers.git",
-        "revision": "vulkan-sdk-1.4.350.0"
+        "revision": "vulkan-sdk-1.4.357.0"
     }
 },
 {
@@ -235,7 +235,7 @@
     "name": "android-validation-layers",
     "source": {
         "type": "archive",
-        "url": "https://github.com/KhronosGroup/Vulkan-ValidationLayers/releases/download/vulkan-sdk-1.4.350.0/android-binaries-1.4.350.0.zip",
+        "url": "https://github.com/KhronosGroup/Vulkan-ValidationLayers/releases/download/vulkan-sdk-1.4.357.0/android-binaries-1.4.357.0.zip",
         "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.116 Safari/537.36"
     }
 },
@@ -270,7 +270,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/shader-slang/slang",
-        "revision": "v2026.12",
+        "revision": "v2026.14",
         "recursive": true
     }
 },

@@ -1178,6 +1178,7 @@ void VulkanApp::initXrSwapchains() {
                                                  1,
                                                  {},
                                                  nullptr,
+                                                 0,
                                                  debugNameView);
 
         sc.textures[i] = vkCtx->texturesPool_.create(std::move(image));
@@ -1240,6 +1241,7 @@ void VulkanApp::initXrSwapchains() {
                                                  1,
                                                  {},
                                                  nullptr,
+                                                 0,
                                                  debugNameView);
 
         dsc.textures[i] = vkCtx->texturesPool_.create(std::move(image));

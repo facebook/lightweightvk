@@ -694,6 +694,19 @@ void transitionToColorAttachment(VkCommandBuffer buffer, lvk::VulkanImage* color
                              VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
 }
 
+VkPipelineStageFlags2 stripGraphicsStages(VkPipelineStageFlags2 stages, bool computeOnlyQueue) {
+  constexpr VkPipelineStageFlags2 kGraphicsOnlyStages =
+      VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT | VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
+      VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT |
+      VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT | VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT |
+      VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+      VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT |
+      VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT |
+      VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT;
+
+  return computeOnlyQueue ? (stages & ~kGraphicsOnlyStages) : stages;
+}
+
 void emitImageQFOTransfer(VkCommandBuffer cb,
                           const lvk::VulkanImage& img,
                           VkImageLayout oldLayout,
@@ -723,22 +736,20 @@ void emitImageQFOTransfer(VkCommandBuffer cb,
   vkCmdPipelineBarrier2(cb, &di);
 }
 
-VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats,
+VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormat2KHR>& formats,
                                            lvk::ColorSpace requestedColorSpace,
                                            bool hasSwapchainColorspaceExt) {
   LVK_ASSERT(!formats.empty());
 
-  auto isNativeSwapChainBGR = [](const std::vector<VkSurfaceFormatKHR>& formats) -> bool {
-    for (const VkSurfaceFormatKHR& fmt : formats) {
-      // The preferred format should be the one which is closer to the beginning of the formats
-      // container. If BGR is encountered earlier, it should be picked as the format of choice. If RGB
-      // happens to be earlier, take it.
-      if (fmt.format == VK_FORMAT_R8G8B8A8_UNORM || fmt.format == VK_FORMAT_R8G8B8A8_SRGB ||
-          fmt.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
+  auto isNativeSwapChainBGR = [](const std::vector<VkSurfaceFormat2KHR>& formats) -> bool {
+    for (const VkSurfaceFormat2KHR& format : formats) {
+      const VkFormat fmt = format.surfaceFormat.format;
+      // The preferred format should be the one which is closer to the beginning of the formats container.
+      // If BGR is encountered earlier, it should be picked as the format of choice. If RGB happens to be earlier, take it.
+      if (fmt == VK_FORMAT_R8G8B8A8_UNORM || fmt == VK_FORMAT_R8G8B8A8_SRGB || fmt == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
         return false;
       }
-      if (fmt.format == VK_FORMAT_B8G8R8A8_UNORM || fmt.format == VK_FORMAT_B8G8R8A8_SRGB ||
-          fmt.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
+      if (fmt == VK_FORMAT_B8G8R8A8_UNORM || fmt == VK_FORMAT_B8G8R8A8_SRGB || fmt == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
         return true;
       }
     }
@@ -769,22 +780,22 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>
   const VkSurfaceFormatKHR preferred =
       colorSpaceToVkSurfaceFormat(requestedColorSpace, isNativeSwapChainBGR(formats), hasSwapchainColorspaceExt);
 
-  for (const VkSurfaceFormatKHR& fmt : formats) {
-    if (fmt.format == preferred.format && fmt.colorSpace == preferred.colorSpace) {
-      return fmt;
+  for (const VkSurfaceFormat2KHR& fmt : formats) {
+    if (fmt.surfaceFormat.format == preferred.format && fmt.surfaceFormat.colorSpace == preferred.colorSpace) {
+      return fmt.surfaceFormat;
     }
   }
 
   // if we can't find a matching format and color space, fallback on matching only format
-  for (const VkSurfaceFormatKHR& fmt : formats) {
-    if (fmt.format == preferred.format) {
-      return fmt;
+  for (const VkSurfaceFormat2KHR& fmt : formats) {
+    if (fmt.surfaceFormat.format == preferred.format) {
+      return fmt.surfaceFormat;
     }
   }
 
   LLOGL("Could not find a native swap chain format that matched our designed swapchain format. Defaulting to first supported format.");
 
-  return formats[0];
+  return formats[0].surfaceFormat;
 }
 
 } // namespace
@@ -913,12 +924,14 @@ VkImageView lvk::VulkanImage::createImageView(VkDevice device,
                                               uint32_t numLayers,
                                               const VkComponentMapping components,
                                               const VkSamplerYcbcrConversionInfo* ycbcr,
+                                              VkImageViewCreateFlags flags,
                                               const char* debugName) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
 
   const VkImageViewCreateInfo ci = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .pNext = ycbcr,
+      .flags = flags,
       .image = vkImage_,
       .viewType = type,
       .format = format,
@@ -935,7 +948,8 @@ VkImageView lvk::VulkanImage::createImageView(VkDevice device,
 void lvk::VulkanImage::transitionLayout(VkCommandBuffer commandBuffer,
                                         VkImageLayout newImageLayout,
                                         const VkImageSubresourceRange& subresourceRange,
-                                        StageAccess extraDstStage) const {
+                                        StageAccess extraDstStage,
+                                        bool computeOnlyQueue) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
   const VkImageLayout oldImageLayout =
@@ -952,6 +966,9 @@ void lvk::VulkanImage::transitionLayout(VkCommandBuffer commandBuffer,
 
   dst.stage |= extraDstStage.stage;
   dst.access |= extraDstStage.access;
+
+  src.stage = stripGraphicsStages(src.stage, computeOnlyQueue);
+  dst.stage = stripGraphicsStages(dst.stage, computeOnlyQueue);
 
   if (isDepthAttachment() && isResolveAttachment) {
     // https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#renderpass-resolve-operations
@@ -1178,6 +1195,7 @@ VkImageView lvk::VulkanImage::getOrCreateVkImageViewForFramebuffer(VulkanContext
                                      numViews,
                                      {},
                                      nullptr,
+                                     0,
                                      debugNameImageView);
 
   if (viewMask) {
@@ -1224,8 +1242,17 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
     return VK_PRESENT_MODE_FIFO_KHR;
   };
 
-  VkSurfaceCapabilitiesKHR caps = {};
-  VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(ctx.getVkPhysicalDevice(), ctx.vkSurface_, &caps));
+  VkSurfaceCapabilities2KHR caps = {.sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR};
+  if (ctx.has_KHR_swapchain_maintenance1_) {
+    const VkPhysicalDeviceSurfaceInfo2KHR surfaceInfo = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR,
+        .surface = ctx.vkSurface_,
+    };
+    vkGetPhysicalDeviceSurfaceCapabilities2KHR(ctx.getVkPhysicalDevice(), &surfaceInfo, &caps);
+  } else {
+    // legacy
+    VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(ctx.getVkPhysicalDevice(), ctx.vkSurface_, &caps.surfaceCapabilities));
+  }
 
   VkFormatProperties2 props = {
       .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
@@ -1233,8 +1260,8 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
   vkGetPhysicalDeviceFormatProperties2(ctx.getVkPhysicalDevice(), surfaceFormat_.format, &props);
 
   // trim the image extent
-  width_ = width = std::min(width, caps.maxImageExtent.width);
-  height_ = height = std::min(height, caps.maxImageExtent.height);
+  width_ = width = std::min(width, caps.surfaceCapabilities.maxImageExtent.width);
+  height_ = height = std::min(height, caps.surfaceCapabilities.maxImageExtent.height);
 
   auto chooseUsageFlags = [](const VkSurfaceCapabilitiesKHR& caps, const VkFormatProperties& props) -> VkImageUsageFlags {
     VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -1301,8 +1328,9 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
     (void)LVK_VERIFY(setCurrentPresentMode(currentPresentMode_));
   }
 
-  const VkImageUsageFlags usageFlags = chooseUsageFlags(caps, props.formatProperties);
-  const bool isCompositeAlphaOpaqueSupported = (ctx.deviceSurfaceCaps_.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
+  const VkImageUsageFlags usageFlags = chooseUsageFlags(caps.surfaceCapabilities, props.formatProperties);
+  const bool isCompositeAlphaOpaqueSupported =
+      (ctx.deviceSurfaceCaps_.surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
 
   const VkSwapchainPresentModesCreateInfoKHR pmci = {
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODES_CREATE_INFO_KHR,
@@ -1313,7 +1341,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
       .pNext = numRegisteredPresentModes_ ? &pmci : nullptr,
       .surface = ctx.vkSurface_,
-      .minImageCount = chooseSwapImageCount(ctx.deviceSurfaceCaps_),
+      .minImageCount = chooseSwapImageCount(ctx.deviceSurfaceCaps_.surfaceCapabilities),
       .imageFormat = surfaceFormat_.format,
       .imageColorSpace = surfaceFormat_.colorSpace,
       .imageExtent = {.width = width, .height = height},
@@ -1325,7 +1353,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
 #if defined(ANDROID)
       .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
 #else
-      .preTransform = ctx.deviceSurfaceCaps_.currentTransform,
+      .preTransform = ctx.deviceSurfaceCaps_.surfaceCapabilities.currentTransform,
 #endif
       .compositeAlpha = isCompositeAlphaOpaqueSupported ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR : VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
       .presentMode = currentPresentMode_,
@@ -1398,6 +1426,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
                                              1,
                                              {},
                                              nullptr,
+                                             0,
                                              debugNameImageView);
 
     swapchainTextures_[i] = ctx_.texturesPool_.create(std::move(image));
@@ -1896,7 +1925,7 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
   signalSemaphore_.semaphore = VK_NULL_HANDLE;
 
   // reset
-  const_cast<CommandBufferWrapper&>(wrapper).isEncoding_ = false;
+  wrapper.isEncoding_ = false;
   submitCounter_++;
 
   if (!submitCounter_) {
@@ -2251,6 +2280,10 @@ lvk::CommandBuffer::CommandBuffer(VulkanContext* ctx, VulkanImmediateCommands& i
 , immediate_(&immediate)
 , queueFamilyIndex_(queueFamilyIndex) {}
 
+bool lvk::CommandBuffer::isComputeOnlyQueue() const {
+  return ctx_->immediateCompute_ && immediate_ == ctx_->immediateCompute_.get();
+}
+
 lvk::CommandBuffer::~CommandBuffer() {
   // did you forget to call cmdEndRendering()?
   LVK_ASSERT(!isRendering_);
@@ -2292,40 +2325,13 @@ bool lvk::CommandBuffer::acquireOwnershipIfPending(lvk::VulkanImage& img, StageA
   }
 
   // acquire half of a cross-queue ownership transfer: it must replay the producer's release layouts (src/dst) exactly
+  dst.stage = stripGraphicsStages(dst.stage, isComputeOnlyQueue());
   emitImageQFOTransfer(
       wrapper_->cmdBuf_, img, img.qfotSrcLayout_, img.qfotDstLayout_, StageAccess{}, dst, img.pendingAcquireSrcFamily_, queueFamilyIndex_);
   img.pendingAcquireSrcFamily_ = VK_QUEUE_FAMILY_IGNORED;
   img.ownerQueueFamily_ = queueFamilyIndex_;
   img.vkImageLayout_ = img.qfotDstLayout_;
   return true;
-}
-
-void lvk::CommandBuffer::cmdReleaseToAsyncCompute(const ldr::Span<TextureHandle>& textures) const {
-  LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
-
-  if (!ctx_->immediateCompute_) {
-    return; // no async-compute queue: nothing to hand off, the image stays on the graphics queue
-  }
-  LVK_ASSERT_MSG(immediate_ == ctx_->immediate_.get(), "cmdReleaseToAsyncCompute() must be called on a graphics command buffer");
-
-  const uint32_t computeFamily = ctx_->deviceQueues_.computeQueueFamilyIndex;
-
-  for (TextureHandle handle : textures) {
-    LVK_ASSERT(!handle.empty());
-    const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
-
-    const bool already =
-        std::any_of(imagesToTransfer_.begin(), imagesToTransfer_.end(), [&](const PendingRelease& r) { return r.handle == handle; });
-    if (already) {
-      continue; // de-dup: one image, one release
-    }
-    const_cast<CommandBuffer*>(this)->imagesToTransfer_.push_back(PendingRelease{
-        .handle = handle,
-        .dstQueueFamily = computeFamily,
-        .dstLayout = VK_IMAGE_LAYOUT_GENERAL, // rendezvous layout valid for both sampled and storage reads on compute
-        .srcStage = getPipelineStageAccess(img.vkImageLayout_), // producer's last use of the image
-    });
-  }
 }
 
 void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
@@ -2339,8 +2345,6 @@ void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& 
   if (extraDstStage >= lvk::Stage_RayGen && extraDstStage <= lvk::Stage_Callable) {
     extraDstAccess.stage |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
   }
-
-  const bool isCompute = immediate_ == ctx_->immediateCompute_.get();
 
   for (TextureHandle handle : textures) {
     LVK_ASSERT(!handle.empty());
@@ -2361,22 +2365,9 @@ void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& 
     tex.transitionLayout(wrapper_->cmdBuf_,
                          VK_IMAGE_LAYOUT_GENERAL,
                          VkImageSubresourceRange{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
-                         extraDstAccess);
+                         extraDstAccess,
+                         isComputeOnlyQueue());
     tex.ownerQueueFamily_ = queueFamilyIndex_;
-
-    // Async-compute storage OUTPUTS are auto-released to graphics at submit(); an image just acquired as input is not re-released.
-    if (isCompute && !acquired) {
-      const bool already =
-          std::any_of(imagesToTransfer_.begin(), imagesToTransfer_.end(), [&](const PendingRelease& r) { return r.handle == handle; });
-      if (!already) {
-        const_cast<CommandBuffer*>(this)->imagesToTransfer_.push_back(PendingRelease{
-            .handle = handle,
-            .dstQueueFamily = ctx_->deviceQueues_.graphicsQueueFamilyIndex,
-            .dstLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // rendezvous layout: graphics samples the compute output
-            .srcStage = StageAccess{.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, .access = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT},
-        });
-      }
-    }
   }
 }
 
@@ -2435,7 +2426,8 @@ void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const ldr::Span<TextureHa
     img.transitionLayout(wrapper_->cmdBuf_,
                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                          VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
-                         extraDstAccess);
+                         extraDstAccess,
+                         isComputeOnlyQueue());
     if (img.ownerQueueFamily_ == VK_QUEUE_FAMILY_IGNORED) {
       img.ownerQueueFamily_ = queueFamilyIndex_;
     }
@@ -2600,6 +2592,10 @@ void lvk::CommandBuffer::bufferBarrier(BufferHandle handle,
   lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(handle);
 
   LVK_ASSERT(buf);
+
+  const bool computeOnlyQueue = isComputeOnlyQueue();
+  srcStage = stripGraphicsStages(srcStage, computeOnlyQueue);
+  dstStage = stripGraphicsStages(dstStage, computeOnlyQueue);
 
   VkBufferMemoryBarrier2 barrier = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
@@ -2847,9 +2843,28 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
 
   const bool isStencilFormat = (renderPass.stencil.loadOp != lvk::LoadOp_DontCare) || (renderPass.stencil.storeOp != lvk::StoreOp_DontCare);
 
+  // optional fragment density map (VK_EXT_fragment_density_map)
+  VkRenderingFragmentDensityMapAttachmentInfoEXT fragmentDensityMapInfo = {
+      .sType = VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_INFO_EXT,
+      .imageView = VK_NULL_HANDLE,
+      .imageLayout = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT,
+  };
+  if (fb.fragmentDensityMap) {
+    LVK_ASSERT_MSG(ctx_->has_EXT_fragment_density_map_, "VK_EXT_fragment_density_map is not supported");
+    LVK_ASSERT_MSG(ctx_->vkFragmentDensityMapFeatures_.fragmentDensityMapNonSubsampledImages,
+                   "fragmentDensityMapNonSubsampledImages is required to use a fragment density map with LVK's non-subsampled attachments");
+    lvk::VulkanImage& fdmImage = *ctx_->texturesPool_.get(fb.fragmentDensityMap);
+    LVK_ASSERT_MSG(fdmImage.vkUsageFlags_ & VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT,
+                   "Fragment density map must be created with TextureUsageBits_FragmentDensityMap");
+    fdmImage.transitionLayout(wrapper_->cmdBuf_,
+                              VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT,
+                              VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+    fragmentDensityMapInfo.imageView = fdmImage.imageView_;
+  }
+
   const VkRenderingInfo renderingInfo = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-      .pNext = nullptr,
+      .pNext = fb.fragmentDensityMap ? &fragmentDensityMapInfo : nullptr,
       .flags = 0,
       .renderArea = {.offset = {.x = static_cast<int32_t>(scissor.x), .y = static_cast<int32_t>(scissor.y)},
                      .extent = {.width = scissor.width, .height = scissor.height}},
@@ -4387,7 +4402,9 @@ lvk::ICommandBuffer& lvk::VulkanContext::acquireCommandBuffer(bool dedicatedComp
   return commandBuffer;
 }
 
-lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer, TextureHandle present) {
+lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
+                                             TextureHandle present,
+                                             const ldr::Span<TextureHandle>& release) {
   LVK_PROFILER_FUNCTION();
 
   CommandBuffer* vkCmdBuffer = static_cast<CommandBuffer*>(&commandBuffer);
@@ -4407,7 +4424,9 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
 
     tex.transitionLayout(vkCmdBuffer->wrapper_->cmdBuf_,
                          VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                         VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+                         VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
+                         {},
+                         vkCmdBuffer->isComputeOnlyQueue());
   }
 
   const bool shouldPresent = hasSwapchain() && present;
@@ -4424,19 +4443,30 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
   LVK_ASSERT(vkCmdBuffer->immediate_);
   lvk::VulkanImmediateCommands& imm = *vkCmdBuffer->immediate_;
 
-  // QFOT release: hand off every image this CB collected (compute->graphics auto-collected outputs, or graphics->compute
-  // images declared via cmdReleaseToAsyncCompute()) to its destination queue. The matching acquire is emitted by the consumer.
-  const uint32_t producerFamily = (&imm == immediateCompute_.get()) ? deviceQueues_.computeQueueFamilyIndex
-                                                                    : deviceQueues_.graphicsQueueFamilyIndex;
-  for (const CommandBuffer::PendingRelease& r : vkCmdBuffer->imagesToTransfer_) {
-    lvk::VulkanImage& img = *texturesPool_.get(r.handle);
-    const VkImageLayout oldLayout = img.vkImageLayout_;
-    emitImageQFOTransfer(
-        vkCmdBuffer->wrapper_->cmdBuf_, img, oldLayout, r.dstLayout, r.srcStage, StageAccess{}, producerFamily, r.dstQueueFamily);
-    img.qfotSrcLayout_ = oldLayout;
-    img.qfotDstLayout_ = r.dstLayout;
-    img.vkImageLayout_ = r.dstLayout;
-    img.pendingAcquireSrcFamily_ = producerFamily; // the destination queue completes the transfer on first use
+  // QFOT release: hand the named images to the other queue (destination implied by this CB's queue). The matching acquire is
+  // emitted automatically when the destination queue first uses the image
+  if (immediateCompute_ && !release.empty()) {
+    const bool isCompute = vkCmdBuffer->isComputeOnlyQueue();
+    const uint32_t srcQueueFamily = isCompute ? deviceQueues_.computeQueueFamilyIndex : deviceQueues_.graphicsQueueFamilyIndex;
+    const uint32_t dstQueueFamily = isCompute ? deviceQueues_.graphicsQueueFamilyIndex : deviceQueues_.computeQueueFamilyIndex;
+    // compute->graphics: graphics samples the storage output as SHADER_READ_ONLY_OPTIMAL
+    // graphics->compute: GENERAL is valid for both sampled and storage reads on compute
+    const VkImageLayout dstLayout = isCompute ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
+    for (TextureHandle handle : release) {
+      LVK_ASSERT(!handle.empty());
+      lvk::VulkanImage& img = *texturesPool_.get(handle);
+      const VkImageLayout oldLayout = img.vkImageLayout_;
+      // compute->graphics: the producer's scope is the compute storage write; graphics->compute: implied by the final layout
+      const StageAccess srcStage =
+          isCompute ? StageAccess{.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, .access = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT}
+                    : getPipelineStageAccess(oldLayout);
+      emitImageQFOTransfer(
+          vkCmdBuffer->wrapper_->cmdBuf_, img, oldLayout, dstLayout, srcStage, StageAccess{}, srcQueueFamily, dstQueueFamily);
+      img.qfotSrcLayout_ = oldLayout;
+      img.qfotDstLayout_ = dstLayout;
+      img.vkImageLayout_ = dstLayout;
+      img.pendingAcquireSrcFamily_ = srcQueueFamily; // the destination queue completes the transfer on first use
+    }
   }
 
   if (&imm == immediateCompute_.get()) {
@@ -4525,6 +4555,8 @@ lvk::Holder<lvk::BufferHandle> lvk::VulkanContext::createBuffer(const BufferDesc
 
   if (desc.usage & BufferUsageBits_Storage) {
     usageFlags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    usageFlags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                  VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
   }
 
   if (desc.usage & BufferUsageBits_Indirect) {
@@ -4739,6 +4771,10 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   if (desc.usage & lvk::TextureUsageBits_InputAttachment) {
     LVK_ASSERT_MSG(desc.usage & lvk::TextureUsageBits_Attachment, "Input attachments must be TextureUsageBits_Attachment");
     usageFlags |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+  }
+  if (desc.usage & lvk::TextureUsageBits_FragmentDensityMap) {
+    LVK_ASSERT_MSG(has_EXT_fragment_density_map_, "VK_EXT_fragment_density_map is not supported");
+    usageFlags |= VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT;
   }
 
   if (desc.storage != lvk::StorageType_Memoryless) {
@@ -4970,14 +5006,31 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   // a sampled view of a multiplanar (YUV) format always needs the Y'CbCr conversion chained in, regardless of whether the image is disjoint
   const VkSamplerYcbcrConversionInfo* ycbcrInfo = isMultiplanar ? getOrCreateYcbcrConversionInfo(desc.format) : nullptr;
 
-  image.imageView_ = image.createImageView(
-      vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, components, ycbcrInfo, debugNameImageView);
+  // defer the host FDM read-lock to vkEndCommandBuffer() via VK_EXT_fragment_density_map2,
+  // so the map can be updated after cmdBeginRendering() (e.g. late gaze latching). Applied automatically when supported
+  const VkImageViewCreateFlags viewFlags =
+      (desc.usage & lvk::TextureUsageBits_FragmentDensityMap) && has_EXT_fragment_density_map2_
+          ? VK_IMAGE_VIEW_CREATE_FRAGMENT_DENSITY_MAP_DEFERRED_BIT_EXT // fragmentDensityMapDeferred is mandatory when FDM2 is present
+          : 0;
+
+  image.imageView_ = image.createImageView(vkDevice_,
+                                           vkImageViewType,
+                                           vkFormat,
+                                           aspect,
+                                           0,
+                                           VK_REMAINING_MIP_LEVELS,
+                                           0,
+                                           numLayers,
+                                           components,
+                                           ycbcrInfo,
+                                           viewFlags,
+                                           debugNameImageView);
 
   if (image.vkUsageFlags_ & VK_IMAGE_USAGE_STORAGE_BIT) {
     if (!desc.components.identity()) {
       // use identity swizzle for storage images
       image.imageViewStorage_ = image.createImageView(
-          vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, {}, ycbcrInfo, debugNameImageView);
+          vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, {}, ycbcrInfo, 0, debugNameImageView);
       LVK_ASSERT(image.imageViewStorage_ != VK_NULL_HANDLE);
     }
   }
@@ -5076,6 +5129,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
                                            desc.numLayers,
                                            components,
                                            nullptr,
+                                           0,
                                            debugName);
 
   if (!LVK_VERIFY(image.imageView_ != VK_NULL_HANDLE)) {
@@ -5096,6 +5150,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
                                                       desc.numLayers,
                                                       {},
                                                       nullptr,
+                                                      0,
                                                       debugName);
       LVK_ASSERT(image.imageViewStorage_ != VK_NULL_HANDLE);
     }
@@ -5170,7 +5225,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
   lvk::ICommandBuffer& buffer = acquireCommandBuffer();
   vkCmdBuildAccelerationStructuresKHR(
       lvk::getVkCommandBuffer(buffer), 1, &accelerationBuildGeometryInfo, accelerationBuildStructureRangeInfos);
-  wait(submit(buffer, {}));
+  wait(submit(buffer, {}, {}));
 
   const VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
@@ -5249,7 +5304,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
   lvk::ICommandBuffer& buffer = acquireCommandBuffer();
   vkCmdBuildAccelerationStructuresKHR(
       lvk::getVkCommandBuffer(buffer), 1, &accelerationBuildGeometryInfo, accelerationBuildStructureRangeInfos);
-  wait(submit(buffer, {}));
+  wait(submit(buffer, {}, {}));
 
   const VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo = {
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
@@ -6996,16 +7051,29 @@ lvk::Result lvk::VulkanContext::createInstance() {
 
   const VkBool32 gpuav_enable = enableGpuAV ? VK_TRUE : VK_FALSE;
   const VkBool32 gpuav_post_process_descriptor_indexing = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/9222
-#define LAYER_SETTINGS_BOOL32(name, var)                                                                                        \
+  const VkBool32 legacy_detection = config_.enableValidation ? VK_TRUE : VK_FALSE;
+  const char* legacy_detection_mode = "ONLY_SUPPORTED";
+#define LAYER_SETTINGS_BOOL32(name, var)         \
+  VkLayerSettingEXT{                             \
+      .pLayerName = kDefaultValidationLayers[0], \
+      .pSettingName = name,                      \
+      .type = VK_LAYER_SETTING_TYPE_BOOL32_EXT,  \
+      .valueCount = 1,                           \
+      .pValues = var,                            \
+  }
+#define LAYER_SETTINGS_STRING(name, var)                                                                                        \
   VkLayerSettingEXT {                                                                                                           \
-    .pLayerName = kDefaultValidationLayers[0], .pSettingName = name, .type = VK_LAYER_SETTING_TYPE_BOOL32_EXT, .valueCount = 1, \
+    .pLayerName = kDefaultValidationLayers[0], .pSettingName = name, .type = VK_LAYER_SETTING_TYPE_STRING_EXT, .valueCount = 1, \
     .pValues = var,                                                                                                             \
   }
   const VkLayerSettingEXT settings[] = {
       LAYER_SETTINGS_BOOL32("gpuav_enable", &gpuav_enable),
       LAYER_SETTINGS_BOOL32("gpuav_post_process_descriptor_indexing", &gpuav_post_process_descriptor_indexing),
+      LAYER_SETTINGS_BOOL32("legacy_detection", &legacy_detection),
+      LAYER_SETTINGS_STRING("legacy_detection_mode", &legacy_detection_mode),
   };
 #undef LAYER_SETTINGS_BOOL32
+#undef LAYER_SETTINGS_STRING
   const VkLayerSettingsCreateInfoEXT layerSettingsCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
       .settingCount = static_cast<uint32_t>(LVK_ARRAY_NUM_ELEMENTS(settings)),
@@ -7038,7 +7106,7 @@ lvk::Result lvk::VulkanContext::createInstance() {
 
   const VkInstanceCreateInfo ci = {
       .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-      .pNext = &layerSettingsCreateInfo,
+      .pNext = hasExtension(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME, allInstanceExtensions) ? &layerSettingsCreateInfo : nullptr,
       .flags = hasPortabilityEnumeration ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR : 0u,
       .pApplicationInfo = &appInfo,
       .enabledLayerCount = config_.enableValidation ? static_cast<uint32_t>(LVK_ARRAY_NUM_ELEMENTS(kDefaultValidationLayers)) : 0u,
@@ -7230,7 +7298,7 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
                       .vertexData = {.deviceAddress = gpuAddress(desc.vertexBuffer)},
                       .vertexStride = desc.vertexStride ? desc.vertexStride : lvk::getVertexFormatSize(desc.vertexFormat),
                       .maxVertex = desc.numVertices - 1,
-                      .indexType = VK_INDEX_TYPE_UINT32,
+                      .indexType = indexFormatToVkIndexType(desc.indexFormat),
                       .indexData = {.deviceAddress = gpuAddress(desc.indexBuffer)},
                       .transformData = {.deviceAddress = gpuAddress(desc.transformBuffer)},
                   },
@@ -7337,6 +7405,12 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   if (hasExtension(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, allDeviceExtensions)) {
     addNextPhysicalDeviceProperties(&rayTracingPipelineProperties_);
   }
+  if (hasExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, allDeviceExtensions)) {
+    addNextPhysicalDeviceProperties(&fragmentDensityMapProperties_);
+    // check whether non-subsampled attachments are supported
+    vkFragmentDensityMapFeatures_.pNext = vkFeatures10_.pNext;
+    vkFeatures10_.pNext = &vkFragmentDensityMapFeatures_;
+  }
 
   if (config_.vulkanVersion >= VulkanVersion_1_4) {
     addNextPhysicalDeviceProperties(&vkPhysicalDeviceVulkan14Properties_);
@@ -7430,6 +7504,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .geometryShader = vkFeatures10_.features.geometryShader, // enable if supported
       .tessellationShader = vkFeatures10_.features.tessellationShader, // enable if supported
       .sampleRateShading = VK_TRUE,
+      .dualSrcBlend = VK_TRUE,
       .multiDrawIndirect = VK_TRUE,
       .drawIndirectFirstInstance = VK_TRUE,
       .depthClamp = VK_TRUE,
@@ -7589,6 +7664,16 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_IMAGE_COPY_FEATURES_EXT,
       .hostImageCopy = VK_TRUE,
   };
+  VkPhysicalDeviceFragmentDensityMapFeaturesEXT fragmentDensityMapFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT,
+      .fragmentDensityMap = VK_TRUE,
+      .fragmentDensityMapDynamic = vkFragmentDensityMapFeatures_.fragmentDensityMapDynamic,
+      .fragmentDensityMapNonSubsampledImages = vkFragmentDensityMapFeatures_.fragmentDensityMapNonSubsampledImages,
+  };
+  VkPhysicalDeviceFragmentDensityMap2FeaturesEXT fragmentDensityMap2Features = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_2_FEATURES_EXT,
+      .fragmentDensityMapDeferred = VK_TRUE,
+  };
 
   auto addExtension = [&allDeviceExtensions, this, &createInfoNext](const char* name, void* features = nullptr) mutable -> void {
     if (!hasExtension(name, allDeviceExtensions)) {
@@ -7667,6 +7752,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   }
   addOptionalExtension(VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME, has_EXT_shader_tile_image, &shaderTileImageFeatures);
   addOptionalExtension(VK_EXT_MESH_SHADER_EXTENSION_NAME, has_EXT_mesh_shader_, &meshShaderFeatures);
+  addOptionalExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, has_EXT_fragment_density_map_, &fragmentDensityMapFeatures);
+  addOptionalExtension(VK_EXT_FRAGMENT_DENSITY_MAP_2_EXTENSION_NAME, has_EXT_fragment_density_map2_, &fragmentDensityMap2Features);
   addOptionalExtension(VK_KHR_SHARED_PRESENTABLE_IMAGE_EXTENSION_NAME, has_KHR_shared_presentable_image_);
   addOptionalExtension(
       VK_KHR_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME, has_KHR_present_mode_fifo_latest_ready_, &presentModeLatestReadyFeatures);
@@ -7847,6 +7934,12 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   VK_ASSERT_RETURN(vkCreateDevice(vkPhysicalDevice_, &ci, nullptr, &vkDevice_));
 
   volkLoadDevice(vkDevice_);
+
+  // promoted to Vulkan 1.4
+  if (!vkTransitionImageLayout)
+    vkTransitionImageLayout = vkTransitionImageLayoutEXT;
+  if (!vkCopyMemoryToImage)
+    vkCopyMemoryToImage = vkCopyMemoryToImageEXT;
 
   vkGetDeviceQueue(vkDevice_, deviceQueues_.graphicsQueueFamilyIndex, 0, &deviceQueues_.graphicsQueue);
   vkGetDeviceQueue(vkDevice_, deviceQueues_.computeQueueFamilyIndex, 0, &deviceQueues_.computeQueue);
@@ -8582,22 +8675,38 @@ void lvk::VulkanContext::querySurfaceCapabilities() {
     return;
   }
 
-  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkPhysicalDevice_, vkSurface_, &deviceSurfaceCaps_);
-
-  uint32_t formatCount;
-  vkGetPhysicalDeviceSurfaceFormatsKHR(vkPhysicalDevice_, vkSurface_, &formatCount, nullptr);
-
-  if (formatCount) {
-    deviceSurfaceFormats_.resize(formatCount);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(vkPhysicalDevice_, vkSurface_, &formatCount, deviceSurfaceFormats_.data());
+  if (has_KHR_swapchain_maintenance1_) {
+    const VkPhysicalDeviceSurfaceInfo2KHR surfaceInfo = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR,
+        .surface = vkSurface_,
+    };
+    VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilities2KHR(vkPhysicalDevice_, &surfaceInfo, &deviceSurfaceCaps_));
+    uint32_t formatCount; // uninitialized
+    VK_ASSERT(vkGetPhysicalDeviceSurfaceFormats2KHR(vkPhysicalDevice_, &surfaceInfo, &formatCount, nullptr));
+    if (formatCount) {
+      deviceSurfaceFormats_.resize(formatCount, VkSurfaceFormat2KHR{.sType = VK_STRUCTURE_TYPE_SURFACE_FORMAT_2_KHR});
+      VK_ASSERT(vkGetPhysicalDeviceSurfaceFormats2KHR(vkPhysicalDevice_, &surfaceInfo, &formatCount, deviceSurfaceFormats_.data()));
+    }
+  } else {
+    // legacy
+    VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkPhysicalDevice_, vkSurface_, &deviceSurfaceCaps_.surfaceCapabilities));
+    uint32_t formatCount; // uninitialized
+    VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(vkPhysicalDevice_, vkSurface_, &formatCount, nullptr));
+    if (formatCount) {
+      std::vector<VkSurfaceFormatKHR> formats(formatCount);
+      VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(vkPhysicalDevice_, vkSurface_, &formatCount, formats.data()));
+      for (const VkSurfaceFormatKHR& f : formats) {
+        deviceSurfaceFormats_.push_back(VkSurfaceFormat2KHR{.sType = VK_STRUCTURE_TYPE_SURFACE_FORMAT_2_KHR, .surfaceFormat = f});
+      }
+    }
   }
 
   uint32_t presentModeCount;
-  vkGetPhysicalDeviceSurfacePresentModesKHR(vkPhysicalDevice_, vkSurface_, &presentModeCount, nullptr);
+  VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(vkPhysicalDevice_, vkSurface_, &presentModeCount, nullptr));
 
   if (presentModeCount) {
     devicePresentModes_.resize(presentModeCount);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(vkPhysicalDevice_, vkSurface_, &presentModeCount, devicePresentModes_.data());
+    VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(vkPhysicalDevice_, vkSurface_, &presentModeCount, devicePresentModes_.data()));
   }
 }
 
