@@ -418,7 +418,7 @@ VULKAN_APP_MAIN {
 
     // rotate objects around random axes
     for (uint32_t i = 0; i != kNumObjects; i++) {
-      const float direction = std::pow(-1, static_cast<float>(i + 1));
+      const float direction = std::pow(-1.0f, static_cast<float>(i + 1));
       const uint32_t cubesInLine = static_cast<uint32_t>(std::sqrt(static_cast<float>(kNumObjects)));
       const vec3 offset = vec3(-1.5f * std::sqrt(static_cast<float>(kNumObjects)) + 4.0f * (i % cubesInLine),
                                -1.5f * std::sqrt(static_cast<float>(kNumObjects)) + 4.0f * (i / cubesInLine),
