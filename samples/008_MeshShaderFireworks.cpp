@@ -16,7 +16,6 @@
 // we are going to use raw Vulkan here to initialize VK_EXT_mesh_shader
 #include <lvk/vulkan/VulkanUtils.h>
 
-#include <cmath>
 #include <lmath/Random.h>
 
 const char* codeSlang = R"(
