@@ -70,7 +70,7 @@ struct TextureFormatProperties {
   TextureFormatProperties { .format = lvk::Format_##fmt, .bytesPerBlock = bpb, ##__VA_ARGS__ }
 // clang-format on
 
-static constexpr TextureFormatProperties properties[] = {
+constexpr TextureFormatProperties properties[] = {
     PROPS(Invalid, 1),
     PROPS(R_UN8, 1),
     PROPS(R_UI16, 2),

@@ -53,7 +53,7 @@
 
 namespace {
 
-static const char* codeVS = R"(
+const char* codeVS = R"(
 layout (location = 0) out vec4 out_color;
 layout (location = 1) out vec2 out_uv;
 
@@ -90,7 +90,7 @@ void main() {
   gl_Position = proj * vec4(v.x, v.y, 0, 1);
 })";
 
-static const char* codeFS = R"(
+const char* codeFS = R"(
 layout (location = 0) in vec4 in_color;
 layout (location = 1) in vec2 in_uv;
 

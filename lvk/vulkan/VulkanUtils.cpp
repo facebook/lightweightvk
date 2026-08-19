@@ -710,7 +710,9 @@ VkSamplerCreateInfo lvk::samplerStateDescToVkSamplerCreateInfo(const lvk::Sample
   return ci;
 }
 
-static glslang_stage_t getGLSLangShaderStage(lvk::ShaderStage stage) {
+namespace {
+
+glslang_stage_t getGLSLangShaderStage(lvk::ShaderStage stage) {
   switch (stage) {
   case lvk::ShaderStage::Stage_Vert:
     return GLSLANG_STAGE_VERTEX;
@@ -748,6 +750,8 @@ static glslang_stage_t getGLSLangShaderStage(lvk::ShaderStage stage) {
   assert(false);
   return GLSLANG_STAGE_COUNT;
 }
+
+} // namespace
 
 lvk::Result lvk::compileShaderGlslang(lvk::ShaderStage stage,
                                       const char* code,
@@ -1104,7 +1108,9 @@ VkPipelineShaderStageCreateInfo lvk::getPipelineShaderStageCreateInfo(VkShaderSt
   };
 }
 
-static uint32_t findMemoryType(VkPhysicalDevice physDev, uint32_t memoryTypeBits, VkMemoryPropertyFlags flags) {
+namespace {
+
+uint32_t findMemoryType(VkPhysicalDevice physDev, uint32_t memoryTypeBits, VkMemoryPropertyFlags flags) {
   VkPhysicalDeviceMemoryProperties2 props = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
   };
@@ -1121,6 +1127,8 @@ static uint32_t findMemoryType(VkPhysicalDevice physDev, uint32_t memoryTypeBits
 
   return 0;
 }
+
+} // namespace
 
 VkResult lvk::allocateMemory2(VkPhysicalDevice physDev,
                               VkDevice device,
