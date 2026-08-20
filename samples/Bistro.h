@@ -108,7 +108,7 @@ struct BistroMemFile {
   std::vector<uint8_t> data;
   size_t offset = 0;
 };
-void* bistroMemFileOpen(const char* path, void* userData) {
+inline void* bistroMemFileOpen(const char* path, void* userData) {
   VulkanApp* app = static_cast<VulkanApp*>(userData);
   BistroMemFile* file = new BistroMemFile();
   file->data = app->loadFile(path);
@@ -118,10 +118,10 @@ void* bistroMemFileOpen(const char* path, void* userData) {
   }
   return file;
 }
-void bistroMemFileClose(void* filePtr, void* /*userData*/) {
+inline void bistroMemFileClose(void* filePtr, void* /*userData*/) {
   delete static_cast<BistroMemFile*>(filePtr);
 }
-size_t bistroMemFileRead(void* filePtr, void* dst, size_t bytes, void* /*userData*/) {
+inline size_t bistroMemFileRead(void* filePtr, void* dst, size_t bytes, void* /*userData*/) {
   BistroMemFile* file = static_cast<BistroMemFile*>(filePtr);
   const size_t remaining = file->data.size() - file->offset;
   const size_t toRead = (bytes < remaining) ? bytes : remaining;
@@ -129,7 +129,7 @@ size_t bistroMemFileRead(void* filePtr, void* dst, size_t bytes, void* /*userDat
   file->offset += toRead;
   return toRead;
 }
-unsigned long bistroMemFileSize(void* filePtr, void* /*userData*/) {
+inline unsigned long bistroMemFileSize(void* filePtr, void* /*userData*/) {
   BistroMemFile* file = static_cast<BistroMemFile*>(filePtr);
   return static_cast<unsigned long>(file->data.size());
 }
