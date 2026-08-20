@@ -47,7 +47,6 @@
 #endif // LVK_WITH_IMPLOT
 
 #include <cmath>
-#include <cstring>
 
 #include <vector>
 

@@ -5814,7 +5814,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   // shader binding table
   const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& props = rayTracingPipelineProperties_;
   const uint32_t handleSize = props.shaderGroupHandleSize;
-  const uint32_t handleSizeAligned = getAlignedSize(props.shaderGroupHandleSize, props.shaderGroupHandleAlignment);
+  const uint32_t handleSizeAligned = static_cast<uint32_t>(getAlignedSize(props.shaderGroupHandleSize, props.shaderGroupHandleAlignment));
   const uint32_t sbtSize = numShaderGroups * handleSizeAligned;
 
   LVK_ASSERT(sbtSize);
