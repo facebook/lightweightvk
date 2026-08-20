@@ -859,7 +859,7 @@ struct OrbitAnimationGroup final {
 
     for (OrbitAnimator& anim : animationGroup_) {
       anim.update(deltaSeconds);
-      const bool applyTranslation = (anim.orbitalRadius != 0.0f) ? true : false;
+      const bool applyTranslation = anim.orbitalRadius != 0.0f;
       const mat4 translation = applyTranslation ? glm::translate(mat4(1.0f), vec3(0.0f, anim.orbitalRadius, 0.0f)) : mat4(1.0f);
       transform = translation * anim.transform * transform;
     }

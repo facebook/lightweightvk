@@ -3192,7 +3192,7 @@ void lvk::CommandBuffer::cmdDrawIndexed(uint32_t indexCount,
     return;
   }
 
-  LVK_ASSERT(ctx_->awaitingCreation_ == false);
+  LVK_ASSERT(!ctx_->awaitingCreation_);
 
   vkCmdDrawIndexed(wrapper_->cmdBuf_, indexCount, instanceCount, firstIndex, vertexOffset, baseInstance);
 }
