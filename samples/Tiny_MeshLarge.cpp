@@ -2034,7 +2034,7 @@ void showTimeGPU() {
         ImGui::PushID(i);
         Sparkline("##spark",
                   stats.timelines[i].data(),
-                  stats.timelines[i].size(),
+                  static_cast<int>(stats.timelines[i].size()),
                   stats.minmax[i].vmin * 0.8f,
                   stats.minmax[i].vmax * 1.2f,
                   color,
