@@ -546,8 +546,8 @@ bool initModel(VulkanApp& app) {
 
   // Calculate number of BLAS
   const uint32_t requiredBlasCount = [&blasSizes, maxStorageBufferSize]() {
-    const uint32_t count1 = blasSizes.buildScratchSize / maxStorageBufferSize;
-    const uint32_t count2 = blasSizes.accelerationStructureSize / maxStorageBufferSize;
+    const uint32_t count1 = static_cast<uint32_t>(blasSizes.buildScratchSize / maxStorageBufferSize);
+    const uint32_t count2 = static_cast<uint32_t>(blasSizes.accelerationStructureSize / maxStorageBufferSize);
     return 1 + (count1 > count2 ? count1 : count2);
   }();
   blasDesc.buildRange.primitiveCount = totalPrimitiveCount / requiredBlasCount;

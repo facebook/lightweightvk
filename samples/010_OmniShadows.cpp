@@ -574,7 +574,7 @@ VULKAN_APP_MAIN {
           .perLight = ctx->gpuAddress(bufPerLight),
       };
       buffer.cmdPushConstants(bindings);
-      buffer.cmdDraw(vertexData.size());
+      buffer.cmdDraw(static_cast<uint32_t>(vertexData.size()));
     };
 
     modelMatrices[0] = mat4(1.0f);
