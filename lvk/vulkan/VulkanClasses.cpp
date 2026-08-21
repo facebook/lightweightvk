@@ -4800,8 +4800,8 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   }
 
   VkImageCreateFlags vkCreateFlags = 0;
-  VkImageViewType vkImageViewType;
-  VkImageType vkImageType;
+  VkImageViewType vkImageViewType = VK_IMAGE_VIEW_TYPE_2D;
+  VkImageType vkImageType = VK_IMAGE_TYPE_2D;
   VkSampleCountFlagBits vkSamples = VK_SAMPLE_COUNT_1_BIT;
   uint32_t numLayers = desc.numLayers;
   switch (desc.type) {
@@ -8738,7 +8738,7 @@ void lvk::VulkanContext::querySurfaceCapabilities() {
     }
   }
 
-  uint32_t presentModeCount;
+  uint32_t presentModeCount = 0;
   VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(vkPhysicalDevice_, vkSurface_, &presentModeCount, nullptr));
 
   if (presentModeCount) {
