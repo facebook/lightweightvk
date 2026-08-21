@@ -396,9 +396,9 @@ struct PerFrameShadow {
 
 struct PerLight {
   vec4 lightPos;
-  float shadowNear;
-  float shadowFar;
-  uint32_t shadowMap;
+  float shadowNear = 0.0f;
+  float shadowFar = 0.0f;
+  uint32_t shadowMap = 0;
 };
 
 VULKAN_APP_MAIN {

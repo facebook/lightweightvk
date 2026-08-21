@@ -43,13 +43,13 @@ float IoD = 0.01f; // adjustable interocular distance
 VirtualTrackball g_Trackball;
 
 struct Planet {
-  float radius;
-  float orbitalRadius;
-  float globalOrbitalSpeed;
-  float localOrbitalSpeed;
-  float axialTilt;
-  float orbitalInclination;
-  const char* textureName;
+  float radius = 0.0f;
+  float orbitalRadius = 0.0f;
+  float globalOrbitalSpeed = 0.0f;
+  float localOrbitalSpeed = 0.0f;
+  float axialTilt = 0.0f;
+  float orbitalInclination = 0.0f;
+  const char* textureName = nullptr;
 };
 
 // overall scale of the planetary system

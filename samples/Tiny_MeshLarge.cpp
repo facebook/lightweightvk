@@ -511,9 +511,9 @@ bool isShadowMapDirty_ = true;
 
 struct VertexData {
   vec3 position;
-  uint32_t uv; // hvec2
-  uint16_t normal; // Octahedral 16-bit https://www.shadertoy.com/view/llfcRl
-  uint16_t mtlIndex;
+  uint32_t uv = 0; // hvec2
+  uint16_t normal = 0; // Octahedral 16-bit https://www.shadertoy.com/view/llfcRl
+  uint16_t mtlIndex = 0;
 };
 
 static_assert(sizeof(VertexData) == 5 * sizeof(uint32_t));
@@ -570,7 +570,7 @@ struct GPUMaterial {
   uint32_t texAmbient = 0;
   uint32_t texDiffuse = 0;
   uint32_t texAlpha = 0;
-  uint32_t padding[1];
+  uint32_t padding[1] = {};
 };
 
 static_assert(sizeof(GPUMaterial) % 16 == 0);
