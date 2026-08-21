@@ -593,8 +593,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
 
       const bool justPressed = mouseState_.pressedLeft && !imguiLastPressedLeft_;
 
-      positioner_.update(
-          deltaSeconds, mouseState_.pos, ImGui::GetIO().WantCaptureMouse ? false : (mouseState_.pressedLeft && !justPressed));
+      positioner_.update(deltaSeconds, mouseState_.pos, !ImGui::GetIO().WantCaptureMouse && (mouseState_.pressedLeft && !justPressed));
 
       // clear ImGui hover state one frame after touch ends
       if (imguiClearMouseNextFrame_) {
@@ -641,7 +640,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
     while (accTime >= kTimeQuantum) {
       accTime -= kTimeQuantum;
       simulatedTime_ += kTimeQuantum;
-      positioner_.update(kTimeQuantum, mouseState_.pos, ImGui::GetIO().WantCaptureMouse ? false : mouseState_.pressedLeft);
+      positioner_.update(kTimeQuantum, mouseState_.pos, !ImGui::GetIO().WantCaptureMouse && mouseState_.pressedLeft);
     }
     // FPS measurement: real time
     if (fpsCounter_.tick(deltaSeconds)) {
@@ -707,7 +706,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
     while (accTime >= kTimeQuantum) {
       accTime -= kTimeQuantum;
       simulatedTime_ += kTimeQuantum;
-      positioner_.update(kTimeQuantum, mouseState_.pos, ImGui::GetIO().WantCaptureMouse ? false : mouseState_.pressedLeft);
+      positioner_.update(kTimeQuantum, mouseState_.pos, !ImGui::GetIO().WantCaptureMouse && mouseState_.pressedLeft);
     }
     // FPS measurement: real time
     if (fpsCounter_.tick(deltaSeconds)) {
@@ -806,7 +805,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
 
     const float ratio = width_ / static_cast<float>(height_);
 
-    positioner_.update(deltaSeconds, mouseState_.pos, ImGui::GetIO().WantCaptureMouse ? false : mouseState_.pressedLeft);
+    positioner_.update(deltaSeconds, mouseState_.pos, !ImGui::GetIO().WantCaptureMouse && mouseState_.pressedLeft);
 
     const RenderView view = {
         .viewport = {0.0f, 0.0f, static_cast<float>(width_), static_cast<float>(height_), 0.0f, 1.0f},
