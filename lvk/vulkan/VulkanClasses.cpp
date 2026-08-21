@@ -7254,7 +7254,7 @@ uint32_t lvk::VulkanContext::queryDevices(HWDeviceDesc* outDevices, uint32_t max
 
   for (uint32_t i = 0; i < deviceCount; ++i) {
     VkPhysicalDevice physicalDevice = vkDevices[i];
-    VkPhysicalDeviceProperties deviceProperties;
+    VkPhysicalDeviceProperties deviceProperties = {};
     vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
 
     const HWDeviceType deviceType = convertVulkanDeviceTypeToLVK(deviceProperties.deviceType);
