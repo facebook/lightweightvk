@@ -39,7 +39,9 @@ double glfwGetTime();
 #endif
 // clang-format on
 
+#if !defined(GLM_ENABLE_EXPERIMENTAL)
 #define GLM_ENABLE_EXPERIMENTAL
+#endif // GLM_ENABLE_EXPERIMENTAL
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
 #include <shared/Camera.h>

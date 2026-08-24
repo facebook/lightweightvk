@@ -27,7 +27,9 @@
 #include <mutex>
 #include <thread>
 
+#if !defined(GLM_ENABLE_EXPERIMENTAL)
 #define GLM_ENABLE_EXPERIMENTAL
+#endif // GLM_ENABLE_EXPERIMENTAL
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/random.hpp>
