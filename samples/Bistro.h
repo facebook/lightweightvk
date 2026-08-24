@@ -92,7 +92,7 @@ inline uint16_t packSnorm2x8(vec2 v) {
 // https://www.shadertoy.com/view/llfcRl
 inline uint16_t packOctahedral16(vec3 n) {
   n /= (std::abs(n.x) + std::abs(n.y) + std::abs(n.z));
-  return ::packSnorm2x8((n.z >= 0.0) ? vec2(n.x, n.y) : (vec2(1.0) - abs(vec2(n.y, n.x))) * msign(vec2(n)));
+  return ::packSnorm2x8((n.z >= 0.0) ? vec2(n.x, n.y) : (vec2(1.0) - glm::abs(vec2(n.y, n.x))) * msign(vec2(n)));
 }
 
 inline std::string normalizeTextureName(const char* n) {
@@ -201,7 +201,7 @@ inline bool loadAndCache(VulkanApp& app, const char* cacheFileName, const char* 
     std::vector<VertexData> remappedVertices;
     indexData_.resize(indexCount);
     remappedVertices.resize(remappedVertexCount);
-    meshopt_remapIndexBuffer(indexData_.data(), nullptr, indexCount, &remap[0]);
+    meshopt_remapIndexBuffer(indexData_.data(), nullptr, indexCount, remap.data());
     meshopt_remapVertexBuffer(remappedVertices.data(), vertexData_.data(), indexCount, sizeof(VertexData), remap.data());
     vertexData_ = remappedVertices;
     // 3. Optimize for the GPU vertex cache reuse and overdraw
