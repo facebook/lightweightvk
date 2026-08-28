@@ -899,6 +899,7 @@ struct Material final {
 
 struct Scene final {
   Scene() = default;
+  ~Scene() = default;
   Scene(Scene&) = delete;
   Scene(Scene&&) = default;
   Scene& operator=(Scene&) = delete;

@@ -850,8 +850,13 @@ bool loadAndCache(const char* cacheFileName) {
     vertexData_ = remappedVertices;
     // 3. Optimize for the GPU vertex cache reuse and overdraw
     meshopt_optimizeVertexCache(indexData_.data(), indexData_.data(), indexCount, remappedVertexCount);
-    meshopt_optimizeOverdraw(
-        indexData_.data(), indexData_.data(), indexCount, &vertexData_[0].position.x, remappedVertexCount, sizeof(VertexData), 1.05f);
+    meshopt_optimizeOverdraw(indexData_.data(),
+                             indexData_.data(),
+                             indexCount,
+                             &vertexData_[0].position.x, // NOLINT(facebook-hte-LocalUncheckedArrayBounds)
+                             remappedVertexCount,
+                             sizeof(VertexData),
+                             1.05f);
     meshopt_optimizeVertexFetch(
         vertexData_.data(), indexData_.data(), indexCount, vertexData_.data(), remappedVertexCount, sizeof(VertexData));
   }
