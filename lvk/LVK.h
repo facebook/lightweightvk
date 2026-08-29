@@ -143,11 +143,13 @@ class Holder final {
     lvk::destroy(ctx_, handle_);
   }
   Holder(const Holder&) = delete;
+  // NOLINTNEXTLINE(performance-noexcept-move-constructor, facebook-hte-MoveNoexcept)
   Holder(Holder&& other) : ctx_(other.ctx_), handle_(other.handle_) {
     other.ctx_ = nullptr;
     other.handle_ = HandleType{};
   }
   Holder& operator=(const Holder&) = delete;
+  // NOLINTNEXTLINE(performance-noexcept-move-constructor)
   Holder& operator=(Holder&& other) {
     std::swap(ctx_, other.ctx_);
     std::swap(handle_, other.handle_);

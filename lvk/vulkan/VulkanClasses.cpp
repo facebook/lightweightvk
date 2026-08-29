@@ -802,6 +802,7 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormat2KHR
 
 namespace lvk {
 
+// NOLINTNEXTLINE(facebook-hte-ShadowingClass)
 struct DeferredTask {
   DeferredTask(std::packaged_task<void()>&& task, SubmitHandle handle) : task_(std::move(task)), handle_(handle) {}
   std::packaged_task<void()> task_;

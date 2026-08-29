@@ -226,8 +226,10 @@ class VulkanImmediateCommands final {
   VkDevice device_ = VK_NULL_HANDLE;
   VkQueue queue_ = VK_NULL_HANDLE;
   VkCommandPool commandPool_ = VK_NULL_HANDLE;
+  // NOLINTNEXTLINE(clang-diagnostic-unused-private-field)
   uint32_t queueFamilyIndex_ = 0;
   bool has_EXT_device_fault_ = false;
+  // NOLINTNEXTLINE(clang-diagnostic-unused-private-field)
   const char* debugName_ = "";
   CommandBufferWrapper buffers_[kMaxCommandBuffers];
   SubmitHandle lastSubmitHandle_ = SubmitHandle();
