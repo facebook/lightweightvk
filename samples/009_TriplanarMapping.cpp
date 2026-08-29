@@ -340,6 +340,7 @@ VULKAN_APP_MAIN {
   }
 
   auto presentModeToString = [](lvk::PresentMode mode) {
+    // NOLINTNEXTLINE(clang-diagnostic-switch-enum)
     switch (mode) {
     case lvk::PresentMode_FIFO:
       return "FIFO (V-Sync)";
