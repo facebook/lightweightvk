@@ -897,6 +897,7 @@ struct Material final {
   lvk::RenderPipelineHandle pipelineW;
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 struct Scene final {
   Scene() = default;
   ~Scene() = default;

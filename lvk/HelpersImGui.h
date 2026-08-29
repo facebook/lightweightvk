@@ -18,6 +18,7 @@
 
 namespace lvk {
 
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 class ImGuiRenderer {
  public:
   explicit ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const char* defaultFontTTF = nullptr, float fontSizePixels = 24.0f);

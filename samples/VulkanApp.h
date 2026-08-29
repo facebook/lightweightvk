@@ -103,6 +103,7 @@ struct VulkanAppConfig {
 #endif // LVK_WITH_OPENXR
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 class VulkanApp {
  public:
 #if defined(ANDROID)
