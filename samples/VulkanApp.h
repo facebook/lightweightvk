@@ -65,10 +65,15 @@ using KeyCallback = std::function<void(SDL_Window*, SDL_KeyboardEvent*)>;
 using MouseButtonCallback = std::function<void(SDL_Window*, SDL_MouseButtonEvent*)>;
 #endif
 
+// NOLINTNEXTLINE(facebook-hte-GlobalContextUsingDeclarationInHeader)
 using glm::mat3;
+// NOLINTNEXTLINE(facebook-hte-GlobalContextUsingDeclarationInHeader)
 using glm::mat4;
+// NOLINTNEXTLINE(facebook-hte-GlobalContextUsingDeclarationInHeader)
 using glm::vec2;
+// NOLINTNEXTLINE(facebook-hte-GlobalContextUsingDeclarationInHeader)
 using glm::vec3;
+// NOLINTNEXTLINE(facebook-hte-GlobalContextUsingDeclarationInHeader)
 using glm::vec4;
 
 struct RenderView {

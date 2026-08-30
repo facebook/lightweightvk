@@ -46,10 +46,15 @@
 
 #include "VulkanApp.h"
 
+// NOLINTNEXTLINE(facebook-hte-GlobalContextUsingDeclarationInHeader)
 using glm::mat3;
+// NOLINTNEXTLINE(facebook-hte-GlobalContextUsingDeclarationInHeader)
 using glm::mat4;
+// NOLINTNEXTLINE(facebook-hte-GlobalContextUsingDeclarationInHeader)
 using glm::vec2;
+// NOLINTNEXTLINE(facebook-hte-GlobalContextUsingDeclarationInHeader)
 using glm::vec3;
+// NOLINTNEXTLINE(facebook-hte-GlobalContextUsingDeclarationInHeader)
 using glm::vec4;
 
 constexpr uint32_t kMeshCacheVersion = 0xC0DE000A;
