@@ -30,8 +30,11 @@ Discord: https://discord.com/invite/bEyHyKCrvq
    * optional **VK_KHR_acceleration_structure** (Windows, Linux, Android)
    * optional **VK_KHR_ray_tracing_pipeline** (Windows, Linux, Android)
    * optional **VK_KHR_ray_query** (Windows, Linux, Android)
+   * optional **VK_KHR_fragment_shading_rate**
    * optional **VK_EXT_fragment_density_map** (Windows, Linux, Android)
    * optional **VK_EXT_fragment_density_map2** (Windows, Linux, Android)
+   * optional **VK_EXT_dynamic_rendering_unused_attachments**
+   * optional **VK_EXT_host_image_copy**
    * optional **VK_EXT_layer_settings**
    * optional **VK_EXT_mesh_shader** (Windows, Linux, Android)
 
@@ -53,7 +56,7 @@ Discord: https://discord.com/invite/bEyHyKCrvq
 | VK_EXT_mesh_shader            | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
 | OpenXR 1.1                    | :heavy_check_mark:         |                            |                            |                            |
 
-On MacOS, `KosmicKrisp` and `VulkanSDK 1.4.341+` are required.
+On MacOS, `KosmicKrisp` and `VulkanSDK 1.4.357+` are required.
 
 ## Build
 
@@ -85,7 +88,7 @@ cmake .. -G "Unix Makefiles"
 
 ### MacOS
 
-:heavy_exclamation_mark: Be sure that `VulkanSDK 1.4.341+` for MacOS is installed https://vulkan.lunarg.com/sdk/home#mac
+:heavy_exclamation_mark: Be sure that `VulkanSDK 1.4.357+` for MacOS is installed https://vulkan.lunarg.com/sdk/home#mac
 
 ```
 cd build

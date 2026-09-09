@@ -353,21 +353,21 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
       dir = dir.parent_path();
     }
     const path root = dir / path(LVK_PROJECT_ROOT_PATH);
-    folderThirdParty_ = (root / path("third-party/deps/src/")).string();
-    folderContentRoot_ = (root / path("third-party/content/")).string();
+    folderThirdParty_ = (root / path(cfg_.thirdPartySubdir)).string();
+    folderContentRoot_ = (root / path(cfg_.contentSubdir)).string();
     folderRepoRoot_ = dir.string();
 #else
-  path subdir("third-party/content/");
+  path subdir(cfg_.contentSubdir);
   path dir = current_path();
   // find the content somewhere above our current build directory
   while (dir != current_path().root_path() && !exists(dir / subdir)) {
     dir = dir.parent_path();
   }
   if (!exists(dir / subdir)) {
-    LLOGW("Cannot find the content directory. Run `deploy_content.py` before running this app.");
+    LLOGW("Cannot find the content directory `%s`. Run `deploy_content.py` or set VulkanAppConfig::contentSubdir.", cfg_.contentSubdir);
     LVK_ASSERT(false);
   }
-  folderThirdParty_ = (dir / path("third-party/deps/src/")).string();
+  folderThirdParty_ = (dir / path(cfg_.thirdPartySubdir)).string();
   folderContentRoot_ = (dir / subdir).string();
 #endif // ANDROID
   }
@@ -476,6 +476,15 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
       }
       for (auto& cb : app->callbacksKey) {
         cb(window, key, scancode, action, mods);
+      }
+    });
+    glfwSetScrollCallback(window_, [](GLFWwindow* window, double dx, double dy) {
+      VulkanApp* app = static_cast<VulkanApp*>(glfwGetWindowUserPointer(window));
+      if (ImGui::GetIO().WantCaptureMouse) {
+        return;
+      }
+      for (auto& cb : app->callbacksScroll) {
+        cb(window, dx, dy);
       }
     });
   }
@@ -758,6 +767,11 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       case SDL_EVENT_MOUSE_WHEEL:
         io.MouseWheelH = event.wheel.x;
         io.MouseWheel = event.wheel.y;
+        if (!io.WantCaptureMouse) {
+          for (auto& cb : callbacksScroll) {
+            cb(window_, &event.wheel);
+          }
+        }
         break;
 
       case SDL_EVENT_MOUSE_MOTION:

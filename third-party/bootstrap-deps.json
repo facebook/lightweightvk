@@ -12,7 +12,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/glslang.git",
-        "revision": "16.4.0"
+        "revision": "16.5.0"
     }
 },
 {
@@ -28,7 +28,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/SPIRV-Tools.git",
-        "revision": "a665e21f3061f34064b39937cf00fe8d8769f4ef"
+        "revision": "v2026.3"
     }
 },
 {
@@ -60,7 +60,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/libsdl-org/SDL",
-        "revision": "release-3.4.12"
+        "revision": "release-3.4.14"
     }
 },
 {
@@ -164,7 +164,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/ocornut/imgui.git",
-        "revision": "v1.92.9"
+        "revision": "v1.92.9b"
     }
 },
 {
@@ -204,7 +204,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/wolfpld/tracy.git",
-        "revision": "v0.13.1"
+        "revision": "v0.14.0"
     }
 },
 {
@@ -270,7 +270,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/shader-slang/slang",
-        "revision": "v2026.14",
+        "revision": "v2026.17",
         "recursive": true
     }
 },

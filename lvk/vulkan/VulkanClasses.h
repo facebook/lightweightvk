@@ -44,6 +44,7 @@ struct VulkanBuffer final {
  public:
   VkBuffer vkBuffer_ = VK_NULL_HANDLE;
   VkDeviceMemory vkMemory_ = VK_NULL_HANDLE;
+  VkDeviceSize vkMemorySize_ = 0; // the size of the `vkMemory_` allocation; used only when `LVK_VULKAN_USE_VMA` is 0
   VmaAllocation vmaAllocation_ = VK_NULL_HANDLE;
   VkDeviceAddress vkDeviceAddress_ = 0;
   VkDeviceSize bufferSize_ = 0;
@@ -220,6 +221,8 @@ class VulkanImmediateCommands final {
   void waitAll();
 
  private:
+  friend class lvk::VulkanContext;
+
   void purge();
 
  private:
@@ -249,6 +252,15 @@ class VulkanImmediateCommands final {
   uint32_t submitCounter_ = 1;
 };
 
+// the properties of a "render pass" a VkPipeline is created for; the VkPipeline has to be recreated whenever they change
+struct RenderPassState final {
+  uint32_t viewMask = 0;
+  uint32_t hasAttachmentFDM : 1 = 0; // VK_PIPELINE_CREATE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT
+  uint32_t hasAttachmentFSR : 1 = 0; // VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR
+
+  bool operator==(const RenderPassState&) const = default;
+};
+
 struct RenderPipelineState final {
   RenderPipelineDesc desc_;
 
@@ -260,8 +272,8 @@ struct RenderPipelineState final {
   VkVertexInputBindingDescription vkBindings_[VertexInput::LVK_VERTEX_BUFFER_MAX] = {};
   VkVertexInputAttributeDescription vkAttributes_[VertexInput::LVK_VERTEX_ATTRIBUTES_MAX] = {};
 
-  // non-owning, the last seen VkDescriptorSetLayout from VulkanContext::vkDSL_ (if the context has a new layout, invalidate all VkPipeline
-  // objects)
+  // non-owning, the last seen VkDescriptorSetLayout from VulkanContext::vkDSL_ (if the context has a new layout, invalidate all
+  // VkPipelines)
   VkDescriptorSetLayout lastVkDescriptorSetLayout_ = VK_NULL_HANDLE;
 
   VkShaderStageFlags shaderStageFlags_ = 0;
@@ -270,7 +282,7 @@ struct RenderPipelineState final {
 
   void* specConstantDataStorage_ = nullptr;
 
-  uint32_t viewMask_ = 0;
+  RenderPassState renderPassState_ = {}; // the "render pass" this VkPipeline was created for
 };
 
 class VulkanPipelineBuilder final {
@@ -278,7 +290,8 @@ class VulkanPipelineBuilder final {
   VulkanPipelineBuilder();
   ~VulkanPipelineBuilder() = default;
 
-  VulkanPipelineBuilder& dynamicState(VkDynamicState state);
+  VulkanPipelineBuilder& dynamicState(VkDynamicState state, bool enable = true);
+  VulkanPipelineBuilder& createFlags(VkPipelineCreateFlags flags, bool enable = true);
   VulkanPipelineBuilder& primitiveTopology(VkPrimitiveTopology topology);
   VulkanPipelineBuilder& rasterizationSamples(VkSampleCountFlagBits samples, float minSampleShading);
   VulkanPipelineBuilder& alphaToCoverage(bool enable);
@@ -314,6 +327,7 @@ class VulkanPipelineBuilder final {
  private:
   enum { LVK_MAX_DYNAMIC_STATES = 128 };
   uint32_t numDynamicStates_ = 0;
+  VkPipelineCreateFlags flags_ = 0;
   VkDynamicState dynamicStates_[LVK_MAX_DYNAMIC_STATES] = {};
 
   uint32_t numShaderStages_ = 0;
@@ -465,6 +479,9 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdSetBlendColor(const float color[4]) override;
   void cmdSetDepthBias(float constantFactor, float slopeFactor, float clamp) override;
   void cmdSetDepthBiasEnable(bool enable) override;
+  void cmdSetFragmentShadingRate(const Dimensions& fragmentSize,
+                                 ShadingRateCombinerOp primitiveOp,
+                                 ShadingRateCombinerOp attachmentOp) override;
 
   void cmdResetQueryPool(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount) override;
   void cmdWriteTimestamp(QueryPoolHandle pool, uint32_t query) override;
@@ -490,6 +507,10 @@ class CommandBuffer final : public ICommandBuffer {
 
   VkCommandBuffer getVkCommandBuffer() const {
     return wrapper_ ? wrapper_->cmdBuf_ : VK_NULL_HANDLE;
+  }
+
+  void invalidateBoundPipeline() {
+    lastPipelineBound_ = VK_NULL_HANDLE;
   }
 
  private:
@@ -529,7 +550,7 @@ class CommandBuffer final : public ICommandBuffer {
   VkPipeline lastPipelineBound_ = VK_NULL_HANDLE;
 
   bool isRendering_ = false;
-  uint32_t viewMask_ = 0;
+  RenderPassState renderPassState_ = {}; // the "render pass" currently being recorded
 
   lvk::RenderPipelineHandle currentPipelineGraphics_ = {};
   lvk::ComputePipelineHandle currentPipelineCompute_ = {};
@@ -596,6 +617,7 @@ class VulkanContext final : public IContext {
 
   SubmitHandle submit(lvk::ICommandBuffer& commandBuffer, TextureHandle present, const ldr::Span<TextureHandle>& release = {}) override;
   void wait(SubmitHandle handle) override;
+  [[nodiscard]] bool isReady(SubmitHandle handle) const override;
 
   Holder<BufferHandle> createBuffer(const BufferDesc& desc, const char* debugName, Result* outResult) override;
   Holder<SamplerHandle> createSampler(const SamplerStateDesc& desc, Result* outResult) override;
@@ -632,6 +654,7 @@ class VulkanContext final : public IContext {
   uint8_t* getMappedPtr(BufferHandle handle) const override;
   uint64_t gpuAddress(BufferHandle handle, size_t offset = 0) const override;
   void flushMappedMemory(BufferHandle handle, size_t offset, size_t size) const override;
+  void invalidateMappedMemory(BufferHandle handle, size_t offset, size_t size) const override;
 
   Result upload(TextureHandle handle, const TextureRangeDesc& range, const void* data, uint32_t bufferRowLength = 0) override;
   Result download(TextureHandle handle, const TextureRangeDesc& range, void* outData) override;
@@ -649,6 +672,10 @@ class VulkanContext final : public IContext {
   PresentMode getCurrentPresentMode() const override;
 
   uint32_t getFramebufferMSAABitMask() const override;
+  [[nodiscard]] Dimensions getShadingRateAttachmentMinTexelSize() const override;
+  [[nodiscard]] Dimensions getShadingRateAttachmentMaxTexelSize() const override;
+  [[nodiscard]] ldr::Span<const Dimensions> getSupportedFragmentShadingRates() const override;
+  [[nodiscard]] Dimensions getFragmentDensityMapMinTexelSize() const override;
   bool isExtensionEnabled(const char* ext) const override;
   bool supportsAsyncCompute() const override {
     return immediateCompute_ != nullptr;
@@ -663,7 +690,7 @@ class VulkanContext final : public IContext {
   ///////////////
 
   VkPipeline getVkPipeline(ComputePipelineHandle handle);
-  VkPipeline getVkPipeline(RenderPipelineHandle handle, uint32_t viewMask);
+  VkPipeline getVkPipeline(RenderPipelineHandle handle, RenderPassState passState);
   VkPipeline getVkPipeline(RayTracingPipelineHandle handle);
 
   uint32_t queryDevices(HWDeviceDesc* outDevices, uint32_t maxOutDevices = 1);
@@ -688,6 +715,15 @@ class VulkanContext final : public IContext {
 
   const VkPhysicalDeviceProperties& getVkPhysicalDeviceProperties() const {
     return vkPhysicalDeviceProperties2_.properties;
+  }
+  const VkPhysicalDeviceVulkan11Properties& getVkPhysicalDeviceVulkan11Properties() const {
+    return vkPhysicalDeviceVulkan11Properties_;
+  }
+  const VkPhysicalDeviceVulkan12Properties& getVkPhysicalDeviceVulkan12Properties() const {
+    return vkPhysicalDeviceVulkan12Properties_;
+  }
+  const VkPhysicalDeviceVulkan13Properties& getVkPhysicalDeviceVulkan13Properties() const {
+    return vkPhysicalDeviceVulkan13Properties_;
   }
 
   // OpenXR needs Vulkan instance to find physical device
@@ -747,6 +783,8 @@ class VulkanContext final : public IContext {
   const VkSamplerYcbcrConversionInfo* getOrCreateYcbcrConversionInfo(lvk::Format format);
   VkSampler getOrCreateYcbcrSampler(lvk::Format format);
   void addNextPhysicalDeviceProperties(void* properties);
+  // whether to add VK_IMAGE_USAGE_HOST_TRANSFER_BIT to the image described by `ci` (`ci.usage` must not include it yet)
+  [[nodiscard]] bool shouldEnableHostImageCopy(const VkImageCreateInfo& ci) const;
 
   void getBuildInfoBLAS(const AccelStructDesc& desc,
                         VkAccelerationStructureGeometryKHR& geom,
@@ -780,13 +818,16 @@ class VulkanContext final : public IContext {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
   VkPhysicalDeviceAccelerationStructurePropertiesKHR accelerationStructureProperties_ = {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
-  VkPhysicalDeviceDriverProperties vkPhysicalDeviceDriverProperties_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES, nullptr};
-  VkPhysicalDeviceMaintenance6Properties maintenance6Properties_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_PROPERTIES, nullptr};
-  VkPhysicalDeviceFragmentDensityMapPropertiesEXT fragmentDensityMapProperties_ = {
+  VkPhysicalDeviceDriverProperties vkPhysicalDeviceDriverProperties_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+  VkPhysicalDeviceMaintenance6Properties vkMaintenance6Properties_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_PROPERTIES};
+  VkPhysicalDeviceFragmentDensityMapPropertiesEXT vkFragmentDensityMapProperties_ = {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_PROPERTIES_EXT};
+  VkPhysicalDeviceMeshShaderPropertiesEXT vkMeshShaderProperties_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT};
+  // queried (not chained by default) - only added to vkFeatures10_ when VK_EXT_mesh_shader is supported
+  VkPhysicalDeviceMeshShaderFeaturesEXT vkMeshShaderFeatures_ = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
   // queried (not chained by default) - only added to vkFeatures10_ when VK_EXT_fragment_density_map is supported
   VkPhysicalDeviceFragmentDensityMapFeaturesEXT vkFragmentDensityMapFeatures_ = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT};
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT};
   // provided by Vulkan 1.4
   VkPhysicalDeviceVulkan14Properties vkPhysicalDeviceVulkan14Properties_ = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_PROPERTIES,
@@ -812,9 +853,12 @@ class VulkanContext final : public IContext {
       .pNext = &vkPhysicalDeviceVulkan11Properties_,
       .properties = VkPhysicalDeviceProperties{},
   };
+  VkPhysicalDeviceFragmentShadingRatePropertiesKHR vkFragmentShadingRateProperties_ = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_PROPERTIES_KHR};
 
   std::vector<VkFormat> deviceDepthFormats_;
   std::vector<VkSurfaceFormat2KHR> deviceSurfaceFormats_;
+  std::vector<Dimensions> fragmentShadingRates_; // fragment sizes from vkGetPhysicalDeviceFragmentShadingRatesKHR()
   VkSurfaceCapabilities2KHR deviceSurfaceCaps_ = {.sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR};
   std::vector<VkPresentModeKHR> devicePresentModes_;
 
@@ -864,9 +908,16 @@ class VulkanContext final : public IContext {
   bool has_KHR_shared_presentable_image_ = false;
   bool has_KHR_present_mode_fifo_latest_ready_ = false;
   bool has_KHR_maintenance6_ = false; // promoted to Vulkan 1.4
-  bool has_EXT_host_image_copy_ = false; // promoted to Vulkan 1.4
+  bool has_KHR_fragment_shading_rate_ = false;
   bool has_EXT_fragment_density_map_ = false;
   bool has_EXT_fragment_density_map2_ = false;
+  bool has_EXT_host_image_copy_ = false; // promoted to Vulkan 1.4
+  bool has_EXT_dynamic_rendering_unused_attachments_ = false;
+  // VK_EXT_host_image_copy
+  bool hostImageCopyToShaderReadOnly_ = false; // SHADER_READ_ONLY_OPTIMAL is a usable copy destination
+  bool hostImageCopyToGeneral_ = false; // GENERAL is a usable copy destination (for images which cannot be sampled)
+  bool hostImageCopyIdenticalMemoryTypeRequirements_ = false; // HOST_TRANSFER preserves memory type requirements
+  uint32_t deviceLocalMemoryTypeMask_ = 0; // bitmask of device-local memory type indices
   std::vector<const char*> enabledInstanceExtensionNames_;
   std::vector<const char*> enabledDeviceExtensionNames_;
 

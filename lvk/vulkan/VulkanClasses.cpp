@@ -17,9 +17,9 @@
 #include "VulkanClasses.h"
 #include "VulkanUtils.h"
 
-#include <SPIRV-Reflect/spirv_reflect.h>
 #include <glslang/Include/glslang_c_interface.h>
 #include <ldrutils/lutils/ScopeExit.h>
+#include <spirv_reflect.h>
 
 #if defined(VK_USE_PLATFORM_METAL_EXT)
 #include <vulkan/vulkan_metal.h>
@@ -58,6 +58,15 @@ static_assert(lvk::Swizzle_R == static_cast<uint32_t>(VK_COMPONENT_SWIZZLE_R));
 static_assert(lvk::Swizzle_G == static_cast<uint32_t>(VK_COMPONENT_SWIZZLE_G));
 static_assert(lvk::Swizzle_B == static_cast<uint32_t>(VK_COMPONENT_SWIZZLE_B));
 static_assert(lvk::Swizzle_A == static_cast<uint32_t>(VK_COMPONENT_SWIZZLE_A));
+static_assert(lvk::ShadingRateCombinerOp_Keep == static_cast<uint32_t>(VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR));
+static_assert(lvk::ShadingRateCombinerOp_Replace == static_cast<uint32_t>(VK_FRAGMENT_SHADING_RATE_COMBINER_OP_REPLACE_KHR));
+static_assert(lvk::ShadingRateCombinerOp_Min == static_cast<uint32_t>(VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MIN_KHR));
+static_assert(lvk::ShadingRateCombinerOp_Max == static_cast<uint32_t>(VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MAX_KHR));
+static_assert(lvk::ShadingRateCombinerOp_Mul == static_cast<uint32_t>(VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MUL_KHR));
+static_assert(lvk::ColorComponentBit_R == static_cast<uint32_t>(VK_COLOR_COMPONENT_R_BIT));
+static_assert(lvk::ColorComponentBit_G == static_cast<uint32_t>(VK_COLOR_COMPONENT_G_BIT));
+static_assert(lvk::ColorComponentBit_B == static_cast<uint32_t>(VK_COLOR_COMPONENT_B_BIT));
+static_assert(lvk::ColorComponentBit_A == static_cast<uint32_t>(VK_COLOR_COMPONENT_A_BIT));
 static_assert(sizeof(lvk::AccelStructInstance) == sizeof(VkAccelerationStructureInstanceKHR));
 static_assert(sizeof(lvk::mat3x4) == sizeof(VkTransformMatrixKHR));
 static_assert(sizeof(lvk::ClearColorValue) == sizeof(VkClearColorValue));
@@ -572,6 +581,49 @@ VkFormat vertexFormatToVkFormat(lvk::VertexFormat fmt) {
   return VK_FORMAT_UNDEFINED;
 }
 
+/*
+ * A shader-visible (sampled or storage) view must expose exactly one aspect, so a combined depth/stencil format has to
+ * pick one. `VulkanImage::getImageAspectFlags()` reports every aspect the format has - use that one for attachments and
+ * barriers, and this one for image views.
+ */
+VkImageAspectFlags getViewAspectFlags(bool isDepthFormat, bool isStencilFormat, lvk::TextureAspect aspect) {
+  switch (aspect) {
+  case lvk::TextureAspect_Depth:
+    return VK_IMAGE_ASPECT_DEPTH_BIT;
+  case lvk::TextureAspect_Stencil:
+    return VK_IMAGE_ASPECT_STENCIL_BIT;
+  case lvk::TextureAspect_Plane0:
+    return VK_IMAGE_ASPECT_PLANE_0_BIT;
+  case lvk::TextureAspect_Plane1:
+    return VK_IMAGE_ASPECT_PLANE_1_BIT;
+  case lvk::TextureAspect_Plane2:
+    return VK_IMAGE_ASPECT_PLANE_2_BIT;
+  case lvk::TextureAspect_Default:
+    break;
+  }
+
+  if (!isDepthFormat && !isStencilFormat) {
+    return VK_IMAGE_ASPECT_COLOR_BIT;
+  }
+
+  return isDepthFormat ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_STENCIL_BIT;
+}
+
+/*
+ * Vulkan requires a single-plane view of a multi-planar image to use that plane's own compatible format rather than the
+ * image's; the view also drops the YCbCr conversion, so the plane reads back as an ordinary color texture.
+ */
+VkFormat getImagePlaneVkFormat(VkFormat format, uint32_t plane) {
+  switch (format) {
+  case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
+    return plane ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM;
+  case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
+    return VK_FORMAT_R8_UNORM;
+  default:
+    return VK_FORMAT_UNDEFINED;
+  }
+}
+
 std::vector<VkFormat> getCompatibleDepthStencilFormats(lvk::Format format) {
   // NOLINTNEXTLINE(clang-diagnostic-switch-enum)
   switch (format) {
@@ -585,6 +637,9 @@ std::vector<VkFormat> getCompatibleDepthStencilFormats(lvk::Format format) {
     return {VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D16_UNORM_S8_UINT};
   case lvk::Format_Z_F32_S_UI8:
     return {VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D16_UNORM_S8_UINT};
+  case lvk::Format_S_UI8:
+    // stencil-only: every fallback must still carry a stencil aspect
+    return {VK_FORMAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D16_UNORM_S8_UINT};
   default:
     return {VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT};
   }
@@ -840,6 +895,31 @@ struct VulkanContextImpl final {
 
 } // namespace lvk
 
+namespace {
+
+// `vkFlushMappedMemoryRanges()` and `vkInvalidateMappedMemoryRanges()` require the range to be aligned to `nonCoherentAtomSize`
+VkMappedMemoryRange getAlignedMemoryRange(VkDeviceMemory memory,
+                                          VkDeviceSize offset,
+                                          VkDeviceSize size,
+                                          VkDeviceSize memorySize,
+                                          VkDeviceSize atomSize) {
+  LVK_ASSERT(atomSize);
+
+  const VkDeviceSize alignedOffset = (offset / atomSize) * atomSize;
+  const VkDeviceSize alignedEnd = ((offset + size + atomSize - 1) / atomSize) * atomSize;
+  // the range should end either on a `nonCoherentAtomSize` boundary or at the end of the memory allocation
+  const VkDeviceSize end = alignedEnd < memorySize ? alignedEnd : memorySize;
+
+  return VkMappedMemoryRange{
+      .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+      .memory = memory,
+      .offset = alignedOffset,
+      .size = end - alignedOffset,
+  };
+}
+
+} // namespace
+
 void lvk::VulkanBuffer::flushMappedMemory(const VulkanContext& ctx, VkDeviceSize offset, VkDeviceSize size) const {
   if (!LVK_VERIFY(isMapped())) {
     return;
@@ -848,12 +928,8 @@ void lvk::VulkanBuffer::flushMappedMemory(const VulkanContext& ctx, VkDeviceSize
   if (LVK_VULKAN_USE_VMA) {
     vmaFlushAllocation(static_cast<VmaAllocator>(ctx.getVmaAllocator()), vmaAllocation_, offset, size);
   } else {
-    const VkMappedMemoryRange range = {
-        .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-        .memory = vkMemory_,
-        .offset = offset,
-        .size = size,
-    };
+    const VkMappedMemoryRange range =
+        getAlignedMemoryRange(vkMemory_, offset, size, vkMemorySize_, ctx.getVkPhysicalDeviceProperties().limits.nonCoherentAtomSize);
     vkFlushMappedMemoryRanges(ctx.getVkDevice(), 1, &range);
   }
 }
@@ -866,12 +942,8 @@ void lvk::VulkanBuffer::invalidateMappedMemory(const VulkanContext& ctx, VkDevic
   if (LVK_VULKAN_USE_VMA) {
     vmaInvalidateAllocation(static_cast<VmaAllocator>(ctx.getVmaAllocator()), vmaAllocation_, offset, size);
   } else {
-    const VkMappedMemoryRange range = {
-        .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-        .memory = vkMemory_,
-        .offset = offset,
-        .size = size,
-    };
+    const VkMappedMemoryRange range =
+        getAlignedMemoryRange(vkMemory_, offset, size, vkMemorySize_, ctx.getVkPhysicalDeviceProperties().limits.nonCoherentAtomSize);
     vkInvalidateMappedMemoryRanges(ctx.getVkDevice(), 1, &range);
   }
 }
@@ -2067,9 +2139,19 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
       .patchControlPoints = 0,
   }) {}
 
-lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::dynamicState(VkDynamicState state) {
+lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::dynamicState(VkDynamicState state, bool enable) {
+  if (!enable) {
+    return *this;
+  }
   LVK_ASSERT(numDynamicStates_ < LVK_MAX_DYNAMIC_STATES);
   dynamicStates_[numDynamicStates_++] = state;
+  return *this;
+}
+
+lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::createFlags(VkPipelineCreateFlags flags, bool enable) {
+  if (enable) {
+    flags_ |= flags;
+  }
   return *this;
 }
 
@@ -2242,7 +2324,7 @@ VkResult lvk::VulkanPipelineBuilder::build(VkDevice device,
   const VkGraphicsPipelineCreateInfo ci = {
       .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
       .pNext = &renderingInfo,
-      .flags = 0,
+      .flags = flags_,
       .stageCount = numShaderStages_,
       .pStages = shaderStages_,
       .pVertexInputState = &vertexInputState_,
@@ -2503,7 +2585,8 @@ void lvk::CommandBuffer::cmdDispatch(const Dimensions& groupCount, const Depende
     LVK_ASSERT_MSG(buf->vkUsageFlags_ & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                    "Did you forget to specify BufferUsageBits_Storage on your buffer?");
     bufferBarrier(deps.buffers[i],
-                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT |
+                      VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
   }
 
@@ -2525,7 +2608,8 @@ void lvk::CommandBuffer::cmdDispatchIndirect(BufferHandle indirectBuffer, size_t
     LVK_ASSERT_MSG(buf->vkUsageFlags_ & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                    "Did you forget to specify BufferUsageBits_Storage on your buffer?");
     bufferBarrier(deps.buffers[i],
-                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT |
+                      VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
   }
 
@@ -2652,7 +2736,11 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   LVK_ASSERT(!isRendering_);
 
   isRendering_ = true;
-  viewMask_ = renderPass.viewMask;
+  renderPassState_ = {
+      .viewMask = renderPass.viewMask,
+      .hasAttachmentFDM = fb.fragmentDensityMap.valid(),
+      .hasAttachmentFSR = fb.shadingRateAttachment.valid(),
+  };
 
   addCrossQueueDependencies(deps);
   cmdTransitionToShaderReadOnly(deps.sampledImages, {});
@@ -2770,7 +2858,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     colorAttachments[i] = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .pNext = nullptr,
-        .imageView = colorTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, viewMask_),
+        .imageView = colorTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, renderPassState_.viewMask),
         .imageLayout = colorTexture.vkImageLayout_, // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .resolveMode = (colorSamples > 1) ? resolveModeToVkResolveModeFlagBits(descColor.resolveMode, VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM)
                                           : VK_RESOLVE_MODE_NONE,
@@ -2788,7 +2876,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
       LVK_ASSERT_MSG(!attachment.resolveTexture.empty(), "Framebuffer attachment should contain a resolve texture");
       lvk::VulkanImage& colorResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
       colorAttachments[i].resolveImageView =
-          colorResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, viewMask_);
+          colorResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, renderPassState_.viewMask);
       colorAttachments[i].resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
   }
@@ -2802,7 +2890,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     depthAttachment = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .pNext = nullptr,
-        .imageView = depthTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer, viewMask_),
+        .imageView = depthTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer, renderPassState_.viewMask),
         .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .resolveMode = VK_RESOLVE_MODE_NONE,
         .resolveImageView = VK_NULL_HANDLE,
@@ -2819,7 +2907,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
       LVK_ASSERT_MSG(!attachment.resolveTexture.empty(), "Framebuffer depth attachment should contain a resolve texture");
       lvk::VulkanImage& depthResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
       depthAttachment.resolveImageView =
-          depthResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer, viewMask_);
+          depthResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer, renderPassState_.viewMask);
       depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
       depthAttachment.resolveMode =
           resolveModeToVkResolveModeFlagBits(descDepth.resolveMode, ctx_->vkPhysicalDeviceVulkan12Properties_.supportedDepthResolveModes);
@@ -2846,27 +2934,54 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   const bool isStencilFormat = (renderPass.stencil.loadOp != lvk::LoadOp_DontCare) || (renderPass.stencil.storeOp != lvk::StoreOp_DontCare);
 
   // optional fragment density map (VK_EXT_fragment_density_map)
-  VkRenderingFragmentDensityMapAttachmentInfoEXT fragmentDensityMapInfo = {
-      .sType = VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_INFO_EXT,
-      .imageView = VK_NULL_HANDLE,
-      .imageLayout = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT,
-  };
-  if (fb.fragmentDensityMap) {
+  const VkRenderingFragmentDensityMapAttachmentInfoEXT fragmentDensityMapInfo = [this, &fb]() {
+    if (!fb.fragmentDensityMap)
+      return VkRenderingFragmentDensityMapAttachmentInfoEXT{};
+
     LVK_ASSERT_MSG(ctx_->has_EXT_fragment_density_map_, "VK_EXT_fragment_density_map is not supported");
     LVK_ASSERT_MSG(ctx_->vkFragmentDensityMapFeatures_.fragmentDensityMapNonSubsampledImages,
                    "fragmentDensityMapNonSubsampledImages is required to use a fragment density map with LVK's non-subsampled attachments");
-    lvk::VulkanImage& fdmImage = *ctx_->texturesPool_.get(fb.fragmentDensityMap);
+    const lvk::VulkanImage& fdmImage = *ctx_->texturesPool_.get(fb.fragmentDensityMap);
     LVK_ASSERT_MSG(fdmImage.vkUsageFlags_ & VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT,
                    "Fragment density map must be created with TextureUsageBits_FragmentDensityMap");
     fdmImage.transitionLayout(wrapper_->cmdBuf_,
                               VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT,
                               VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
-    fragmentDensityMapInfo.imageView = fdmImage.imageView_;
-  }
+    return VkRenderingFragmentDensityMapAttachmentInfoEXT{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_INFO_EXT,
+        .imageView = fdmImage.imageView_,
+        .imageLayout = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT,
+    };
+  }();
+
+  // optional shading rate attachment (VK_KHR_fragment_shading_rate)
+  const VkRenderingFragmentShadingRateAttachmentInfoKHR shadingRateInfo = [this, &fb]() {
+    if (!fb.shadingRateAttachment)
+      return VkRenderingFragmentShadingRateAttachmentInfoKHR{};
+
+    const Dimensions& texelSize = fb.shadingRateAttachmentTexelSize;
+    [[maybe_unused]] const Dimensions minTexelSize = ctx_->getShadingRateAttachmentMinTexelSize();
+    [[maybe_unused]] const Dimensions maxTexelSize = ctx_->getShadingRateAttachmentMaxTexelSize();
+    LVK_ASSERT_MSG(texelSize.width >= minTexelSize.width && texelSize.width <= maxTexelSize.width &&
+                       texelSize.height >= minTexelSize.height && texelSize.height <= maxTexelSize.height,
+                   "Framebuffer::shadingRateAttachmentTexelSize is outside min/maxFragmentShadingRateAttachmentTexelSize");
+    const lvk::VulkanImage& sraImage = *ctx_->texturesPool_.get(fb.shadingRateAttachment);
+    LVK_ASSERT_MSG(sraImage.vkUsageFlags_ & VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR,
+                   "Shading rate attachment must be created with TextureUsageBits_ShadingRateAttachment");
+    sraImage.transitionLayout(wrapper_->cmdBuf_,
+                              VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR,
+                              VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+    return VkRenderingFragmentShadingRateAttachmentInfoKHR{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_INFO_KHR,
+        .imageView = sraImage.imageView_,
+        .imageLayout = VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR,
+        .shadingRateAttachmentTexelSize = {texelSize.width, texelSize.height},
+    };
+  }();
 
   const VkRenderingInfo renderingInfo = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-      .pNext = fb.fragmentDensityMap ? &fragmentDensityMapInfo : nullptr,
+      .pNext = fb.fragmentDensityMap ? (const void*)&fragmentDensityMapInfo : (fb.shadingRateAttachment ? &shadingRateInfo : nullptr),
       .flags = 0,
       .renderArea = {.offset = {.x = static_cast<int32_t>(scissor.x), .y = static_cast<int32_t>(scissor.y)},
                      .extent = {.width = scissor.width, .height = scissor.height}},
@@ -2886,6 +3001,11 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
 
   vkCmdSetDepthCompareOp(wrapper_->cmdBuf_, VK_COMPARE_OP_ALWAYS);
   vkCmdSetDepthBiasEnable(wrapper_->cmdBuf_, VK_FALSE);
+
+  if (ctx_->has_KHR_fragment_shading_rate_) {
+    // the dynamic state is enabled on every pipeline, so it must be set before any draw; 1x1 is the full rate and is always supported
+    cmdSetFragmentShadingRate({}, ShadingRateCombinerOp_Keep, ShadingRateCombinerOp_Keep);
+  }
 
   vkCmdBeginRendering(wrapper_->cmdBuf_, &renderingInfo);
 }
@@ -2958,12 +3078,13 @@ void lvk::CommandBuffer::cmdBindRenderPipeline(lvk::RenderPipelineHandle handle)
   const bool hasDepthAttachmentPipeline = rps->desc_.depthFormat != Format_Invalid;
   const bool hasDepthAttachmentPass = !framebuffer_.depthStencil.texture.empty();
 
-  if (hasDepthAttachmentPipeline != hasDepthAttachmentPass) {
+  // VK_EXT_dynamic_rendering_unused_attachments allows the depth attachments of a render pass and a render pipeline to mismatch
+  if (hasDepthAttachmentPipeline != hasDepthAttachmentPass && !ctx_->has_EXT_dynamic_rendering_unused_attachments_) {
     LVK_ASSERT(false);
     LLOGW("Make sure your render pass and render pipeline both have matching depth attachments");
   }
 
-  VkPipeline pipeline = ctx_->getVkPipeline(handle, viewMask_);
+  VkPipeline pipeline = ctx_->getVkPipeline(handle, renderPassState_);
 
   LVK_ASSERT(pipeline != VK_NULL_HANDLE);
 
@@ -3017,16 +3138,20 @@ void lvk::CommandBuffer::cmdBindVertexBuffer(uint32_t index, BufferHandle buffer
 void lvk::CommandBuffer::cmdBindIndexBuffer(BufferHandle indexBuffer, IndexFormat indexFormat, uint64_t bufferOffset, uint64_t bufferSize) {
   lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(indexBuffer);
 
-  LVK_ASSERT(buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+  LVK_ASSERT(!buf || buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+  LVK_ASSERT_MSG(buf || ctx_->has_KHR_maintenance6_, "An empty index buffer requires `.maintenance6`");
+  LVK_ASSERT_MSG(buf || bufferOffset == 0, "An empty index buffer requires a zero `bufferOffset`");
 
   const VkIndexType type = indexFormatToVkIndexType(indexFormat);
+  const VkBuffer vkBuffer = buf ? buf->vkBuffer_ : VK_NULL_HANDLE;
+
   if (ctx_->workaround_noMaintenance5_) {
     // VK_KHR_maintenance5 (which exposes vkCmdBindIndexBuffer2KHR) isn't advertised on Quest 3:
     // fall back to the original entry point; bufferSize is ignored (full buffer from offset is used)
-    vkCmdBindIndexBuffer(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, type);
+    vkCmdBindIndexBuffer(wrapper_->cmdBuf_, vkBuffer, bufferOffset, type);
   } else {
     // TODO: remove KHR fallback once Vulkan 1.4 with VK_KHR_maintenance5 is baseline
-    vkCmdBindIndexBuffer2KHR(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, bufferSize, type);
+    vkCmdBindIndexBuffer2KHR(wrapper_->cmdBuf_, vkBuffer, bufferOffset, bufferSize, type);
   }
 }
 
@@ -3340,6 +3465,26 @@ void lvk::CommandBuffer::cmdSetDepthBias(float constantFactor, float slopeFactor
 
 void lvk::CommandBuffer::cmdSetDepthBiasEnable(bool enable) {
   vkCmdSetDepthBiasEnable(wrapper_->cmdBuf_, enable ? VK_TRUE : VK_FALSE);
+}
+
+void lvk::CommandBuffer::cmdSetFragmentShadingRate(const Dimensions& fragmentSize,
+                                                   ShadingRateCombinerOp primitiveOp,
+                                                   ShadingRateCombinerOp attachmentOp) {
+  LVK_ASSERT_MSG(ctx_->has_KHR_fragment_shading_rate_,
+                 "VK_KHR_fragment_shading_rate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
+  LVK_ASSERT_MSG(fragmentSize.depth == 1, "The fragment shading rate is 2D: `depth` must be 1");
+  // `VkPhysicalDeviceFragmentShadingRateKHR::sampleCounts` restricts some fragment sizes to fewer samples (e.g. 4x4 to 1 sample).
+  // It is not checked here because the pipeline used for the draw is not known yet - this is dynamic state
+  LVK_ASSERT_MSG(std::find(ctx_->fragmentShadingRates_.cbegin(), ctx_->fragmentShadingRates_.cend(), fragmentSize) !=
+                     ctx_->fragmentShadingRates_.cend(),
+                 "This fragment size is not in IContext::getSupportedFragmentShadingRates()");
+
+  const VkExtent2D vkFragmentSize = {fragmentSize.width, fragmentSize.height};
+  const VkFragmentShadingRateCombinerOpKHR combinerOps[2] = {
+      (VkFragmentShadingRateCombinerOpKHR)primitiveOp,
+      (VkFragmentShadingRateCombinerOpKHR)attachmentOp,
+  };
+  vkCmdSetFragmentShadingRateKHR(wrapper_->cmdBuf_, &vkFragmentSize, combinerOps);
 }
 
 void lvk::CommandBuffer::cmdResetQueryPool(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount) {
@@ -3709,18 +3854,22 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
     return;
   }
 
-  lvk::VulkanBuffer* stagingBuffer = ctx_.buffersPool_.get(stagingBuffer_);
-
-  LVK_ASSERT(stagingBuffer);
+  // capture the destination handle: an oversized upload grows the staging buffer below (prevent dangling buffer references)
+  const VkBuffer dstVkBuffer = buffer.vkBuffer_;
 
   const size_t origDstOffset = dstOffset;
   const size_t origSize = size;
 
   while (size) {
-    // get next staging buffer free offset
+    // next free staging offset (grows the staging buffer if the upload doesn't fit)
     MemoryRegionDesc desc = getNextFreeOffset(size);
     const VkDeviceSize chunkSize = std::min<VkDeviceSize>(size, desc.size_);
     const bool isLast = (chunkSize == size);
+
+    // fetch the staging buffer after getNextFreeOffset() so the pointer is valid even if it just grew
+    lvk::VulkanBuffer* stagingBuffer = ctx_.buffersPool_.get(stagingBuffer_);
+
+    LVK_ASSERT(stagingBuffer);
 
     // copy data into staging buffer
     stagingBuffer->bufferSubData(ctx_, desc.offset_, chunkSize, data);
@@ -3733,7 +3882,7 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
     };
 
     const lvk::VulkanImmediateCommands::CommandBufferWrapper& wrapper = ctx_.immediate_->acquire();
-    vkCmdCopyBuffer(wrapper.cmdBuf_, stagingBuffer->vkBuffer_, buffer.vkBuffer_, 1, &copy);
+    vkCmdCopyBuffer(wrapper.cmdBuf_, stagingBuffer->vkBuffer_, dstVkBuffer, 1, &copy);
     // one barrier covering the full destination range
     if (isLast) {
       const VkBufferMemoryBarrier2 barrier = {
@@ -3744,7 +3893,7 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
           .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
           .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
           .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-          .buffer = buffer.vkBuffer_,
+          .buffer = dstVkBuffer,
           .offset = origDstOffset,
           .size = origSize,
       };
@@ -3775,6 +3924,12 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
                                            uint32_t bufferRowLength) {
   LVK_PROFILER_FUNCTION();
 
+  // only images which can be sampled or read as input attachments are allowed to use VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+  // (fragment density maps and shading rate attachments are not)
+  const VkImageLayout layoutAfterUpload = (image.vkUsageFlags_ & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
+                                              ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                                              : VK_IMAGE_LAYOUT_GENERAL;
+
   LVK_ASSERT(numMipLevels <= LVK_MAX_MIP_LEVELS);
 
   const Format texFormat = vkFormatToFormat(format);
@@ -3790,6 +3945,70 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
   if (numMipLevels > 1 || numLayers > 1) {
     LVK_ASSERT(!bufferRowLength);
     LVK_ASSERT_MSG(coversFullImage, "Uploading mip-levels with an image region that is smaller than the base mip-level is not supported");
+  }
+
+  // Fast path: copy from host memory (no staging buffer or submit) using VK_EXT_host_image_copy.
+  //
+  // Only the 1st, full-image upload of a freshly created image (layout still UNDEFINED): host image copies are NOT synced, so
+  // re-uploading a texture the GPU may still be sampling would race.
+  // Once `vkImageLayout_` leaves UNDEFINED the image may be in use, so later uploads fall through to the traditional synced staging path.
+  const bool isFirstUpload = coversFullImage && image.vkImageLayout_ == VK_IMAGE_LAYOUT_UNDEFINED;
+  // a combined depth+stencil image is rejected here: `VkMemoryToImageCopy::imageSubresource` accepts only one aspect at a time
+  const VkImageAspectFlags hostCopyAspect = image.getImageAspectFlags();
+  const bool isSingleAspect = (hostCopyAspect & (hostCopyAspect - 1)) == 0;
+  const bool isSinglePlane = lvk::getNumImagePlanes(image.vkImageFormat_) == 1; // multi-planar images fall through to the staging path
+  const bool hasHostTransfer = image.vkUsageFlags_ & VK_IMAGE_USAGE_HOST_TRANSFER_BIT;
+  if (isFirstUpload && isSingleAspect && isSinglePlane && hasHostTransfer) {
+    std::vector<VkMemoryToImageCopy> regions;
+    regions.reserve(static_cast<size_t>(numMipLevels) * numLayers);
+
+    // `data` is laid out mip-major, layer-minor (same accounting as `storageSize` below)
+    uint64_t srcOffset = 0;
+    for (uint32_t mipLevel = 0; mipLevel != numMipLevels; mipLevel++) {
+      for (uint32_t layer = 0; layer != numLayers; layer++) {
+        const uint32_t currentMipLevel = baseMipLevel + mipLevel;
+        const uint32_t currentLayer = baseLayer + layer;
+
+        LVK_ASSERT(currentMipLevel < image.numLevels_);
+        LVK_ASSERT(currentLayer < image.numLayers_);
+
+        regions.push_back(VkMemoryToImageCopy{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_TO_IMAGE_COPY,
+            .pHostPointer = (const uint8_t*)data + srcOffset,
+            .memoryRowLength = bufferRowLength,
+            .memoryImageHeight = 0,
+            .imageSubresource = VkImageSubresourceLayers{hostCopyAspect, currentMipLevel, currentLayer, 1},
+            .imageOffset = {.x = imageRegion.offset.x >> mipLevel, .y = imageRegion.offset.y >> mipLevel, .z = 0},
+            .imageExtent = {.width = std::max(1u, imageRegion.extent.width >> mipLevel),
+                            .height = std::max(1u, imageRegion.extent.height >> mipLevel),
+                            .depth = 1u},
+        });
+        srcOffset += lvk::getTextureBytesPerLayer(
+            bufferRowLength ? bufferRowLength : imageRegion.extent.width, imageRegion.extent.height, texFormat, mipLevel);
+      }
+    }
+
+    // oldLayout is UNDEFINED because the fast path only runs on a freshly created image (see `isFirstUpload` above)
+    const VkHostImageLayoutTransitionInfo transition = {
+        .sType = VK_STRUCTURE_TYPE_HOST_IMAGE_LAYOUT_TRANSITION_INFO,
+        .image = image.vkImage_,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = layoutAfterUpload,
+        .subresourceRange = {hostCopyAspect, baseMipLevel, numMipLevels, baseLayer, numLayers},
+    };
+    VK_ASSERT(vkTransitionImageLayout(ctx_.vkDevice_, 1, &transition));
+
+    const VkCopyMemoryToImageInfo copyInfo = {
+        .sType = VK_STRUCTURE_TYPE_COPY_MEMORY_TO_IMAGE_INFO,
+        .dstImage = image.vkImage_,
+        .dstImageLayout = layoutAfterUpload,
+        .regionCount = static_cast<uint32_t>(regions.size()),
+        .pRegions = regions.data(),
+    };
+    VK_ASSERT(vkCopyMemoryToImage(ctx_.vkDevice_, &copyInfo));
+
+    image.vkImageLayout_ = layoutAfterUpload;
+    return;
   }
 
   // find the storage size for all mip-levels being uploaded
@@ -3902,21 +4121,21 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
         planeOffset += lvk::getTextureBytesPerPlane(imageRegion.extent.width, imageRegion.extent.height, vkFormatToFormat(format), plane);
       }
 
-      // 3. Transition TRANSFER_DST_OPTIMAL into SHADER_READ_ONLY_OPTIMAL
+      // 3. Transition TRANSFER_DST_OPTIMAL into the layout the image can actually use
       lvk::imageMemoryBarrier2(
           wrapper.cmdBuf_,
           image.vkImage_,
           StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
           StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+          layoutAfterUpload,
           VkImageSubresourceRange{imageAspect, currentMipLevel, 1, currentLayer, 1});
 
       offset += lvk::getTextureBytesPerLayer(imageRegion.extent.width, imageRegion.extent.height, texFormat, currentMipLevel);
     }
   }
 
-  image.vkImageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  image.vkImageLayout_ = layoutAfterUpload;
 
   desc.handle_ = ctx_.immediate_->submit(wrapper);
   insertRegion(desc);
@@ -3929,6 +4148,9 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
                                            const void* data) {
   LVK_PROFILER_FUNCTION();
   LVK_ASSERT_MSG(image.numLevels_ == 1, "Can handle only 3D images with exactly 1 mip-level");
+  // only images which can be sampled are allowed to use VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+  const VkImageLayout layoutAfterUpload = (image.vkUsageFlags_ & VK_IMAGE_USAGE_SAMPLED_BIT) ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                                                                                             : VK_IMAGE_LAYOUT_GENERAL;
 
   const uint64_t sliceBytes64 = static_cast<uint64_t>(extent.width) * extent.height * getBytesPerPixel(format);
   LVK_ASSERT_MSG(sliceBytes64 <= UINT32_MAX, "Single depth slice exceeds 4 GB");
@@ -3989,7 +4211,7 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
     };
     vkCmdCopyBufferToImage2(wrapper.cmdBuf_, &copyInfo);
 
-    // last batch: transition the whole image TRANSFER_DST_OPTIMAL -> SHADER_READ_ONLY_OPTIMAL
+    // last batch: transition the whole image out of TRANSFER_DST_OPTIMAL
     if (remainingSlices == batchSlices) {
       lvk::imageMemoryBarrier2(
           wrapper.cmdBuf_,
@@ -3997,7 +4219,7 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
           StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
           StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+          layoutAfterUpload,
           VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
     }
 
@@ -4009,7 +4231,7 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
     remainingSlices -= batchSlices;
   }
 
-  image.vkImageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  image.vkImageLayout_ = layoutAfterUpload;
 }
 
 void lvk::VulkanStagingDevice::getImageData(VulkanImage& image,
@@ -4272,7 +4494,9 @@ lvk::VulkanContext::VulkanContext(const lvk::ContextConfig& config, void* window
 #elif defined(LVK_WITH_LAVAPIPE_STATIC)
   volkInitializeCustom(reinterpret_cast<PFN_vkGetInstanceProcAddr>(lvp_GetInstanceProcAddr));
 #else
-  if (volkInitialize() != VK_SUCCESS) {
+  if (config_.customVkGetInstanceProcAddr) {
+    volkInitializeCustom(reinterpret_cast<PFN_vkGetInstanceProcAddr>(config_.customVkGetInstanceProcAddr));
+  } else if (volkInitialize() != VK_SUCCESS) {
     LLOGW("volkInitialize() failed\n");
     exit(255);
   };
@@ -4521,11 +4745,16 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
 
 void lvk::VulkanContext::wait(SubmitHandle handle) {
   // route to the queue the handle was produced on (a SubmitHandle is self-describing via its queue family index)
-  if (immediateCompute_ && !handle.empty() && handle.queueFamilyIndex_ == deviceQueues_.computeQueueFamilyIndex) {
-    immediateCompute_->wait(handle);
-    return;
-  }
-  immediate_->wait(handle);
+  const bool isComputeQueue = immediateCompute_ && !handle.empty() && handle.queueFamilyIndex_ == deviceQueues_.computeQueueFamilyIndex;
+
+  (isComputeQueue ? immediateCompute_ : immediate_)->wait(handle);
+}
+
+bool lvk::VulkanContext::isReady(SubmitHandle handle) const {
+  // route to the queue the handle was produced on (a SubmitHandle is self-describing via its queue family index)
+  const bool isComputeQueue = immediateCompute_ && !handle.empty() && handle.queueFamilyIndex_ == deviceQueues_.computeQueueFamilyIndex;
+
+  return (isComputeQueue ? immediateCompute_ : immediate_)->isReady(handle);
 }
 
 lvk::Holder<lvk::BufferHandle> lvk::VulkanContext::createBuffer(const BufferDesc& requestedDesc, const char* debugName, Result* outResult) {
@@ -4780,6 +5009,11 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
     LVK_ASSERT_MSG(has_EXT_fragment_density_map_, "VK_EXT_fragment_density_map is not supported");
     usageFlags |= VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT;
   }
+  if (desc.usage & lvk::TextureUsageBits_ShadingRateAttachment) {
+    LVK_ASSERT_MSG(has_KHR_fragment_shading_rate_,
+                   "VK_KHR_fragment_shading_rate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
+    usageFlags |= VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
+  }
 
   if (desc.storage != lvk::StorageType_Memoryless) {
     // For now, always set this flag so we can read it back
@@ -4840,6 +5074,27 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   LVK_ASSERT(vkExtent.width > 0);
   LVK_ASSERT(vkExtent.height > 0);
   LVK_ASSERT(vkExtent.depth > 0);
+
+  // add VK_IMAGE_USAGE_HOST_TRANSFER_BIT to eligible single-plane images to enable the staging-free imageData2D() path
+  if (desc.storage != lvk::StorageType_Memoryless && lvk::getNumImagePlanes(desc.format) == 1) {
+    const VkImageCreateInfo hostCopyProbe = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .flags = vkCreateFlags,
+        .imageType = vkImageType,
+        .format = vkFormat,
+        .extent = vkExtent,
+        .mipLevels = numLevels,
+        .arrayLayers = numLayers,
+        .samples = vkSamples,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = usageFlags,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+    if (shouldEnableHostImageCopy(hostCopyProbe)) {
+      usageFlags |= VK_IMAGE_USAGE_HOST_TRANSFER_BIT;
+    }
+  }
 
   lvk::VulkanImage image = {
       .vkUsageFlags_ = usageFlags,
@@ -4989,16 +5244,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
     image.vkFormatProperties_ = props.formatProperties;
   }
 
-  VkImageAspectFlags aspect = 0;
-  if (image.isDepthFormat_ || image.isStencilFormat_) {
-    if (image.isDepthFormat_) {
-      aspect |= VK_IMAGE_ASPECT_DEPTH_BIT;
-    } else if (image.isStencilFormat_) {
-      aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
-    }
-  } else {
-    aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-  }
+  const VkImageAspectFlags aspect = getViewAspectFlags(image.isDepthFormat_, image.isStencilFormat_, lvk::TextureAspect_Default);
 
   const VkComponentMapping components = {
       .r = static_cast<VkComponentSwizzle>(desc.components.r),
@@ -5086,15 +5332,42 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
   std::memset(&image.imageViewForFramebuffer_, 0, sizeof(image.imageViewForFramebuffer_));
   std::memset(&image.imageViewForFramebufferMultiview_, 0, sizeof(image.imageViewForFramebufferMultiview_));
 
-  VkImageAspectFlags aspect = 0;
-  if (image.isDepthFormat_ || image.isStencilFormat_) {
-    if (image.isDepthFormat_) {
-      aspect |= VK_IMAGE_ASPECT_DEPTH_BIT;
-    } else if (image.isStencilFormat_) {
-      aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
+  if (!LVK_VERIFY(desc.aspect != TextureAspect_Depth || image.isDepthFormat_)) {
+    Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "TextureAspect_Depth needs a format with a depth aspect");
+    return {};
+  }
+  if (!LVK_VERIFY(desc.aspect != TextureAspect_Stencil || image.isStencilFormat_)) {
+    Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "TextureAspect_Stencil needs a format with a stencil aspect");
+    return {};
+  }
+
+  const uint32_t numPlanes = lvk::getNumImagePlanes(image.vkImageFormat_);
+  const bool isPlaneView = desc.aspect >= TextureAspect_Plane0;
+
+  if (isPlaneView) {
+    if (!LVK_VERIFY(desc.aspect - TextureAspect_Plane0 < numPlanes)) {
+      Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "This texture does not have the requested plane");
+      return {};
     }
-  } else {
-    aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+  } else if (!LVK_VERIFY(numPlanes == 1)) {
+    Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "A multiplanar texture can only be viewed one plane at a time");
+    return {};
+  }
+
+  const VkImageAspectFlags aspect = getViewAspectFlags(image.isDepthFormat_, image.isStencilFormat_, desc.aspect);
+
+  if (isPlaneView) {
+    // the view takes on the plane's own format and extent, so it behaves like any other single-plane texture
+    const uint32_t plane = desc.aspect - TextureAspect_Plane0;
+    const VkFormat planeFormat = getImagePlaneVkFormat(image.vkImageFormat_, plane);
+    if (!LVK_VERIFY(planeFormat != VK_FORMAT_UNDEFINED)) {
+      Result::setResult(outResult, Result::Code::RuntimeError, "Unsupported multiplanar format");
+      return {};
+    }
+    const VkExtent2D extent =
+        lvk::getImagePlaneExtent(VkExtent2D{image.vkExtent_.width, image.vkExtent_.height}, vkFormatToFormat(image.vkImageFormat_), plane);
+    image.vkImageFormat_ = planeFormat;
+    image.vkExtent_ = VkExtent3D{extent.width, extent.height, 1u};
   }
 
   VkImageViewType vkImageViewType = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
@@ -5120,8 +5393,6 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
       .b = static_cast<VkComponentSwizzle>(desc.components.b),
       .a = static_cast<VkComponentSwizzle>(desc.components.a),
   };
-
-  LVK_ASSERT_MSG(lvk::getNumImagePlanes(image.vkImageFormat_) == 1, "Unsupported multiplanar image");
 
   image.imageView_ = image.createImageView(vkDevice_,
                                            vkImageViewType,
@@ -5413,7 +5684,7 @@ const VkSamplerYcbcrConversionInfo* lvk::VulkanContext::getOrCreateYcbcrConversi
   return &pimpl_->ycbcrConversionData_[format].info;
 }
 
-VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32_t viewMask) {
+VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, RenderPassState passState) {
   lvk::RenderPipelineState* rps = renderPipelinesPool_.get(handle);
 
   if (!rps) {
@@ -5437,14 +5708,14 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
 
   const DescriptorSet& dset = DSets_[lastUpdatedDSet_];
 
-  if (rps->lastVkDescriptorSetLayout_ != dset.vkDSL || rps->viewMask_ != viewMask) {
+  if (rps->lastVkDescriptorSetLayout_ != dset.vkDSL || rps->renderPassState_ != passState) {
     deferredTask(std::packaged_task<void()>(
         [device = getVkDevice(), pipeline = rps->pipeline_]() { vkDestroyPipeline(device, pipeline, nullptr); }));
     deferredTask(std::packaged_task<void()>(
         [device = getVkDevice(), layout = rps->pipelineLayout_]() { vkDestroyPipelineLayout(device, layout, nullptr); }));
     rps->pipeline_ = VK_NULL_HANDLE;
     rps->lastVkDescriptorSetLayout_ = dset.vkDSL;
-    rps->viewMask_ = viewMask;
+    rps->renderPassState_ = passState;
   }
 
   if (rps->pipeline_ != VK_NULL_HANDLE) {
@@ -5477,7 +5748,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
           .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
           .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
           .alphaBlendOp = VK_BLEND_OP_ADD,
-          .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+          .colorWriteMask = (VkColorComponentFlags)attachment.colorWriteMask,
       };
     } else {
       colorBlendAttachmentStates[i] = VkPipelineColorBlendAttachmentState{
@@ -5488,7 +5759,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
           .srcAlphaBlendFactor = blendFactorToVkBlendFactor(attachment.srcAlphaBlendFactor),
           .dstAlphaBlendFactor = blendFactorToVkBlendFactor(attachment.dstAlphaBlendFactor),
           .alphaBlendOp = blendOpToVkBlendOp(attachment.alphaBlendOp),
-          .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+          .colorWriteMask = (VkColorComponentFlags)attachment.colorWriteMask,
       };
     }
   }
@@ -5581,6 +5852,11 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_COMPARE_OP)
       // from Vulkan 1.3 or VK_EXT_extended_dynamic_state2
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE)
+      // from VK_KHR_fragment_shading_rate
+      .dynamicState(VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR, has_KHR_fragment_shading_rate_)
+      .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, passState.hasAttachmentFSR)
+      // from VK_EXT_fragment_density_map
+      .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT, passState.hasAttachmentFDM)
       .primitiveTopology(topologyToVkPrimitiveTopology(desc.topology))
       .rasterizationSamples(getVulkanSampleCountFlags(desc.samplesCount, getFramebufferMSAABitMask()), desc.minSampleShading)
       .alphaToCoverage(desc.alphaToCoverage)
@@ -5618,7 +5894,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
       .cullMode(cullModeToVkCullMode(desc.cullMode))
       .frontFace(windingModeToVkFrontFace(desc.frontFace))
       .vertexInputState(ciVertexInputState)
-      .viewMask(viewMask)
+      .viewMask(passState.viewMask)
       .colorAttachments(colorBlendAttachmentStates, colorAttachmentFormats, numColorAttachments)
       .depthAttachmentFormat(formatToVkFormat(desc.depthFormat))
       .stencilAttachmentFormat(formatToVkFormat(desc.stencilFormat))
@@ -6291,6 +6567,8 @@ void lvk::VulkanContext::destroy(Framebuffer& fb) {
   }
   destroyFbTexture(fb.depthStencil.texture);
   destroyFbTexture(fb.depthStencil.resolveTexture);
+  destroyFbTexture(fb.fragmentDensityMap);
+  destroyFbTexture(fb.shadingRateAttachment);
 }
 
 uint64_t lvk::VulkanContext::gpuAddress(AccelStructHandle handle) const {
@@ -6375,6 +6653,14 @@ void lvk::VulkanContext::flushMappedMemory(BufferHandle handle, size_t offset, s
   buf->flushMappedMemory(*this, offset, size);
 }
 
+void lvk::VulkanContext::invalidateMappedMemory(BufferHandle handle, size_t offset, size_t size) const {
+  const lvk::VulkanBuffer* buf = buffersPool_.get(handle);
+
+  LVK_ASSERT(buf);
+
+  buf->invalidateMappedMemory(*this, offset, size);
+}
+
 lvk::Result lvk::VulkanContext::download(lvk::TextureHandle handle, const TextureRangeDesc& range, void* outData) {
   if (!outData) {
     return Result(Result::Code::ArgumentOutOfRange);
@@ -6386,6 +6672,13 @@ lvk::Result lvk::VulkanContext::download(lvk::TextureHandle handle, const Textur
 
   if (!texture) {
     return Result(Result::Code::RuntimeError);
+  }
+
+  // VUID-VkBufferImageCopy2-aspectMask-09103: a buffer-image copy region can reference only one image aspect, so combined
+  // depth/stencil textures would need one copy region per aspect
+  if (texture->isDepthFormat_ && texture->isStencilFormat_) {
+    LVK_ASSERT_MSG(false, "Cannot download combined depth/stencil textures");
+    return Result(Result::Code::ArgumentOutOfRange, "Cannot download combined depth/stencil textures");
   }
 
   const Result result = validateRange(texture->vkExtent_, texture->numLevels_, range);
@@ -6615,6 +6908,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
           "#extension GL_EXT_nonuniform_qualifier : require\n"
           "#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n"
           "#extension GL_EXT_mesh_shader : require\n";
+      addCode("gl_PrimitiveShadingRateEXT", "#extension GL_EXT_fragment_shading_rate : require\n");
     }
     if (vkStage == VK_SHADER_STAGE_VERTEX_BIT || vkStage == VK_SHADER_STAGE_COMPUTE_BIT ||
         vkStage == VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT || vkStage == VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT) {
@@ -6626,6 +6920,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
           "#extension GL_EXT_nonuniform_qualifier : require\n"
           "#extension GL_EXT_samplerless_texture_functions : require\n"
           "#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n";
+      addCode("gl_PrimitiveShadingRateEXT", "#extension GL_EXT_fragment_shading_rate : require\n");
     }
     if (vkStage == VK_SHADER_STAGE_FRAGMENT_BIT) {
       // Note how nonuniformEXT() should be used:
@@ -6639,6 +6934,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
           "#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n"
           "#extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable\n"
           "#extension GL_EXT_shader_atomic_int64 : enable\n";
+      addCode("gl_ShadingRateEXT", "#extension GL_EXT_fragment_shading_rate : require\n");
       addCode("kTLAS[",
               "#extension GL_EXT_buffer_reference : require\n"
               "#extension GL_EXT_ray_query : require\n"
@@ -6648,6 +6944,8 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
           "layout (set = 0, binding = 0) uniform texture3D   kTextures3D[];\n"
           "layout (set = 0, binding = 0) uniform textureCube kTexturesCube[];\n"
           "layout (set = 0, binding = 0) uniform texture2D   kTextures2DShadow[];\n"
+          "layout (set = 0, binding = 0) uniform utexture2D  kTextures2DUint[];\n" // integer format cannot be filtered
+          "layout (set = 0, binding = 0) uniform itexture2D  kTextures2DInt[];\n" // integer format cannot be filtered
           "layout (set = 0, binding = 1) uniform sampler       kSamplers[];\n"
           "layout (set = 0, binding = 1) uniform samplerShadow kSamplersShadow[];\n"
           "layout (set = 0, binding = 3) uniform sampler2D     kSamplersYUV[];\n";
@@ -6666,6 +6964,14 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
       addCode("textureBindlessSize2D(",
               "ivec2 textureBindlessSize2D(uint textureid) {\n"
               "  return textureSize(nonuniformEXT(kTextures2D[textureid]), 0);\n"
+              "}\n");
+      addCode("texelFetchBindlessUint2D(",
+              "uvec4 texelFetchBindlessUint2D(uint textureid, ivec2 coord, int lod) {\n"
+              "  return texelFetch(nonuniformEXT(kTextures2DUint[textureid]), coord, lod);\n"
+              "}\n");
+      addCode("texelFetchBindlessInt2D(",
+              "ivec4 texelFetchBindlessInt2D(uint textureid, ivec2 coord, int lod) {\n"
+              "  return texelFetch(nonuniformEXT(kTextures2DInt[textureid]), coord, lod);\n"
               "}\n");
       addCode("textureBindlessCube(",
               "vec4 textureBindlessCube(uint textureid, uint samplerid, vec3 uvw) {\n"
@@ -6715,7 +7021,8 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
     source = sourcePatched.c_str();
   }
 
-  const glslang_resource_t glslangResource = lvk::getGlslangResource(getVkPhysicalDeviceProperties().limits);
+  const glslang_resource_t glslangResource =
+      lvk::getGlslangResource(getVkPhysicalDeviceProperties().limits, has_EXT_mesh_shader_ ? &vkMeshShaderProperties_ : nullptr);
 
   std::vector<uint8_t> spirv;
   lvk::Result::setResult(outResult, lvk::compileShaderGlslang(stage, source, &spirv, config_.generateSPIRVDebugInfo, &glslangResource));
@@ -6745,6 +7052,10 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
     }
   };
 
+  // Slang `v2026.11+` hard-codes a fast path for builtin matrix operators which skips `operator*` overload resolution
+  // (https://github.com/shader-slang/slang/pull/11493 and https://github.com/shader-slang/slang/issues/11877).
+  // Importing `glsl` puts the module into "GLSL operator scope", so the overloads below are used again.
+  sourcePatched += "import glsl;\n";
   // overloaded operators to mimic GLSL matrix operations
   sourcePatched +=
       "float2x2 operator*(float2x2 a, float2x2 b) { return mul(b, a); }\n"
@@ -6759,6 +7070,8 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
       "[[vk::binding(0, 0)]] Texture3D    kTextures3D[];\n"
       "[[vk::binding(0, 0)]] TextureCube  kTexturesCube[];\n"
       "[[vk::binding(0, 0)]] Texture2D    kTextures2DShadow[];\n"
+      "[[vk::binding(0, 0)]] Texture2D<uint4> kTextures2DUint[];\n"
+      "[[vk::binding(0, 0)]] Texture2D<int4>  kTextures2DInt[];\n"
       "[[vk::binding(1, 0)]] SamplerState kSamplers[];\n"
       "[[vk::binding(1, 0)]] SamplerComparisonState kSamplersShadow[];\n"
       "[[vk::binding(3, 0)]] Sampler2D    kSamplersYUV[];\n";
@@ -6772,6 +7085,14 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
           "float4 textureBindless2DLod(uint textureid, uint samplerid, float2 uv, float lod) {\n"
           "  return kTextures2D[NonUniformResourceIndex(textureid)].SampleLevel(\n"
           "    kSamplers[NonUniformResourceIndex(samplerid)], uv, lod);\n"
+          "}\n");
+  addCode("texelFetchBindlessUint2D(",
+          "uint4 texelFetchBindlessUint2D(uint textureid, int2 coord, int lod) {\n"
+          "  return kTextures2DUint[NonUniformResourceIndex(textureid)].Load(int3(coord, lod));\n"
+          "}\n");
+  addCode("texelFetchBindlessInt2D(",
+          "int4 texelFetchBindlessInt2D(uint textureid, int2 coord, int lod) {\n"
+          "  return kTextures2DInt[NonUniformResourceIndex(textureid)].Load(int3(coord, lod));\n"
           "}\n");
   addCode("textureBindlessCube(",
           "float4 textureBindlessCube(uint textureid, uint samplerid, float3 dir) {\n"
@@ -6892,6 +7213,31 @@ bool lvk::VulkanContext::setCurrentPresentMode(PresentMode mode) {
 uint32_t lvk::VulkanContext::getFramebufferMSAABitMask() const {
   const VkPhysicalDeviceLimits& limits = getVkPhysicalDeviceProperties().limits;
   return limits.framebufferColorSampleCounts & limits.framebufferDepthSampleCounts;
+}
+
+lvk::Dimensions lvk::VulkanContext::getShadingRateAttachmentMinTexelSize() const {
+  LVK_ASSERT_MSG(has_KHR_fragment_shading_rate_,
+                 "VK_KHR_fragment_shading_rate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
+  const VkExtent2D& size = vkFragmentShadingRateProperties_.minFragmentShadingRateAttachmentTexelSize;
+  return {.width = size.width, .height = size.height};
+}
+
+lvk::Dimensions lvk::VulkanContext::getShadingRateAttachmentMaxTexelSize() const {
+  LVK_ASSERT_MSG(has_KHR_fragment_shading_rate_,
+                 "VK_KHR_fragment_shading_rate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
+  const VkExtent2D& size = vkFragmentShadingRateProperties_.maxFragmentShadingRateAttachmentTexelSize;
+  return {.width = size.width, .height = size.height};
+}
+
+ldr::Span<const lvk::Dimensions> lvk::VulkanContext::getSupportedFragmentShadingRates() const {
+  // no assert: an empty span is how applications detect the lack of support
+  return ldr::Span<const Dimensions>(fragmentShadingRates_.data(), fragmentShadingRates_.size());
+}
+
+lvk::Dimensions lvk::VulkanContext::getFragmentDensityMapMinTexelSize() const {
+  LVK_ASSERT_MSG(has_EXT_fragment_density_map_, "VK_EXT_fragment_density_map is not enabled");
+  const VkExtent2D& size = vkFragmentDensityMapProperties_.minFragmentDensityTexelSize;
+  return {.width = size.width, .height = size.height};
 }
 
 double lvk::VulkanContext::getTimestampPeriodToMs() const {
@@ -7070,7 +7416,7 @@ lvk::Result lvk::VulkanContext::createInstance() {
   const VkBool32 gpuav_enable = enableGpuAV ? VK_TRUE : VK_FALSE;
   const VkBool32 gpuav_post_process_descriptor_indexing = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/9222
   const VkBool32 legacy_detection = config_.enableValidation ? VK_TRUE : VK_FALSE;
-  const char* legacy_detection_mode = "ONLY_SUPPORTED";
+  const char* legacy_detection_mode = "ONLY_ENABLED";
 #define LAYER_SETTINGS_BOOL32(name, var)         \
   VkLayerSettingEXT{                             \
       .pLayerName = kDefaultValidationLayers[0], \
@@ -7255,14 +7601,14 @@ uint32_t lvk::VulkanContext::queryDevices(HWDeviceDesc* outDevices, uint32_t max
 
   for (uint32_t i = 0; i < deviceCount; ++i) {
     VkPhysicalDevice physicalDevice = vkDevices[i];
-    VkPhysicalDeviceProperties deviceProperties = {};
-    vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+    VkPhysicalDeviceProperties2 props2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+    vkGetPhysicalDeviceProperties2(physicalDevice, &props2);
 
-    const HWDeviceType deviceType = convertVulkanDeviceTypeToLVK(deviceProperties.deviceType);
+    const HWDeviceType deviceType = convertVulkanDeviceTypeToLVK(props2.properties.deviceType);
 
     if (outDevices && numCompatibleDevices < maxOutDevices) {
       outDevices[numCompatibleDevices] = {.guid = reinterpret_cast<uintptr_t>(vkDevices[i]), .type = deviceType};
-      strncpy(outDevices[numCompatibleDevices].name, deviceProperties.deviceName, std::strlen(deviceProperties.deviceName));
+      std::strncpy(outDevices[numCompatibleDevices].name, props2.properties.deviceName, std::strlen(props2.properties.deviceName));
       numCompatibleDevices++;
     }
   }
@@ -7278,6 +7624,50 @@ void lvk::VulkanContext::addNextPhysicalDeviceProperties(void* properties) {
       std::launder(reinterpret_cast<VkBaseOutStructure*>(vkPhysicalDeviceProperties2_.pNext));
 
   vkPhysicalDeviceProperties2_.pNext = properties;
+}
+
+bool lvk::VulkanContext::shouldEnableHostImageCopy(const VkImageCreateInfo& ci) const {
+  if (!has_EXT_host_image_copy_) {
+    return false;
+  }
+
+  // only sampled/transfer images: host-copying device-written (storage/attachment) images hangs some drivers
+  if (ci.usage & (VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                  VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT)) {
+    return false;
+  }
+
+  // format must support host image transfer
+  VkFormatProperties3 formatProps3 = {.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3};
+  VkFormatProperties2 formatProps2 = {.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2, .pNext = &formatProps3};
+  vkGetPhysicalDeviceFormatProperties2(vkPhysicalDevice_, ci.format, &formatProps2);
+  if (!(formatProps3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT)) {
+    return false;
+  }
+
+  // imageData2D() copies into SHADER_READ_ONLY_OPTIMAL for sampled images and GENERAL otherwise, so that layout must be a
+  // supported copy destination
+  const bool isSampled = (ci.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) != 0;
+  if (!(isSampled ? hostImageCopyToShaderReadOnly_ : hostImageCopyToGeneral_)) {
+    return false;
+  }
+
+  // if HOST_TRANSFER never changes the memory type requirements, it is always free
+  if (hostImageCopyIdenticalMemoryTypeRequirements_) {
+    return true;
+  }
+
+  // otherwise enable it only if the image can still be device-local with HOST_TRANSFER (e.g. resizable BAR), not forced into host memory
+  VkImageCreateInfo ciWithHostTransfer = ci;
+  ciWithHostTransfer.usage |= VK_IMAGE_USAGE_HOST_TRANSFER_BIT;
+  const VkDeviceImageMemoryRequirements imageReqInfo = {
+      .sType = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS,
+      .pCreateInfo = &ciWithHostTransfer,
+  };
+  VkMemoryRequirements2 memReq = {.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+  vkGetDeviceImageMemoryRequirements(vkDevice_, &imageReqInfo, &memReq);
+
+  return (memReq.memoryRequirements.memoryTypeBits & deviceLocalMemoryTypeMask_) != 0;
 }
 
 void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
@@ -7423,18 +7813,27 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   if (hasExtension(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, allDeviceExtensions)) {
     addNextPhysicalDeviceProperties(&rayTracingPipelineProperties_);
   }
+  if (hasExtension(VK_EXT_MESH_SHADER_EXTENSION_NAME, allDeviceExtensions)) {
+    addNextPhysicalDeviceProperties(&vkMeshShaderProperties_);
+    // check which features are supported before enabling them
+    vkMeshShaderFeatures_.pNext = vkFeatures10_.pNext;
+    vkFeatures10_.pNext = &vkMeshShaderFeatures_;
+  }
   if (hasExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, allDeviceExtensions)) {
-    addNextPhysicalDeviceProperties(&fragmentDensityMapProperties_);
+    addNextPhysicalDeviceProperties(&vkFragmentDensityMapProperties_);
     // check whether non-subsampled attachments are supported
     vkFragmentDensityMapFeatures_.pNext = vkFeatures10_.pNext;
     vkFeatures10_.pNext = &vkFragmentDensityMapFeatures_;
+  }
+  if (config_.enableFragmentShadingRate && hasExtension(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, allDeviceExtensions)) {
+    addNextPhysicalDeviceProperties(&vkFragmentShadingRateProperties_);
   }
 
   if (config_.vulkanVersion >= VulkanVersion_1_4) {
     addNextPhysicalDeviceProperties(&vkPhysicalDeviceVulkan14Properties_);
     vkFeatures13_.pNext = &vkFeatures14_;
   } else if (hasExtension(VK_KHR_MAINTENANCE_6_EXTENSION_NAME, allDeviceExtensions)) {
-    addNextPhysicalDeviceProperties(&maintenance6Properties_);
+    addNextPhysicalDeviceProperties(&vkMaintenance6Properties_);
   }
 
   vkGetPhysicalDeviceFeatures2(vkPhysicalDevice_, &vkFeatures10_);
@@ -7446,7 +7845,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   if (config_.vulkanVersion >= VulkanVersion_1_4) {
     pimpl_->maxCombinedImageSamplerDescriptorCount_ = vkPhysicalDeviceVulkan14Properties_.maxCombinedImageSamplerDescriptorCount;
   } else if (hasExtension(VK_KHR_MAINTENANCE_6_EXTENSION_NAME, allDeviceExtensions)) {
-    pimpl_->maxCombinedImageSamplerDescriptorCount_ = maintenance6Properties_.maxCombinedImageSamplerDescriptorCount;
+    pimpl_->maxCombinedImageSamplerDescriptorCount_ = vkMaintenance6Properties_.maxCombinedImageSamplerDescriptorCount;
   }
 
   const uint32_t apiVersion = vkPhysicalDeviceProperties2_.properties.apiVersion;
@@ -7676,6 +8075,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
       .taskShader = VK_TRUE,
       .meshShader = VK_TRUE,
+      // VUID-VkPhysicalDeviceMeshShaderFeaturesEXT-primitiveFragmentShadingRateMeshShader-07033 requires `primitiveFragmentShadingRate`
+      .primitiveFragmentShadingRateMeshShader = vkMeshShaderFeatures_.primitiveFragmentShadingRateMeshShader &&
+                                                has_KHR_fragment_shading_rate_,
   };
   VkPhysicalDevicePresentModeFifoLatestReadyFeaturesKHR presentModeLatestReadyFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_MODE_FIFO_LATEST_READY_FEATURES_KHR,
@@ -7684,6 +8086,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   VkPhysicalDeviceHostImageCopyFeaturesEXT hostImageCopyFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_IMAGE_COPY_FEATURES_EXT,
       .hostImageCopy = VK_TRUE,
+  };
+  VkPhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT dynamicRenderingUnusedAttachmentsFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_FEATURES_EXT,
+      .dynamicRenderingUnusedAttachments = VK_TRUE,
   };
   VkPhysicalDeviceFragmentDensityMapFeaturesEXT fragmentDensityMapFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT,
@@ -7694,6 +8100,12 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   VkPhysicalDeviceFragmentDensityMap2FeaturesEXT fragmentDensityMap2Features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_2_FEATURES_EXT,
       .fragmentDensityMapDeferred = VK_TRUE,
+  };
+  VkPhysicalDeviceFragmentShadingRateFeaturesKHR fragmentShadingRateFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR,
+      .pipelineFragmentShadingRate = VK_TRUE,
+      .primitiveFragmentShadingRate = VK_TRUE,
+      .attachmentFragmentShadingRate = VK_TRUE,
   };
 
   auto addExtension = [&allDeviceExtensions, this, &createInfoNext](const char* name, void* features = nullptr) mutable -> void {
@@ -7773,11 +8185,67 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   }
   addOptionalExtension(VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME, has_EXT_shader_tile_image, &shaderTileImageFeatures);
   addOptionalExtension(VK_EXT_MESH_SHADER_EXTENSION_NAME, has_EXT_mesh_shader_, &meshShaderFeatures);
-  addOptionalExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, has_EXT_fragment_density_map_, &fragmentDensityMapFeatures);
-  addOptionalExtension(VK_EXT_FRAGMENT_DENSITY_MAP_2_EXTENSION_NAME, has_EXT_fragment_density_map2_, &fragmentDensityMap2Features);
+  // VUID-VkDeviceCreateInfo-fragmentDensityMap-04481/04482/04483: the FSR is mutually exclusive with FDM, so enable only one of them
+  if (!config_.enableFragmentShadingRate ||
+      !addOptionalExtension(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, has_KHR_fragment_shading_rate_, &fragmentShadingRateFeatures)) {
+    addOptionalExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, has_EXT_fragment_density_map_, &fragmentDensityMapFeatures);
+    addOptionalExtension(VK_EXT_FRAGMENT_DENSITY_MAP_2_EXTENSION_NAME, has_EXT_fragment_density_map2_, &fragmentDensityMap2Features);
+  }
+  addOptionalExtension(VK_EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_EXTENSION_NAME,
+                       has_EXT_dynamic_rendering_unused_attachments_,
+                       &dynamicRenderingUnusedAttachmentsFeatures);
   addOptionalExtension(VK_KHR_SHARED_PRESENTABLE_IMAGE_EXTENSION_NAME, has_KHR_shared_presentable_image_);
   addOptionalExtension(
       VK_KHR_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME, has_KHR_present_mode_fifo_latest_ready_, &presentModeLatestReadyFeatures);
+
+  if (has_EXT_host_image_copy_) {
+    // query VK_EXT_host_image_copy properties (copy dst layouts + memory-type requirements)
+    VkPhysicalDeviceHostImageCopyProperties props = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_IMAGE_COPY_PROPERTIES,
+    };
+    VkPhysicalDeviceProperties2 props2 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+        .pNext = &props,
+    };
+    vkGetPhysicalDeviceProperties2(vkPhysicalDevice_, &props2);
+    std::vector<VkImageLayout> dstLayouts(props.copyDstLayoutCount);
+    props.copySrcLayoutCount = 0;
+    props.pCopyDstLayouts = dstLayouts.data();
+    vkGetPhysicalDeviceProperties2(vkPhysicalDevice_, &props2);
+
+    // imageData2D() copies into whichever layout the uploaded image can use
+    hostImageCopyToShaderReadOnly_ =
+        std::find(dstLayouts.begin(), dstLayouts.end(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) != dstLayouts.end();
+    hostImageCopyToGeneral_ = std::find(dstLayouts.begin(), dstLayouts.end(), VK_IMAGE_LAYOUT_GENERAL) != dstLayouts.end();
+    hostImageCopyIdenticalMemoryTypeRequirements_ = props.identicalMemoryTypeRequirements == VK_TRUE;
+
+    // device-local memory type mask, used to check whether HOST_TRANSFER images stay device-local
+    VkPhysicalDeviceMemoryProperties2 memProps2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2};
+    vkGetPhysicalDeviceMemoryProperties2(vkPhysicalDevice_, &memProps2);
+    deviceLocalMemoryTypeMask_ = 0;
+    for (uint32_t i = 0; i < memProps2.memoryProperties.memoryTypeCount; ++i) {
+      if (memProps2.memoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+        deviceLocalMemoryTypeMask_ |= (1u << i);
+      }
+    }
+
+    LLOGD("VK_EXT_host_image_copy: enabled (identicalMemoryTypeRequirements: %s, SHADER_READ_ONLY_OPTIMAL: %s)\n",
+          hostImageCopyIdenticalMemoryTypeRequirements_ ? "true" : "false",
+          hostImageCopyToShaderReadOnly_ ? "true" : "false");
+  }
+
+  if (has_KHR_fragment_shading_rate_) {
+    uint32_t numRates = 0;
+    VK_ASSERT(vkGetPhysicalDeviceFragmentShadingRatesKHR(vkPhysicalDevice_, &numRates, nullptr));
+    std::vector<VkPhysicalDeviceFragmentShadingRateKHR> rates(
+        numRates, VkPhysicalDeviceFragmentShadingRateKHR{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_KHR});
+    VK_ASSERT(vkGetPhysicalDeviceFragmentShadingRatesKHR(vkPhysicalDevice_, &numRates, rates.data()));
+    // `sampleCounts` is dropped here - the number of samples belongs to the pipeline, not to the fragment size
+    fragmentShadingRates_.reserve(numRates);
+    for (const VkPhysicalDeviceFragmentShadingRateKHR& rate : rates) {
+      fragmentShadingRates_.push_back({.width = rate.fragmentSize.width, .height = rate.fragmentSize.height, .depth = 1});
+    }
+  }
 
   // check extensions
   {
@@ -8149,6 +8617,8 @@ lvk::Result lvk::VulkanContext::initSwapchain(uint32_t width, uint32_t height) {
     VK_ASSERT(vkDeviceWaitIdle(vkDevice_));
     // the guard fence belongs to the swapchain we are about to destroy
     immediate_->setLastPresentSemaphore(VK_NULL_HANDLE, VK_NULL_HANDLE);
+    // so does a pending acquire semaphore: drop it, otherwise the next submit() would wait on a destroyed semaphore
+    immediate_->waitSemaphore_.semaphore = VK_NULL_HANDLE;
     swapchain_ = nullptr;
     vkDestroySemaphore(vkDevice_, timelineSemaphore_, nullptr);
   }
@@ -8370,23 +8840,9 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
     if (memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
       vmaAllocInfo = {
           .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
-          .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+          .requiredFlags = memFlags,
           .preferredFlags = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
       };
-    }
-
-    if (memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-      // Check if coherent buffer is available.
-      VK_ASSERT(vkCreateBuffer(vkDevice_, &ci, nullptr, &buf.vkBuffer_));
-      VkMemoryRequirements requirements = {};
-      vkGetBufferMemoryRequirements(vkDevice_, buf.vkBuffer_, &requirements);
-      vkDestroyBuffer(vkDevice_, buf.vkBuffer_, nullptr);
-      buf.vkBuffer_ = VK_NULL_HANDLE;
-
-      if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) {
-        vmaAllocInfo.requiredFlags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        buf.isCoherentMemory_ = true;
-      }
     }
 
     vmaAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
@@ -8396,6 +8852,11 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
 
     // handle memory-mapped buffers
     if (memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+      // `VK_MEMORY_PROPERTY_HOST_COHERENT_BIT` is only a preference here, hence ask VMA what we actually got
+      VkMemoryPropertyFlags allocMemFlags = 0;
+      vmaGetAllocationMemoryProperties(static_cast<VmaAllocator>(getVmaAllocator()), buf.vmaAllocation_, &allocMemFlags);
+      buf.isCoherentMemory_ = (allocMemFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
+
       vmaMapMemory(static_cast<VmaAllocator>(getVmaAllocator()), buf.vmaAllocation_, &buf.mappedPtr_);
     }
   } else {
@@ -8412,17 +8873,19 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
           .sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2,
       };
       vkGetBufferMemoryRequirements2(vkDevice_, &ri, &requirements);
-      if (requirements.memoryRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) {
-        buf.isCoherentMemory_ = true;
-      }
 
-      VK_ASSERT(lvk::allocateMemory2(vkPhysicalDevice_, vkDevice_, &requirements, memFlags, &buf.vkMemory_));
+      // `memFlags` are only the required properties, hence ask which memory type we actually got
+      VkMemoryPropertyFlags allocMemFlags = 0;
+      VK_ASSERT(lvk::allocateMemory2(vkPhysicalDevice_, vkDevice_, &requirements, memFlags, &buf.vkMemory_, &allocMemFlags));
       VK_ASSERT(vkBindBufferMemory(vkDevice_, buf.vkBuffer_, buf.vkMemory_, 0));
+      buf.isCoherentMemory_ = (allocMemFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
+      buf.vkMemorySize_ = requirements.memoryRequirements.size;
     }
 
     // handle memory-mapped buffers
     if (memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-      VK_ASSERT(vkMapMemory(vkDevice_, buf.vkMemory_, 0, buf.bufferSize_, 0, &buf.mappedPtr_));
+      // map the entire allocation so that non-coherent memory can be flushed/invalidated in `nonCoherentAtomSize` chunks
+      VK_ASSERT(vkMapMemory(vkDevice_, buf.vkMemory_, 0, VK_WHOLE_SIZE, 0, &buf.mappedPtr_));
     }
   }
 

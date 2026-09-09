@@ -209,6 +209,10 @@ VkFormat lvk::formatToVkFormat(lvk::Format format) {
     return VK_FORMAT_UNDEFINED;
   case lvk::Format_R_UN8:
     return VK_FORMAT_R8_UNORM;
+  case lvk::Format_R_UI8:
+    return VK_FORMAT_R8_UINT;
+  case lvk::Format_R_I8:
+    return VK_FORMAT_R8_SINT;
   case lvk::Format_A_UN8:
     return VK_FORMAT_A8_UNORM;
   case lvk::Format_R_UN16:
@@ -217,20 +221,38 @@ VkFormat lvk::formatToVkFormat(lvk::Format format) {
     return VK_FORMAT_R16_SFLOAT;
   case lvk::Format_R_UI16:
     return VK_FORMAT_R16_UINT;
+  case lvk::Format_R_I16:
+    return VK_FORMAT_R16_SINT;
   case lvk::Format_R_UI32:
     return VK_FORMAT_R32_UINT;
+  case lvk::Format_R_I32:
+    return VK_FORMAT_R32_SINT;
   case lvk::Format_RG_UN8:
     return VK_FORMAT_R8G8_UNORM;
+  case lvk::Format_RG_UI8:
+    return VK_FORMAT_R8G8_UINT;
+  case lvk::Format_RG_I8:
+    return VK_FORMAT_R8G8_SINT;
   case lvk::Format_RG_UI16:
     return VK_FORMAT_R16G16_UINT;
+  case lvk::Format_RG_I16:
+    return VK_FORMAT_R16G16_SINT;
   case lvk::Format_RG_UI32:
     return VK_FORMAT_R32G32_UINT;
+  case lvk::Format_RG_I32:
+    return VK_FORMAT_R32G32_SINT;
   case lvk::Format_RG_UN16:
     return VK_FORMAT_R16G16_UNORM;
   case lvk::Format_BGRA_UN8:
     return VK_FORMAT_B8G8R8A8_UNORM;
+  case lvk::Format_BGRA_UI8:
+    return VK_FORMAT_B8G8R8A8_UINT;
   case lvk::Format_RGBA_UN8:
     return VK_FORMAT_R8G8B8A8_UNORM;
+  case lvk::Format_RGBA_UI8:
+    return VK_FORMAT_R8G8B8A8_UINT;
+  case lvk::Format_RGBA_I8:
+    return VK_FORMAT_R8G8B8A8_SINT;
   case lvk::Format_RGBA_SRGB8:
     return VK_FORMAT_R8G8B8A8_SRGB;
   case lvk::Format_BGRA_SRGB8:
@@ -243,8 +265,16 @@ VkFormat lvk::formatToVkFormat(lvk::Format format) {
     return VK_FORMAT_R32_SFLOAT;
   case lvk::Format_RGBA_F16:
     return VK_FORMAT_R16G16B16A16_SFLOAT;
+  case lvk::Format_RGBA_UI16:
+    return VK_FORMAT_R16G16B16A16_UINT;
+  case lvk::Format_RGBA_I16:
+    return VK_FORMAT_R16G16B16A16_SINT;
   case lvk::Format_RGBA_UI32:
     return VK_FORMAT_R32G32B32A32_UINT;
+  case lvk::Format_RGBA_I32:
+    return VK_FORMAT_R32G32B32A32_SINT;
+  case lvk::Format_RGBA_UN16:
+    return VK_FORMAT_R16G16B16A16_UNORM;
   case lvk::Format_RGBA_F32:
     return VK_FORMAT_R32G32B32A32_SFLOAT;
   case lvk::Format_A2B10G10R10_UN:
@@ -253,14 +283,38 @@ VkFormat lvk::formatToVkFormat(lvk::Format format) {
     return VK_FORMAT_A2R10G10B10_UNORM_PACK32;
   case lvk::Format_A1B5G5R5_UN:
     return VK_FORMAT_A1B5G5R5_UNORM_PACK16;
+  case lvk::Format_R4G4B4A4_UN:
+    return VK_FORMAT_R4G4B4A4_UNORM_PACK16;
+  case lvk::Format_R5G5B5A1_UN:
+    return VK_FORMAT_R5G5B5A1_UNORM_PACK16;
+  case lvk::Format_R5G6B5_UN:
+    return VK_FORMAT_R5G6B5_UNORM_PACK16;
+  case lvk::Format_B10G11R11_UF:
+    return VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+  case lvk::Format_E5B9G9R9_UF:
+    return VK_FORMAT_E5B9G9R9_UFLOAT_PACK32;
   case lvk::Format_ETC2_RGB8:
     return VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK;
   case lvk::Format_ETC2_SRGB8:
     return VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK;
+  case lvk::Format_EAC_RG11:
+    return VK_FORMAT_EAC_R11G11_UNORM_BLOCK;
+  case lvk::Format_BC3_RGBA:
+    return VK_FORMAT_BC3_UNORM_BLOCK;
+  case lvk::Format_BC3_SRGBA:
+    return VK_FORMAT_BC3_SRGB_BLOCK;
+  case lvk::Format_BC5_RG:
+    return VK_FORMAT_BC5_UNORM_BLOCK;
+  case lvk::Format_BC5_RG_SN:
+    return VK_FORMAT_BC5_SNORM_BLOCK;
   case lvk::Format_BC7_RGBA:
     return VK_FORMAT_BC7_UNORM_BLOCK;
   case lvk::Format_BC7_SRGBA:
     return VK_FORMAT_BC7_SRGB_BLOCK;
+  case lvk::Format_ASTC_4x4_RGBA:
+    return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
+  case lvk::Format_ASTC_4x4_SRGBA:
+    return VK_FORMAT_ASTC_4x4_SRGB_BLOCK;
   case lvk::Format_Z_UN16:
     return VK_FORMAT_D16_UNORM;
   case lvk::Format_Z_UN24:
@@ -271,6 +325,8 @@ VkFormat lvk::formatToVkFormat(lvk::Format format) {
     return VK_FORMAT_D24_UNORM_S8_UINT;
   case lvk::Format_Z_F32_S_UI8:
     return VK_FORMAT_D32_SFLOAT_S8_UINT;
+  case lvk::Format_S_UI8:
+    return VK_FORMAT_S8_UINT;
   case lvk::Format_YUV_NV12:
     return VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
   case lvk::Format_YUV_420p:
@@ -304,6 +360,10 @@ lvk::Format lvk::vkFormatToFormat(VkFormat format) {
     return Format_Invalid;
   case VK_FORMAT_R8_UNORM:
     return Format_R_UN8;
+  case VK_FORMAT_R8_UINT:
+    return Format_R_UI8;
+  case VK_FORMAT_R8_SINT:
+    return Format_R_I8;
   case VK_FORMAT_A8_UNORM:
     return Format_A_UN8;
   case VK_FORMAT_R16_UNORM:
@@ -312,12 +372,32 @@ lvk::Format lvk::vkFormatToFormat(VkFormat format) {
     return Format_R_F16;
   case VK_FORMAT_R16_UINT:
     return Format_R_UI16;
+  case VK_FORMAT_R16_SINT:
+    return Format_R_I16;
+  case VK_FORMAT_R32_UINT:
+    return Format_R_UI32;
+  case VK_FORMAT_R32_SINT:
+    return Format_R_I32;
+  case VK_FORMAT_R32G32_UINT:
+    return Format_RG_UI32;
+  case VK_FORMAT_R32G32_SINT:
+    return Format_RG_I32;
   case VK_FORMAT_R8G8_UNORM:
     return Format_RG_UN8;
+  case VK_FORMAT_R8G8_UINT:
+    return Format_RG_UI8;
+  case VK_FORMAT_R8G8_SINT:
+    return Format_RG_I8;
   case VK_FORMAT_B8G8R8A8_UNORM:
     return Format_BGRA_UN8;
+  case VK_FORMAT_B8G8R8A8_UINT:
+    return Format_BGRA_UI8;
   case VK_FORMAT_R8G8B8A8_UNORM:
     return Format_RGBA_UN8;
+  case VK_FORMAT_R8G8B8A8_UINT:
+    return Format_RGBA_UI8;
+  case VK_FORMAT_R8G8B8A8_SINT:
+    return Format_RGBA_I8;
   case VK_FORMAT_R8G8B8A8_SRGB:
     return Format_RGBA_SRGB8;
   case VK_FORMAT_B8G8R8A8_SRGB:
@@ -330,12 +410,22 @@ lvk::Format lvk::vkFormatToFormat(VkFormat format) {
     return Format_RG_F32;
   case VK_FORMAT_R16G16_UINT:
     return Format_RG_UI16;
+  case VK_FORMAT_R16G16_SINT:
+    return Format_RG_I16;
   case VK_FORMAT_R32_SFLOAT:
     return Format_R_F32;
   case VK_FORMAT_R16G16B16A16_SFLOAT:
     return Format_RGBA_F16;
+  case VK_FORMAT_R16G16B16A16_UINT:
+    return Format_RGBA_UI16;
+  case VK_FORMAT_R16G16B16A16_SINT:
+    return Format_RGBA_I16;
   case VK_FORMAT_R32G32B32A32_UINT:
     return Format_RGBA_UI32;
+  case VK_FORMAT_R32G32B32A32_SINT:
+    return Format_RGBA_I32;
+  case VK_FORMAT_R16G16B16A16_UNORM:
+    return Format_RGBA_UN16;
   case VK_FORMAT_R32G32B32A32_SFLOAT:
     return Format_RGBA_F32;
   case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
@@ -344,16 +434,40 @@ lvk::Format lvk::vkFormatToFormat(VkFormat format) {
     return Format_A2R10G10B10_UN;
   case VK_FORMAT_A1B5G5R5_UNORM_PACK16:
     return Format_A1B5G5R5_UN;
+  case VK_FORMAT_R4G4B4A4_UNORM_PACK16:
+    return Format_R4G4B4A4_UN;
+  case VK_FORMAT_R5G5B5A1_UNORM_PACK16:
+    return Format_R5G5B5A1_UN;
+  case VK_FORMAT_R5G6B5_UNORM_PACK16:
+    return Format_R5G6B5_UN;
+  case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
+    return Format_B10G11R11_UF;
+  case VK_FORMAT_E5B9G9R9_UFLOAT_PACK32:
+    return Format_E5B9G9R9_UF;
   case VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
     return Format_ETC2_RGB8;
   case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
     return Format_ETC2_SRGB8;
+  case VK_FORMAT_EAC_R11G11_UNORM_BLOCK:
+    return Format_EAC_RG11;
+  case VK_FORMAT_BC3_UNORM_BLOCK:
+    return Format_BC3_RGBA;
+  case VK_FORMAT_BC3_SRGB_BLOCK:
+    return Format_BC3_SRGBA;
   case VK_FORMAT_D16_UNORM:
     return Format_Z_UN16;
+  case VK_FORMAT_BC5_UNORM_BLOCK:
+    return Format_BC5_RG;
+  case VK_FORMAT_BC5_SNORM_BLOCK:
+    return Format_BC5_RG_SN;
   case VK_FORMAT_BC7_UNORM_BLOCK:
     return Format_BC7_RGBA;
   case VK_FORMAT_BC7_SRGB_BLOCK:
     return Format_BC7_SRGBA;
+  case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
+    return Format_ASTC_4x4_RGBA;
+  case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+    return Format_ASTC_4x4_SRGBA;
   case VK_FORMAT_X8_D24_UNORM_PACK32:
     return Format_Z_UN24;
   case VK_FORMAT_D24_UNORM_S8_UINT:
@@ -362,6 +476,8 @@ lvk::Format lvk::vkFormatToFormat(VkFormat format) {
     return Format_Z_F32;
   case VK_FORMAT_D32_SFLOAT_S8_UINT:
     return Format_Z_F32_S_UI8;
+  case VK_FORMAT_S8_UINT:
+    return Format_S_UI8;
   case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
     return Format_YUV_NV12;
   case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
@@ -501,23 +617,44 @@ VmaAllocator lvk::createVmaAllocator(VkPhysicalDevice physDev, VkDevice device, 
   return vma;
 }
 
-glslang_resource_t lvk::getGlslangResource(const VkPhysicalDeviceLimits& limits) {
+glslang_resource_t lvk::getGlslangResource(const VkPhysicalDeviceLimits& limits,
+                                           const VkPhysicalDeviceMeshShaderPropertiesEXT* meshShader) {
+  // minimums guaranteed by the `VK_EXT_mesh_shader` spec - used when the extension is unavailable
+  const VkPhysicalDeviceMeshShaderPropertiesEXT kMeshShaderMinimums = {
+      .maxTaskWorkGroupSize = {128, 128, 128},
+      .maxMeshWorkGroupSize = {128, 128, 128},
+      .maxMeshOutputVertices = 256,
+      .maxMeshOutputPrimitives = 256,
+      .maxMeshMultiviewViewCount = 1,
+  };
+  const VkPhysicalDeviceMeshShaderPropertiesEXT& mesh = meshShader ? *meshShader : kMeshShaderMinimums;
+
+  // maximum sample count usable for both color and depth attachments - the size of `gl_SampleMask[]`
+  const auto getMaxSampleCount = [&limits]() -> int {
+    const VkSampleCountFlags counts = limits.framebufferColorSampleCounts & limits.framebufferDepthSampleCounts;
+    for (VkSampleCountFlags bit = VK_SAMPLE_COUNT_64_BIT; bit; bit >>= 1) {
+      if (counts & bit)
+        return static_cast<int>(bit);
+    }
+    return 1;
+  };
+
   const glslang_resource_t resource = {
-      .max_lights = 32,
+      .max_lights = 32, // legacy OpenGL compatibility profile, no Vulkan equivalent
       .max_clip_planes = static_cast<int>(limits.maxClipDistances),
-      .max_texture_units = 32,
-      .max_texture_coords = 32,
+      .max_texture_units = static_cast<int>(limits.maxPerStageDescriptorSampledImages),
+      .max_texture_coords = static_cast<int>(limits.maxPerStageDescriptorSampledImages),
       .max_vertex_attribs = static_cast<int>(limits.maxVertexInputAttributes),
       .max_vertex_uniform_components = static_cast<int>(limits.maxUniformBufferRange) / 4,
       .max_varying_floats = static_cast<int>(std::min(limits.maxVertexOutputComponents, limits.maxFragmentInputComponents)),
-      .max_vertex_texture_image_units = 32,
-      .max_combined_texture_image_units = 80,
-      .max_texture_image_units = 32,
-      .max_fragment_uniform_components = 4096,
-      .max_draw_buffers = 32,
-      .max_vertex_uniform_vectors = 128,
-      .max_varying_vectors = 8,
-      .max_fragment_uniform_vectors = 16,
+      .max_vertex_texture_image_units = static_cast<int>(limits.maxPerStageDescriptorSampledImages),
+      .max_combined_texture_image_units = static_cast<int>(limits.maxDescriptorSetSampledImages),
+      .max_texture_image_units = static_cast<int>(limits.maxPerStageDescriptorSampledImages),
+      .max_fragment_uniform_components = static_cast<int>(limits.maxUniformBufferRange) / 4,
+      .max_draw_buffers = static_cast<int>(limits.maxColorAttachments),
+      .max_vertex_uniform_vectors = static_cast<int>(limits.maxUniformBufferRange) / 16,
+      .max_varying_vectors = static_cast<int>(std::min(limits.maxVertexOutputComponents, limits.maxFragmentInputComponents)) / 4,
+      .max_fragment_uniform_vectors = static_cast<int>(limits.maxUniformBufferRange) / 16,
       .max_vertex_output_vectors = static_cast<int>(limits.maxVertexOutputComponents) / 4,
       .max_fragment_input_vectors = static_cast<int>(limits.maxFragmentInputComponents) / 4,
       .min_program_texel_offset = limits.minTexelOffset,
@@ -529,43 +666,44 @@ glslang_resource_t lvk::getGlslangResource(const VkPhysicalDeviceLimits& limits)
       .max_compute_work_group_size_x = static_cast<int>(limits.maxComputeWorkGroupSize[0]),
       .max_compute_work_group_size_y = static_cast<int>(limits.maxComputeWorkGroupSize[1]),
       .max_compute_work_group_size_z = static_cast<int>(limits.maxComputeWorkGroupSize[2]),
-      .max_compute_uniform_components = 1024,
-      .max_compute_texture_image_units = 16,
-      .max_compute_image_uniforms = 8,
+      .max_compute_uniform_components = static_cast<int>(limits.maxUniformBufferRange) / 4,
+      .max_compute_texture_image_units = static_cast<int>(limits.maxPerStageDescriptorSampledImages),
+      .max_compute_image_uniforms = static_cast<int>(limits.maxPerStageDescriptorStorageImages),
+      // atomic counters are an OpenGL-only feature, no Vulkan equivalent
       .max_compute_atomic_counters = 8,
       .max_compute_atomic_counter_buffers = 1,
-      .max_varying_components = 60,
+      .max_varying_components = static_cast<int>(std::min(limits.maxVertexOutputComponents, limits.maxFragmentInputComponents)),
       .max_vertex_output_components = static_cast<int>(limits.maxVertexOutputComponents),
       .max_geometry_input_components = static_cast<int>(limits.maxGeometryInputComponents),
       .max_geometry_output_components = static_cast<int>(limits.maxGeometryOutputComponents),
       .max_fragment_input_components = static_cast<int>(limits.maxFragmentInputComponents),
-      .max_image_units = 8,
-      .max_combined_image_units_and_fragment_outputs = 8,
-      .max_combined_shader_output_resources = 8,
-      .max_image_samples = 0,
-      .max_vertex_image_uniforms = 0,
-      .max_tess_control_image_uniforms = 0,
-      .max_tess_evaluation_image_uniforms = 0,
-      .max_geometry_image_uniforms = 0,
-      .max_fragment_image_uniforms = 8,
-      .max_combined_image_uniforms = 8,
-      .max_geometry_texture_image_units = 16,
+      .max_image_units = static_cast<int>(limits.maxPerStageDescriptorStorageImages),
+      .max_combined_image_units_and_fragment_outputs = static_cast<int>(limits.maxFragmentCombinedOutputResources),
+      .max_combined_shader_output_resources = static_cast<int>(limits.maxFragmentCombinedOutputResources),
+      .max_image_samples = 0, // multisampled storage images, no Vulkan equivalent
+      .max_vertex_image_uniforms = static_cast<int>(limits.maxPerStageDescriptorStorageImages),
+      .max_tess_control_image_uniforms = static_cast<int>(limits.maxPerStageDescriptorStorageImages),
+      .max_tess_evaluation_image_uniforms = static_cast<int>(limits.maxPerStageDescriptorStorageImages),
+      .max_geometry_image_uniforms = static_cast<int>(limits.maxPerStageDescriptorStorageImages),
+      .max_fragment_image_uniforms = static_cast<int>(limits.maxPerStageDescriptorStorageImages),
+      .max_combined_image_uniforms = static_cast<int>(limits.maxDescriptorSetStorageImages),
+      .max_geometry_texture_image_units = static_cast<int>(limits.maxPerStageDescriptorSampledImages),
       .max_geometry_output_vertices = static_cast<int>(limits.maxGeometryOutputVertices),
       .max_geometry_total_output_components = static_cast<int>(limits.maxGeometryTotalOutputComponents),
-      .max_geometry_uniform_components = 1024,
-      .max_geometry_varying_components = 64,
+      .max_geometry_uniform_components = static_cast<int>(limits.maxUniformBufferRange) / 4,
+      .max_geometry_varying_components = static_cast<int>(limits.maxGeometryInputComponents),
       .max_tess_control_input_components = static_cast<int>(limits.maxTessellationControlPerVertexInputComponents),
       .max_tess_control_output_components = static_cast<int>(limits.maxTessellationControlPerVertexOutputComponents),
-      .max_tess_control_texture_image_units = 16,
-      .max_tess_control_uniform_components = 1024,
-      .max_tess_control_total_output_components = 4096,
+      .max_tess_control_texture_image_units = static_cast<int>(limits.maxPerStageDescriptorSampledImages),
+      .max_tess_control_uniform_components = static_cast<int>(limits.maxUniformBufferRange) / 4,
+      .max_tess_control_total_output_components = static_cast<int>(limits.maxTessellationControlTotalOutputComponents),
       .max_tess_evaluation_input_components = static_cast<int>(limits.maxTessellationEvaluationInputComponents),
       .max_tess_evaluation_output_components = static_cast<int>(limits.maxTessellationEvaluationOutputComponents),
-      .max_tess_evaluation_texture_image_units = 16,
-      .max_tess_evaluation_uniform_components = 1024,
-      .max_tess_patch_components = 120,
-      .max_patch_vertices = 32,
-      .max_tess_gen_level = 64,
+      .max_tess_evaluation_texture_image_units = static_cast<int>(limits.maxPerStageDescriptorSampledImages),
+      .max_tess_evaluation_uniform_components = static_cast<int>(limits.maxUniformBufferRange) / 4,
+      .max_tess_patch_components = static_cast<int>(limits.maxTessellationControlPerPatchOutputComponents),
+      .max_patch_vertices = static_cast<int>(limits.maxTessellationPatchSize),
+      .max_tess_gen_level = static_cast<int>(limits.maxTessellationGenerationLevel),
       .max_viewports = static_cast<int>(limits.maxViewports),
       .max_vertex_atomic_counters = 0,
       .max_tess_control_atomic_counters = 0,
@@ -581,30 +719,32 @@ glslang_resource_t lvk::getGlslangResource(const VkPhysicalDeviceLimits& limits)
       .max_fragment_atomic_counter_buffers = 1,
       .max_combined_atomic_counter_buffers = 1,
       .max_atomic_counter_buffer_size = 16384,
+      // `VK_EXT_transform_feedback` is not enabled by LVK, no properties to query
       .max_transform_feedback_buffers = 4,
       .max_transform_feedback_interleaved_components = 64,
       .max_cull_distances = static_cast<int>(limits.maxCullDistances),
       .max_combined_clip_and_cull_distances = static_cast<int>(limits.maxCombinedClipAndCullDistances),
-      .max_samples = 4,
+      .max_samples = getMaxSampleCount(),
+      // `VK_NV_mesh_shader` is not enabled by LVK, no properties to query
       .max_mesh_output_vertices_nv = 256,
       .max_mesh_output_primitives_nv = 512,
       .max_mesh_work_group_size_x_nv = 32,
-      .max_mesh_work_group_size_y_nv = 1,
-      .max_mesh_work_group_size_z_nv = 1,
+      .max_mesh_work_group_size_y_nv = 32,
+      .max_mesh_work_group_size_z_nv = 32,
       .max_task_work_group_size_x_nv = 32,
-      .max_task_work_group_size_y_nv = 1,
-      .max_task_work_group_size_z_nv = 1,
+      .max_task_work_group_size_y_nv = 32,
+      .max_task_work_group_size_z_nv = 32,
       .max_mesh_view_count_nv = 4,
-      .max_mesh_output_vertices_ext = 256,
-      .max_mesh_output_primitives_ext = 512,
-      .max_mesh_work_group_size_x_ext = 32,
-      .max_mesh_work_group_size_y_ext = 1,
-      .max_mesh_work_group_size_z_ext = 1,
-      .max_task_work_group_size_x_ext = 32,
-      .max_task_work_group_size_y_ext = 1,
-      .max_task_work_group_size_z_ext = 1,
-      .max_mesh_view_count_ext = 4,
-      .maxDualSourceDrawBuffersEXT = 1,
+      .max_mesh_output_vertices_ext = static_cast<int>(mesh.maxMeshOutputVertices),
+      .max_mesh_output_primitives_ext = static_cast<int>(mesh.maxMeshOutputPrimitives),
+      .max_mesh_work_group_size_x_ext = static_cast<int>(mesh.maxMeshWorkGroupSize[0]),
+      .max_mesh_work_group_size_y_ext = static_cast<int>(mesh.maxMeshWorkGroupSize[1]),
+      .max_mesh_work_group_size_z_ext = static_cast<int>(mesh.maxMeshWorkGroupSize[2]),
+      .max_task_work_group_size_x_ext = static_cast<int>(mesh.maxTaskWorkGroupSize[0]),
+      .max_task_work_group_size_y_ext = static_cast<int>(mesh.maxTaskWorkGroupSize[1]),
+      .max_task_work_group_size_z_ext = static_cast<int>(mesh.maxTaskWorkGroupSize[2]),
+      .max_mesh_view_count_ext = static_cast<int>(mesh.maxMeshMultiviewViewCount),
+      .maxDualSourceDrawBuffersEXT = static_cast<int>(limits.maxFragmentDualSrcAttachments),
       .limits =
           {
               .non_inductive_for_loops = true,
@@ -878,7 +1018,11 @@ lvk::Result lvk::compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
 #if defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
   if (!slangGlobalSession) {
     Slang::ComPtr<slang::IGlobalSession> globalSession;
-    if (SLANG_FAILED(slang::createGlobalSession(globalSession.writeRef()))) {
+    // `enableGLSL` makes the `glsl` module importable, which our shader preamble needs to restore overloaded GLSL-style matrix operators
+    const SlangGlobalSessionDesc globalSessionDesc = {
+        .enableGLSL = true,
+    };
+    if (SLANG_FAILED(slang::createGlobalSession(&globalSessionDesc, globalSession.writeRef()))) {
       return Result(Result::Code::RuntimeError, "slang::createGlobalSession() failed");
     }
     slangGlobalSession = globalSession.detach();
@@ -1110,7 +1254,10 @@ VkPipelineShaderStageCreateInfo lvk::getPipelineShaderStageCreateInfo(VkShaderSt
 
 namespace {
 
-uint32_t findMemoryType(VkPhysicalDevice physDev, uint32_t memoryTypeBits, VkMemoryPropertyFlags flags) {
+uint32_t findMemoryType(VkPhysicalDevice physDev,
+                        uint32_t memoryTypeBits,
+                        VkMemoryPropertyFlags flags,
+                        VkMemoryPropertyFlags* outMemoryProperties = nullptr) {
   VkPhysicalDeviceMemoryProperties2 props = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
   };
@@ -1119,11 +1266,19 @@ uint32_t findMemoryType(VkPhysicalDevice physDev, uint32_t memoryTypeBits, VkMem
   for (uint32_t i = 0; i < props.memoryProperties.memoryTypeCount; i++) {
     const bool hasProperties = (props.memoryProperties.memoryTypes[i].propertyFlags & flags) == flags;
     if ((memoryTypeBits & (1 << i)) && hasProperties) {
+      if (outMemoryProperties) {
+        // the memory type can have more properties than the requested ones
+        *outMemoryProperties = props.memoryProperties.memoryTypes[i].propertyFlags;
+      }
       return i;
     }
   }
 
   assert(false);
+
+  if (outMemoryProperties) {
+    *outMemoryProperties = 0;
+  }
 
   return 0;
 }
@@ -1134,7 +1289,8 @@ VkResult lvk::allocateMemory2(VkPhysicalDevice physDev,
                               VkDevice device,
                               const VkMemoryRequirements2* memRequirements,
                               VkMemoryPropertyFlags props,
-                              VkDeviceMemory* outMemory) {
+                              VkDeviceMemory* outMemory,
+                              VkMemoryPropertyFlags* outMemoryProperties) {
   assert(memRequirements);
 
   const VkMemoryAllocateFlagsInfo memoryAllocateFlagsInfo = {
@@ -1145,7 +1301,7 @@ VkResult lvk::allocateMemory2(VkPhysicalDevice physDev,
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       .pNext = &memoryAllocateFlagsInfo,
       .allocationSize = memRequirements->memoryRequirements.size,
-      .memoryTypeIndex = findMemoryType(physDev, memRequirements->memoryRequirements.memoryTypeBits, props),
+      .memoryTypeIndex = findMemoryType(physDev, memRequirements->memoryRequirements.memoryTypeBits, props, outMemoryProperties),
   };
 
   return vkAllocateMemory(device, &ai, nullptr, outMemory);
@@ -1220,9 +1376,20 @@ VkSampleCountFlagBits lvk::getVulkanSampleCountFlags(uint32_t numSamples, VkSamp
 uint32_t lvk::getBytesPerPixel(VkFormat format) {
   switch (format) {
   case VK_FORMAT_R8_UNORM:
+  case VK_FORMAT_R8_UINT:
+  case VK_FORMAT_R8_SINT:
+  case VK_FORMAT_A8_UNORM:
+  case VK_FORMAT_S8_UINT:
     return 1;
   case VK_FORMAT_R16_UNORM:
   case VK_FORMAT_R16_SFLOAT:
+  case VK_FORMAT_R16_UINT:
+  case VK_FORMAT_R16_SINT:
+  case VK_FORMAT_R8G8_UNORM:
+  case VK_FORMAT_R8G8_UINT:
+  case VK_FORMAT_R8G8_SINT:
+  case VK_FORMAT_A1B5G5R5_UNORM_PACK16:
+  case VK_FORMAT_D16_UNORM:
     return 2;
   case VK_FORMAT_R8G8B8_UNORM:
   case VK_FORMAT_B8G8R8_UNORM:
@@ -1231,19 +1398,41 @@ uint32_t lvk::getBytesPerPixel(VkFormat format) {
   case VK_FORMAT_B8G8R8A8_UNORM:
   case VK_FORMAT_R8G8B8A8_SRGB:
   case VK_FORMAT_B8G8R8A8_SRGB:
+  case VK_FORMAT_R8G8B8A8_UINT:
+  case VK_FORMAT_R8G8B8A8_SINT:
   case VK_FORMAT_R16G16_SFLOAT:
+  case VK_FORMAT_R16G16_UNORM:
+  case VK_FORMAT_R16G16_UINT:
+  case VK_FORMAT_R16G16_SINT:
   case VK_FORMAT_R32_SFLOAT:
   case VK_FORMAT_R32_UINT:
+  case VK_FORMAT_R32_SINT:
+  case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+  case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
+  case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
+  case VK_FORMAT_E5B9G9R9_UFLOAT_PACK32:
+  case VK_FORMAT_X8_D24_UNORM_PACK32:
+  case VK_FORMAT_D32_SFLOAT:
+  case VK_FORMAT_D24_UNORM_S8_UINT:
     return 4;
+  case VK_FORMAT_D32_SFLOAT_S8_UINT:
+    return 5; // nominal block size from the Vulkan registry; no actual layout is 5 bytes - drivers store this as 8 bytes or 2 planes, and
+              // host copies are per-aspect (4 bytes of depth, 1 byte of stencil)
   case VK_FORMAT_R16G16B16_SFLOAT:
     return 6;
   case VK_FORMAT_R16G16B16A16_SFLOAT:
+  case VK_FORMAT_R16G16B16A16_UNORM:
+  case VK_FORMAT_R16G16B16A16_UINT:
+  case VK_FORMAT_R16G16B16A16_SINT:
   case VK_FORMAT_R32G32_SFLOAT:
   case VK_FORMAT_R32G32_UINT:
+  case VK_FORMAT_R32G32_SINT:
     return 8;
   case VK_FORMAT_R32G32B32_SFLOAT:
     return 12;
   case VK_FORMAT_R32G32B32A32_SFLOAT:
+  case VK_FORMAT_R32G32B32A32_UINT:
+  case VK_FORMAT_R32G32B32A32_SINT:
     return 16;
   default:;
   }
@@ -1373,6 +1562,11 @@ StageAccess lvk::getPipelineStageAccess(VkImageLayout layout) {
     return {
         .stage = VK_PIPELINE_STAGE_2_FRAGMENT_DENSITY_PROCESS_BIT_EXT,
         .access = VK_ACCESS_2_FRAGMENT_DENSITY_MAP_READ_BIT_EXT,
+    };
+  case VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR:
+    return {
+        .stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR,
+        .access = VK_ACCESS_2_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR,
     };
   default:
     LVK_ASSERT_MSG(false, "Unsupported image layout transition!");

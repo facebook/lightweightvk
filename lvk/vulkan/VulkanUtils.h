@@ -90,9 +90,11 @@ VkResult allocateMemory2(VkPhysicalDevice physDev,
                          VkDevice device,
                          const VkMemoryRequirements2* memRequirements,
                          VkMemoryPropertyFlags props,
-                         VkDeviceMemory* outMemory);
+                         VkDeviceMemory* outMemory,
+                         VkMemoryPropertyFlags* outMemoryProperties = nullptr);
 
-glslang_resource_t getGlslangResource(const VkPhysicalDeviceLimits& limits);
+glslang_resource_t getGlslangResource(const VkPhysicalDeviceLimits& limits,
+                                      const VkPhysicalDeviceMeshShaderPropertiesEXT* meshShader = nullptr);
 Result compileShaderGlslang(lvk::ShaderStage stage,
                             const char* code,
                             std::vector<uint8_t>* outSPIRV,

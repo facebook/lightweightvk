@@ -158,7 +158,8 @@ ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, cons
 ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const void* fontData, size_t fontDataSize, float fontSizePixels)
 : ctx_(device)
 , pimpl_(new ImGuiRendererImpl)
-, window_(window) {
+, window_(window)
+, hasUnusedAttachments_(device.isExtensionEnabled("VK_EXT_dynamic_rendering_unused_attachments")) {
   ImGui::CreateContext();
 #if defined(LVK_WITH_IMPLOT)
   ImPlot::CreateContext();
@@ -246,7 +247,9 @@ void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
 
   const lvk::Format colorFormat = ctx_.getFormat(desc.color[0].texture);
   if (pipeline_.empty() || pipelineColorFormat_ != colorFormat) {
-    pipeline_ = createNewPipelineState(desc);
+    // ImGui writes only into the first color attachment; `VK_EXT_dynamic_rendering_unused_attachments` allows us to leave all the
+    // other attachments out of the pipeline, so that it can be used with any framebuffer layout
+    pipeline_ = createNewPipelineState(hasUnusedAttachments_ ? lvk::Framebuffer{.color = {{.texture = desc.color[0].texture}}} : desc);
     pipelineColorFormat_ = colorFormat;
   }
 #if LVK_WITH_GLFW || LVK_WITH_SDL3
@@ -274,12 +277,6 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
   ImGui::Render();
 
   ImDrawData* dd = ImGui::GetDrawData();
-
-  const float fb_width = dd->DisplaySize.x * dd->FramebufferScale.x;
-  const float fb_height = dd->DisplaySize.y * dd->FramebufferScale.y;
-  if (fb_width <= 0 || fb_height <= 0 || dd->CmdLists.Size == 0) {
-    return;
-  }
 
   if (dd->Textures) {
     for (ImTextureData* tex : *dd->Textures) {
@@ -332,6 +329,13 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
     }
   }
 
+  // textures were updated above even when there is nothing to render
+  const float fb_width = dd->DisplaySize.x * dd->FramebufferScale.x;
+  const float fb_height = dd->DisplaySize.y * dd->FramebufferScale.y;
+  if (fb_width <= 0 || fb_height <= 0 || !dd->CmdLists.Size) {
+    return;
+  }
+
   cmdBuffer.cmdPushDebugGroupLabel("ImGui Rendering", 0xff00ff00);
   cmdBuffer.cmdBindDepthState({});
   cmdBuffer.cmdBindViewport({
@@ -371,8 +375,8 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
     drawableData.numAllocatedVerteices_ = dd->TotalVtxCount;
   }
 
-  // upload vertex/index buffers
-  {
+  // upload vertex/index buffers; a non-empty list of draw commands can still contain no vertices (e.g. only user callbacks)
+  if (dd->TotalVtxCount) {
     ImDrawVert* vtx = reinterpret_cast<ImDrawVert*>(ctx_.getMappedPtr(drawableData.vb_));
     uint16_t* idx = reinterpret_cast<uint16_t*>(ctx_.getMappedPtr(drawableData.ib_));
     for (const ImDrawList* cmdList : dd->CmdLists) {
@@ -437,6 +441,9 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
     idxOffset += cmdList->IdxBuffer.Size;
     vtxOffset += cmdList->VtxBuffer.Size;
   }
+
+  // restore the full framebuffer scissor rect
+  cmdBuffer.cmdBindScissorRect({.width = uint32_t(fb_width), .height = uint32_t(fb_height)});
 
   cmdBuffer.cmdPopDebugGroupLabel();
 }

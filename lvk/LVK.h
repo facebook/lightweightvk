@@ -443,6 +443,14 @@ enum PolygonMode : uint8_t {
   PolygonMode_Point = 2,
 };
 
+enum ShadingRateCombinerOp : uint8_t {
+  ShadingRateCombinerOp_Keep = 0,
+  ShadingRateCombinerOp_Replace,
+  ShadingRateCombinerOp_Min,
+  ShadingRateCombinerOp_Max,
+  ShadingRateCombinerOp_Mul,
+};
+
 enum VertexFormat : uint8_t {
   VertexFormat_Invalid = 0,
 
@@ -510,8 +518,12 @@ enum Format : uint8_t {
   Format_Invalid = 0,
 
   Format_R_UN8,
+  Format_R_UI8,
+  Format_R_I8,
   Format_R_UI16,
+  Format_R_I16,
   Format_R_UI32,
+  Format_R_I32,
   Format_R_UN16,
   Format_R_F16,
   Format_R_F32,
@@ -519,35 +531,61 @@ enum Format : uint8_t {
   Format_A_UN8,
 
   Format_RG_UN8,
+  Format_RG_UI8,
+  Format_RG_I8,
   Format_RG_UI16,
+  Format_RG_I16,
   Format_RG_UI32,
+  Format_RG_I32,
   Format_RG_UN16,
   Format_RG_F16,
   Format_RG_F32,
 
   Format_RGBA_UN8,
+  Format_RGBA_UI8,
+  Format_RGBA_I8,
+  Format_RGBA_UI16,
+  Format_RGBA_I16,
   Format_RGBA_UI32,
+  Format_RGBA_I32,
+  Format_RGBA_UN16,
   Format_RGBA_F16,
   Format_RGBA_F32,
   Format_RGBA_SRGB8,
 
   Format_BGRA_UN8,
+  Format_BGRA_UI8,
   Format_BGRA_SRGB8,
 
   Format_A2B10G10R10_UN,
   Format_A2R10G10B10_UN,
   Format_A1B5G5R5_UN,
+  Format_R4G4B4A4_UN,
+  Format_R5G5B5A1_UN,
+  Format_R5G6B5_UN,
+
+  // packed floating-point formats, as used for HDR render targets and irradiance data
+  Format_B10G11R11_UF,
+  Format_E5B9G9R9_UF,
 
   Format_ETC2_RGB8,
   Format_ETC2_SRGB8,
+  Format_EAC_RG11,
+  Format_BC3_RGBA,
+  Format_BC3_SRGBA,
+  Format_BC5_RG, // 2-channel block compression (tangent-space normal maps etc)
+  Format_BC5_RG_SN, // signed variant of `Format_BC5_RG`
   Format_BC7_RGBA,
   Format_BC7_SRGBA,
+  Format_ASTC_4x4_RGBA, // requires `textureCompressionASTC_LDR`
+  Format_ASTC_4x4_SRGBA, // requires `textureCompressionASTC_LDR`
 
   Format_Z_UN16,
   Format_Z_UN24,
   Format_Z_F32,
   Format_Z_UN24_S_UI8,
   Format_Z_F32_S_UI8,
+  Format_S_UI8, // stencil-only
 
   Format_YUV_NV12,
   Format_YUV_420p,
@@ -629,6 +667,14 @@ struct VertexInput final {
   uint32_t getVertexSize() const;
 };
 
+enum ColorComponentBits : uint8_t {
+  ColorComponentBit_R = 1 << 0,
+  ColorComponentBit_G = 1 << 1,
+  ColorComponentBit_B = 1 << 2,
+  ColorComponentBit_A = 1 << 3,
+  ColorComponentBit_All = ColorComponentBit_R | ColorComponentBit_G | ColorComponentBit_B | ColorComponentBit_A,
+};
+
 struct ColorAttachment {
   Format format = Format_Invalid;
   bool blendEnabled = false;
@@ -638,6 +684,7 @@ struct ColorAttachment {
   BlendFactor srcAlphaBlendFactor = BlendFactor_One;
   BlendFactor dstRGBBlendFactor = BlendFactor_Zero;
   BlendFactor dstAlphaBlendFactor = BlendFactor_Zero;
+  uint8_t colorWriteMask = ColorComponentBit_All;
 };
 
 struct ShaderModuleDesc {
@@ -792,7 +839,9 @@ struct Framebuffer final {
 
   AttachmentDesc color[LVK_MAX_COLOR_ATTACHMENTS] = {};
   AttachmentDesc depthStencil;
-  TextureHandle fragmentDensityMap; // optional R8G8_UNORM map for VK_EXT_fragment_density_map; with TextureUsageBits_FragmentDensityMap
+  TextureHandle fragmentDensityMap; // optional RG_UN8 map for VK_EXT_fragment_density_map; with TextureUsageBits_FragmentDensityMap
+  TextureHandle shadingRateAttachment; // optional R_UI8 map for VK_KHR_fragment_shading_rate; with TextureUsageBits_ShadingRateAttachment
+  Dimensions shadingRateAttachmentTexelSize; // size in pixels of one texel of `shadingRateAttachment`
 
   const char* debugName = "";
 
@@ -852,6 +901,7 @@ enum TextureUsageBits : uint8_t {
   TextureUsageBits_Attachment = 1 << 2,
   TextureUsageBits_InputAttachment = 1 << 3,
   TextureUsageBits_FragmentDensityMap = 1 << 4,
+  TextureUsageBits_ShadingRateAttachment = 1 << 5,
 };
 
 enum Swizzle : uint8_t {
@@ -891,6 +941,18 @@ struct TextureDesc {
   const char* debugName = "";
 };
 
+// Shader-visible views expose exactly one aspect, so a combined depth/stencil texture needs one selected
+enum TextureAspect : uint8_t {
+  TextureAspect_Default = 0, // color for color formats, depth for any format carrying a depth aspect, stencil for stencil-only formats
+  TextureAspect_Depth,
+  TextureAspect_Stencil,
+  // A single plane of a multi-planar texture, sampled as an ordinary color texture with the plane's own format
+  // (`Format_YUV_NV12`: R_UN8+RG_UN8 and `Format_YUV_420p`: R_UN8+R_UN8) and without a YCbCr conversion.
+  TextureAspect_Plane0,
+  TextureAspect_Plane1,
+  TextureAspect_Plane2,
+};
+
 struct TextureViewDesc {
   TextureType type = TextureType_2D;
   uint32_t layer = 0;
@@ -898,6 +960,7 @@ struct TextureViewDesc {
   uint32_t mipLevel = 0;
   uint32_t numMipLevels = 1;
   ComponentMapping components = {};
+  TextureAspect aspect = TextureAspect_Default;
 };
 
 enum AccelStructType : uint8_t {
@@ -1095,6 +1158,9 @@ class ICommandBuffer {
   // the argument order is correct, so the `clamp` parameter can have a default value
   virtual void cmdSetDepthBias(float constantFactor, float slopeFactor, float clamp = 0.0f) = 0;
   virtual void cmdSetDepthBiasEnable(bool enable) = 0;
+  virtual void cmdSetFragmentShadingRate(const Dimensions& fragmentSize, // 2D, e.g. 1x1 (full rate) or 2x2
+                                         ShadingRateCombinerOp primitiveOp = ShadingRateCombinerOp_Keep,
+                                         ShadingRateCombinerOp attachmentOp = ShadingRateCombinerOp_Keep) = 0;
 
   virtual void cmdResetQueryPool(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount) = 0;
   virtual void cmdWriteTimestamp(QueryPoolHandle pool, uint32_t query) = 0;
@@ -1129,6 +1195,7 @@ class IContext {
                               const ldr::Span<TextureHandle>& release = {}) = 0; // hand these images to the other queue (destination
                                                                                  // implied by the CB's queue); the acquire is automatic
   virtual void wait(SubmitHandle handle) = 0; // waiting on an empty handle results in vkDeviceWaitIdle()
+  [[nodiscard]] virtual bool isReady(SubmitHandle handle) const = 0; // non-blocking; an empty handle is always ready
 
   [[nodiscard]] virtual Holder<BufferHandle> createBuffer(const BufferDesc& desc,
                                                           const char* debugName = nullptr,
@@ -1177,6 +1244,7 @@ class IContext {
   [[nodiscard]] virtual uint8_t* getMappedPtr(BufferHandle handle) const = 0;
   [[nodiscard]] virtual uint64_t gpuAddress(BufferHandle handle, size_t offset = 0) const = 0;
   virtual void flushMappedMemory(BufferHandle handle, size_t offset, size_t size) const = 0;
+  virtual void invalidateMappedMemory(BufferHandle handle, size_t offset, size_t size) const = 0;
   [[nodiscard]] virtual uint32_t getMaxStorageBufferRange() const = 0;
 #pragma endregion
 
@@ -1200,6 +1268,16 @@ class IContext {
 
   // MSAA level is supported if ((samples & bitmask) != 0), where samples must be power of two.
   virtual uint32_t getFramebufferMSAABitMask() const = 0;
+
+  // valid range for `Framebuffer::shadingRateAttachmentTexelSize` (requires VK_KHR_fragment_shading_rate)
+  [[nodiscard]] virtual Dimensions getShadingRateAttachmentMinTexelSize() const = 0;
+  [[nodiscard]] virtual Dimensions getShadingRateAttachmentMaxTexelSize() const = 0;
+  // fragment sizes accepted by `cmdSetFragmentShadingRate()`; empty unless VK_KHR_fragment_shading_rate is enabled
+  [[nodiscard]] virtual ldr::Span<const Dimensions> getSupportedFragmentShadingRates() const = 0;
+
+  // one texel of `Framebuffer::fragmentDensityMap` covers at least this many pixels,
+  // so the FDM can be at most `framebufferSize / minTexelSize` (requires VK_EXT_fragment_density_map)
+  [[nodiscard]] virtual Dimensions getFragmentDensityMapMinTexelSize() const = 0;
 
   virtual bool isExtensionEnabled(const char* ext) const = 0;
   virtual bool supportsAsyncCompute() const = 0;
@@ -1260,9 +1338,13 @@ struct ContextConfig {
   const char* extensionsInstance[kMaxCustomExtensions] = {}; // add extra instance extensions on top of required ones
   const char* extensionsDevice[kMaxCustomExtensions] = {}; // add extra device extensions on top of required ones
   void* extensionsDeviceFeatures = nullptr; // inserted into VkPhysicalDeviceVulkan11Features::pNext
+  void* customVkGetInstanceProcAddr = nullptr; // PFN_vkGetInstanceProcAddr of an interposing loader
 
   // LVK knows about these extensions and can manage them automatically upon request
   bool enableHeadlessSurface = false; // VK_EXT_headless_surface
+  // VK_KHR_fragment_shading_rate is mutually exclusive with VK_EXT_fragment_density_map. When the device supports FSR, requesting it here
+  // disables FDM (otherwise fragment density map is enabled as usual)
+  bool enableFragmentShadingRate = false;
 
   uint64_t maxStagingBufferSize = 128ull * 1024ull * 1024ull; // a reasonable default
 };
