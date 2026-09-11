@@ -502,7 +502,7 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
   ctx = std::make_unique<VulkanContext>(cfg, static_cast<void*>(window));
 #elif defined(_WIN32)
 #if defined(LVK_WITH_GLFW)
-  ctx = std::make_unique<VulkanContext>(cfg, static_cast<void*>(glfwGetWin32Window(window)));
+  ctx = std::make_unique<VulkanContext>(cfg, window ? static_cast<void*>(glfwGetWin32Window(window)) : nullptr);
 #elif defined(LVK_WITH_SDL3)
   SDL_PropertiesID props = SDL_GetWindowProperties(window);
   void* hwnd = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
