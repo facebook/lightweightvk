@@ -25,6 +25,8 @@
 #include <ldrutils/lutils/ScopeExit.h>
 #include <lvk/vulkan/VulkanClasses.h>
 
+// NOLINTBEGIN(clang-diagnostic-switch-enum)
+
 const char* lvk::getVulkanResultString(VkResult result) {
 #define RESULT_CASE(res) \
   case res:              \
@@ -1675,3 +1677,5 @@ const VkPhysicalDeviceVulkan12Properties& lvk::getVkPhysicalDeviceVulkan12Proper
 const VkPhysicalDeviceVulkan13Properties& lvk::getVkPhysicalDeviceVulkan13Properties(const IContext* ctx) {
   return static_cast<const VulkanContext*>(ctx)->vkPhysicalDeviceVulkan13Properties_;
 }
+
+// NOLINTEND(clang-diagnostic-switch-enum)

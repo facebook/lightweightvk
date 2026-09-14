@@ -614,6 +614,7 @@ VkImageAspectFlags getViewAspectFlags(bool isDepthFormat, bool isStencilFormat, 
  * image's; the view also drops the YCbCr conversion, so the plane reads back as an ordinary color texture.
  */
 VkFormat getImagePlaneVkFormat(VkFormat format, uint32_t plane) {
+  // NOLINTNEXTLINE(clang-diagnostic-switch-enum)
   switch (format) {
   case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
     return plane ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM;
