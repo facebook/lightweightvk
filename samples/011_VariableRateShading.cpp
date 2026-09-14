@@ -338,6 +338,7 @@ VULKAN_APP_MAIN {
         .sampler0 = sampler_.index(),
     };
 
+    // NOLINTNEXTLINE(clang-diagnostic-unused-parameter)
     app.run([&](ldr::Span<const RenderView> views, float deltaSeconds) {
       const lvk::TextureHandle swapchain = ctx->getCurrentSwapchainTexture();
       const lvk::Dimensions dim = ctx->getDimensions(swapchain);

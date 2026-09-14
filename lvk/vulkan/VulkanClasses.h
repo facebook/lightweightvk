@@ -130,6 +130,7 @@ struct VulkanImage final {
   VkImageView imageViewForFramebufferMultiview_[LVK_MAX_MIP_LEVELS] = {};
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 class VulkanSwapchain final {
   enum { LVK_MAX_SWAPCHAIN_IMAGES = 16 };
 
@@ -179,6 +180,7 @@ class VulkanSwapchain final {
   uint64_t timelineWaitValues_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 class VulkanImmediateCommands final {
  public:
   // the maximum number of command buffers which can similtaneously exist in the system; when we run out of buffers, we stall and wait until
@@ -412,6 +414,7 @@ struct AccelerationStructure {
   lvk::Holder<lvk::BufferHandle> scratchBuffer; // Store only for TLAS
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 class CommandBuffer final : public ICommandBuffer {
  public:
   CommandBuffer() = default;
@@ -557,6 +560,7 @@ class CommandBuffer final : public ICommandBuffer {
   lvk::RayTracingPipelineHandle currentPipelineRayTracing_ = {};
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 class VulkanStagingDevice final {
  public:
   explicit VulkanStagingDevice(VulkanContext& ctx);
@@ -608,6 +612,7 @@ class VulkanStagingDevice final {
   std::vector<MemoryRegionDesc> regions_;
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 class VulkanContext final : public IContext {
  public:
   VulkanContext(const lvk::ContextConfig& config, void* window, void* display = nullptr, VkSurfaceKHR surface = VK_NULL_HANDLE);
