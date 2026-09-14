@@ -1073,6 +1073,7 @@ struct Dependencies {
   ldr::Span<SubmitHandle> waitGraphics = {}; // graphics work an async-compute submit must wait for
 };
 
+// NOLINTNEXTLINE(clang-diagnostic-deprecated-copy-with-dtor)
 class ICommandBuffer {
  public:
   virtual ~ICommandBuffer() = default;

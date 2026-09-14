@@ -13,6 +13,7 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
+// NOLINTNEXTLINE(clang-diagnostic-missing-prototypes)
 void* createCocoaWindowView(void* window, void** outLayer) {
   NSWindow* nswindow = (NSWindow*)window;
   CAMetalLayer* layer = [CAMetalLayer layer];
