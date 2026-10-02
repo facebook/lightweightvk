@@ -132,7 +132,7 @@ const char* codeRayGen = R"(
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_nonuniform_qualifier : require
 
-layout (set = 0, binding = 2, rgba8) uniform image2D kTextures2DInOut[];
+layout (set = 0, binding = 2) writeonly uniform image2D kTextures2DInOut[];
 layout (set = 0, binding = 4) uniform accelerationStructureEXT kTLAS[];
 
 layout(std430, buffer_reference) readonly buffer Camera {

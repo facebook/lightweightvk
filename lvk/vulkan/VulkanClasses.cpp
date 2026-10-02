@@ -750,6 +750,53 @@ void transitionToColorAttachment(VkCommandBuffer buffer, lvk::VulkanImage* color
                              VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
 }
 
+VkPipelineStageFlags2 pipelineStageFlagsToVkPipelineStageFlags2(lvk::PipelineStageFlags stages) {
+  VkPipelineStageFlags2 flags = 0;
+  // clang-format off
+  if (stages & lvk::PipelineStageBits_DrawIndirect    ) flags |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+  if (stages & lvk::PipelineStageBits_VertexInput     ) flags |= VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
+  if (stages & lvk::PipelineStageBits_Vertex          ) flags |= VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
+                                                                 VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT |
+                                                                 VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT |
+                                                                 VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT;
+  if (stages & lvk::PipelineStageBits_Task            ) flags |= VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT;
+  if (stages & lvk::PipelineStageBits_Mesh            ) flags |= VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT;
+  if (stages & lvk::PipelineStageBits_DepthStencil    ) flags |= VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                                                                 VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+  if (stages & lvk::PipelineStageBits_Fragment        ) flags |= VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+  if (stages & lvk::PipelineStageBits_ColorAttachment ) flags |= VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+  if (stages & lvk::PipelineStageBits_Compute         ) flags |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+  if (stages & lvk::PipelineStageBits_RayTracing      ) flags |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
+  if (stages & lvk::PipelineStageBits_AccelStructBuild) flags |= VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
+  if (stages & lvk::PipelineStageBits_Transfer        ) flags |= VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+  if (stages & lvk::PipelineStageBits_Host            ) flags |= VK_PIPELINE_STAGE_2_HOST_BIT;
+  if (stages & lvk::PipelineStageBits_AllCommands     ) flags |= VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+  // clang-format on
+  return flags;
+}
+
+VkAccessFlags2 accessFlagsToVkAccessFlags2(lvk::AccessFlags access) {
+  VkAccessFlags2 flags = 0;
+  // clang-format off
+  if (access & lvk::AccessBits_IndirectRead       ) flags |= VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
+  if (access & lvk::AccessBits_IndexRead          ) flags |= VK_ACCESS_2_INDEX_READ_BIT;
+  if (access & lvk::AccessBits_VertexAttributeRead) flags |= VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT;
+  if (access & lvk::AccessBits_ShaderRead         ) flags |= VK_ACCESS_2_SHADER_READ_BIT;
+  if (access & lvk::AccessBits_ShaderWrite        ) flags |= VK_ACCESS_2_SHADER_WRITE_BIT;
+  if (access & lvk::AccessBits_ColorRead          ) flags |= VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
+  if (access & lvk::AccessBits_ColorWrite         ) flags |= VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+  if (access & lvk::AccessBits_DepthStencilRead   ) flags |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+  if (access & lvk::AccessBits_DepthStencilWrite  ) flags |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+  if (access & lvk::AccessBits_TransferRead       ) flags |= VK_ACCESS_2_TRANSFER_READ_BIT;
+  if (access & lvk::AccessBits_TransferWrite      ) flags |= VK_ACCESS_2_TRANSFER_WRITE_BIT;
+  if (access & lvk::AccessBits_HostRead           ) flags |= VK_ACCESS_2_HOST_READ_BIT;
+  if (access & lvk::AccessBits_HostWrite          ) flags |= VK_ACCESS_2_HOST_WRITE_BIT;
+  if (access & lvk::AccessBits_AccelStructRead    ) flags |= VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+  if (access & lvk::AccessBits_AccelStructWrite   ) flags |= VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+  // clang-format on
+  return flags;
+}
+
 VkPipelineStageFlags2 stripGraphicsStages(VkPipelineStageFlags2 stages, bool computeOnlyQueue) {
   constexpr VkPipelineStageFlags2 kGraphicsOnlyStages =
       VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT | VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
@@ -761,6 +808,15 @@ VkPipelineStageFlags2 stripGraphicsStages(VkPipelineStageFlags2 stages, bool com
       VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT;
 
   return computeOnlyQueue ? (stages & ~kGraphicsOnlyStages) : stages;
+}
+
+StageAccess stripGraphicsStageAccess(StageAccess sa, bool computeOnlyQueue) {
+  constexpr VkAccessFlags2 kGraphicsOnlyAccess = VK_ACCESS_2_INDEX_READ_BIT | VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT |
+                                                 VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+                                                 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                                                 VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+  return computeOnlyQueue ? StageAccess{stripGraphicsStages(sa.stage, true), sa.access & ~kGraphicsOnlyAccess} : sa;
 }
 
 void emitImageQFOTransfer(VkCommandBuffer cb,
@@ -1041,8 +1097,8 @@ void lvk::VulkanImage::transitionLayout(VkCommandBuffer commandBuffer,
   dst.stage |= extraDstStage.stage;
   dst.access |= extraDstStage.access;
 
-  src.stage = stripGraphicsStages(src.stage, computeOnlyQueue);
-  dst.stage = stripGraphicsStages(dst.stage, computeOnlyQueue);
+  src = stripGraphicsStageAccess(src, computeOnlyQueue);
+  dst = stripGraphicsStageAccess(dst, computeOnlyQueue);
 
   if (isDepthAttachment() && isResolveAttachment) {
     // https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#renderpass-resolve-operations
@@ -2074,12 +2130,13 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
       .pVertexAttributeDescriptions = nullptr,
   })
 , inputAssembly_({
+      // primitive restart is dynamic state
       .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
       .flags = 0,
       .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-      .primitiveRestartEnable = VK_FALSE,
   })
 , rasterizationState_({
+      // depth bias and its enable are dynamic state
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
       .flags = 0,
       .depthClampEnable = VK_FALSE,
@@ -2087,10 +2144,6 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
       .polygonMode = VK_POLYGON_MODE_FILL,
       .cullMode = VK_CULL_MODE_NONE,
       .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-      .depthBiasEnable = VK_FALSE,
-      .depthBiasConstantFactor = 0.0f,
-      .depthBiasClamp = 0.0f,
-      .depthBiasSlopeFactor = 0.0f,
       .lineWidth = 1.0f,
   })
 , multisampleState_({
@@ -2101,38 +2154,6 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
       .pSampleMask = nullptr,
       .alphaToCoverageEnable = VK_FALSE,
       .alphaToOneEnable = VK_FALSE,
-  })
-, depthStencilState_({
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-      .pNext = nullptr,
-      .flags = 0,
-      .depthTestEnable = VK_FALSE,
-      .depthWriteEnable = VK_FALSE,
-      .depthCompareOp = VK_COMPARE_OP_LESS,
-      .depthBoundsTestEnable = VK_FALSE,
-      .stencilTestEnable = VK_FALSE,
-      .front =
-          {
-              .failOp = VK_STENCIL_OP_KEEP,
-              .passOp = VK_STENCIL_OP_KEEP,
-              .depthFailOp = VK_STENCIL_OP_KEEP,
-              .compareOp = VK_COMPARE_OP_NEVER,
-              .compareMask = 0,
-              .writeMask = 0,
-              .reference = 0,
-          },
-      .back =
-          {
-              .failOp = VK_STENCIL_OP_KEEP,
-              .passOp = VK_STENCIL_OP_KEEP,
-              .depthFailOp = VK_STENCIL_OP_KEEP,
-              .compareOp = VK_COMPARE_OP_NEVER,
-              .compareMask = 0,
-              .writeMask = 0,
-              .reference = 0,
-          },
-      .minDepthBounds = 0.0f,
-      .maxDepthBounds = 1.0f,
   })
 , tessellationState_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO,
@@ -2188,6 +2209,20 @@ lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::polygonMode(VkPolygonMod
   return *this;
 }
 
+lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::provokingVertex(VkProvokingVertexModeEXT mode, bool enable) {
+  // the first vertex is what Vulkan does anyway, so it needs no structure in the rasterization state
+  if (!enable || mode == VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT) {
+    return *this;
+  }
+  provokingVertexState_ = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_PROVOKING_VERTEX_STATE_CREATE_INFO_EXT,
+      .pNext = rasterizationState_.pNext,
+      .provokingVertexMode = mode,
+  };
+  rasterizationState_.pNext = &provokingVertexState_;
+  return *this;
+}
+
 lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::vertexInputState(const VkPipelineVertexInputStateCreateInfo& state) {
   vertexInputState_ = state;
   return *this;
@@ -2237,55 +2272,6 @@ lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::shaderStage(VkPipelineSh
   return *this;
 }
 
-lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::stencilStateOps(VkStencilFaceFlags faceMask,
-                                                                        VkStencilOp failOp,
-                                                                        VkStencilOp passOp,
-                                                                        VkStencilOp depthFailOp,
-                                                                        VkCompareOp compareOp) {
-  depthStencilState_.stencilTestEnable = depthStencilState_.stencilTestEnable == VK_TRUE || failOp != VK_STENCIL_OP_KEEP ||
-                                                 passOp != VK_STENCIL_OP_KEEP || depthFailOp != VK_STENCIL_OP_KEEP ||
-                                                 compareOp != VK_COMPARE_OP_ALWAYS
-                                             ? VK_TRUE
-                                             : VK_FALSE;
-
-  if (faceMask & VK_STENCIL_FACE_FRONT_BIT) {
-    VkStencilOpState& s = depthStencilState_.front;
-    s.failOp = failOp;
-    s.passOp = passOp;
-    s.depthFailOp = depthFailOp;
-    s.compareOp = compareOp;
-  }
-
-  if (faceMask & VK_STENCIL_FACE_BACK_BIT) {
-    VkStencilOpState& s = depthStencilState_.back;
-    s.failOp = failOp;
-    s.passOp = passOp;
-    s.depthFailOp = depthFailOp;
-    s.compareOp = compareOp;
-  }
-  return *this;
-}
-
-lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::stencilMasks(VkStencilFaceFlags faceMask,
-                                                                     uint32_t compareMask,
-                                                                     uint32_t writeMask,
-                                                                     uint32_t reference) {
-  if (faceMask & VK_STENCIL_FACE_FRONT_BIT) {
-    VkStencilOpState& s = depthStencilState_.front;
-    s.compareMask = compareMask;
-    s.writeMask = writeMask;
-    s.reference = reference;
-  }
-
-  if (faceMask & VK_STENCIL_FACE_BACK_BIT) {
-    VkStencilOpState& s = depthStencilState_.back;
-    s.compareMask = compareMask;
-    s.writeMask = writeMask;
-    s.reference = reference;
-  }
-  return *this;
-}
-
 VkResult lvk::VulkanPipelineBuilder::build(VkDevice device,
                                            VkPipelineCache pipelineCache,
                                            VkPipelineLayout pipelineLayout,
@@ -2312,6 +2298,11 @@ VkResult lvk::VulkanPipelineBuilder::build(VkDevice device,
       .attachmentCount = numColorAttachments_,
       .pAttachments = colorBlendAttachmentStates_,
   };
+  // all fields are dynamic state; the pointer itself is still required
+  // (only allows NULL with VK_EXT_extended_dynamic_state3)
+  const VkPipelineDepthStencilStateCreateInfo depthStencilState = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+  };
   const VkPipelineRenderingCreateInfo renderingInfo = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
       .pNext = nullptr,
@@ -2334,7 +2325,7 @@ VkResult lvk::VulkanPipelineBuilder::build(VkDevice device,
       .pViewportState = &viewportState,
       .pRasterizationState = &rasterizationState_,
       .pMultisampleState = &multisampleState_,
-      .pDepthStencilState = &depthStencilState_,
+      .pDepthStencilState = &depthStencilState,
       .pColorBlendState = &colorBlendState,
       .pDynamicState = &dynamicState,
       .layout = pipelineLayout,
@@ -2410,13 +2401,56 @@ bool lvk::CommandBuffer::acquireOwnershipIfPending(lvk::VulkanImage& img, StageA
   }
 
   // acquire half of a cross-queue ownership transfer: it must replay the producer's release layouts (src/dst) exactly
-  dst.stage = stripGraphicsStages(dst.stage, isComputeOnlyQueue());
+  dst = stripGraphicsStageAccess(dst, isComputeOnlyQueue());
   emitImageQFOTransfer(
       wrapper_->cmdBuf_, img, img.qfotSrcLayout_, img.qfotDstLayout_, StageAccess{}, dst, img.pendingAcquireSrcFamily_, queueFamilyIndex_);
   img.pendingAcquireSrcFamily_ = VK_QUEUE_FAMILY_IGNORED;
   img.ownerQueueFamily_ = queueFamilyIndex_;
   img.vkImageLayout_ = img.qfotDstLayout_;
   return true;
+}
+
+void lvk::CommandBuffer::cmdBarrier(const Barrier& barrier) {
+  LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
+
+  LVK_ASSERT_MSG(!isRendering_, "cmdBarrier() must be called outside cmdBeginRendering()/cmdEndRendering()");
+
+  [[maybe_unused]] const PipelineStageFlags allStages = barrier.srcStages | barrier.dstStages;
+
+  LVK_ASSERT_MSG(!(allStages & (lvk::PipelineStageBits_RayTracing | lvk::PipelineStageBits_AccelStructBuild)) ||
+                     ctx_->has_KHR_acceleration_structure_,
+                 "Ray tracing stages require VK_KHR_acceleration_structure");
+  LVK_ASSERT_MSG(!(allStages & (lvk::PipelineStageBits_Task | lvk::PipelineStageBits_Mesh)) || ctx_->has_EXT_mesh_shader_,
+                 "Task and mesh stages require VK_EXT_mesh_shader");
+
+  const bool computeOnlyQueue = isComputeOnlyQueue();
+
+  // a compute-only queue supports neither the graphics stages nor the access types which belong to them
+  StageAccess src = stripGraphicsStageAccess(
+      {pipelineStageFlagsToVkPipelineStageFlags2(barrier.srcStages), accessFlagsToVkAccessFlags2(barrier.srcAccess)}, computeOnlyQueue);
+  StageAccess dst = stripGraphicsStageAccess(
+      {pipelineStageFlagsToVkPipelineStageFlags2(barrier.dstStages), accessFlagsToVkAccessFlags2(barrier.dstAccess)}, computeOnlyQueue);
+
+  // an access mask needs at least one stage which supports it, so a fully stripped stage mask takes its access with it
+  if (!src.stage)
+    src.access = VK_ACCESS_2_NONE;
+  if (!dst.stage)
+    dst.access = VK_ACCESS_2_NONE;
+
+  const VkMemoryBarrier2 memoryBarrier = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+      .srcStageMask = src.stage,
+      .srcAccessMask = src.access,
+      .dstStageMask = dst.stage,
+      .dstAccessMask = dst.access,
+  };
+  const VkDependencyInfo depInfo = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .memoryBarrierCount = 1,
+      .pMemoryBarriers = &memoryBarrier,
+  };
+
+  vkCmdPipelineBarrier2(wrapper_->cmdBuf_, &depInfo);
 }
 
 void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
@@ -2784,7 +2818,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   if (depthTex) {
     const lvk::VulkanImage& depthImg = *ctx_->texturesPool_.get(depthTex);
     LVK_ASSERT_MSG(depthImg.vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid depth attachment format");
-    LVK_ASSERT_MSG(depthImg.isDepthFormat_, "Invalid depth attachment format");
+    LVK_ASSERT_MSG(depthImg.isDepthFormat_ || depthImg.isStencilFormat_, "Invalid depth attachment format");
     const VkImageAspectFlags flags = depthImg.getImageAspectFlags();
     depthImg.transitionLayout(wrapper_->cmdBuf_,
                               VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
@@ -2925,14 +2959,25 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     fbHeight = dim.height;
   }
 
-  const uint32_t width = std::max(fbWidth >> mipLevel, 1u);
-  const uint32_t height = std::max(fbHeight >> mipLevel, 1u);
+  LVK_ASSERT_MSG(fbWidth || (renderPass.attachmentlessWidth && renderPass.attachmentlessHeight),
+                 "The framebuffer has no attachments: set RenderPass::attachmentlessWidth and RenderPass::attachmentlessHeight");
+
+  const uint32_t width = fbWidth ? std::max(fbWidth >> mipLevel, 1u) : std::max(renderPass.attachmentlessWidth, 1u);
+  const uint32_t height = fbHeight ? std::max(fbHeight >> mipLevel, 1u) : std::max(renderPass.attachmentlessHeight, 1u);
   const lvk::Viewport viewport = {0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f, +1.0f};
   const lvk::ScissorRect scissor = {0, 0, width, height};
 
   VkRenderingAttachmentInfo stencilAttachment = depthAttachment;
 
   const bool isStencilFormat = (renderPass.stencil.loadOp != lvk::LoadOp_DontCare) || (renderPass.stencil.storeOp != lvk::StoreOp_DontCare);
+
+  if (depthTex && isStencilFormat) {
+    stencilAttachment.loadOp = loadOpToVkAttachmentLoadOp(renderPass.stencil.loadOp);
+    stencilAttachment.storeOp = storeOpToVkAttachmentStoreOp(renderPass.stencil.storeOp);
+    stencilAttachment.clearValue.depthStencil.stencil = renderPass.stencil.clearStencil;
+  }
+
+  const bool hasDepthAspect = depthTex && ctx_->texturesPool_.get(depthTex)->isDepthFormat_;
 
   // optional fragment density map (VK_EXT_fragment_density_map)
   const VkRenderingFragmentDensityMapAttachmentInfoEXT fragmentDensityMapInfo = [this, &fb]() {
@@ -2990,18 +3035,21 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
       .viewMask = renderPass.viewMask,
       .colorAttachmentCount = numFbColorAttachments,
       .pColorAttachments = colorAttachments,
-      .pDepthAttachment = depthTex ? &depthAttachment : nullptr,
-      .pStencilAttachment = isStencilFormat ? &stencilAttachment : nullptr,
+      .pDepthAttachment = hasDepthAspect ? &depthAttachment : nullptr,
+      .pStencilAttachment = (depthTex && isStencilFormat) ? &stencilAttachment : nullptr,
   };
 
   cmdBindViewport(viewport);
   cmdBindScissorRect(scissor);
   cmdBindDepthState({});
+  cmdSetDepthBounds(0.0f, 1.0f);
+  cmdBindStencilState({});
 
   ctx_->checkAndUpdateDescriptorSets();
 
   vkCmdSetDepthCompareOp(wrapper_->cmdBuf_, VK_COMPARE_OP_ALWAYS);
   vkCmdSetDepthBiasEnable(wrapper_->cmdBuf_, VK_FALSE);
+  vkCmdSetPrimitiveRestartEnable(wrapper_->cmdBuf_, VK_FALSE);
 
   if (ctx_->has_KHR_fragment_shading_rate_) {
     // the dynamic state is enabled on every pipeline, so it must be set before any draw; 1x1 is the full rate and is always supported
@@ -3077,7 +3125,8 @@ void lvk::CommandBuffer::cmdBindRenderPipeline(lvk::RenderPipelineHandle handle)
   LVK_ASSERT(rps);
 
   const bool hasDepthAttachmentPipeline = rps->desc_.depthFormat != Format_Invalid;
-  const bool hasDepthAttachmentPass = !framebuffer_.depthStencil.texture.empty();
+  const bool hasDepthAttachmentPass = !framebuffer_.depthStencil.texture.empty() &&
+                                      ctx_->texturesPool_.get(framebuffer_.depthStencil.texture)->isDepthFormat_;
 
   // VK_EXT_dynamic_rendering_unused_attachments allows the depth attachments of a render pass and a render pipeline to mismatch
   if (hasDepthAttachmentPipeline != hasDepthAttachmentPass && !ctx_->has_EXT_dynamic_rendering_unused_attachments_) {
@@ -3110,6 +3159,11 @@ void lvk::CommandBuffer::cmdBindDepthState(const DepthState& desc) {
   const VkCompareOp op = compareOpToVkCompareOp(desc.compareOp);
   vkCmdSetDepthWriteEnable(wrapper_->cmdBuf_, desc.isDepthWriteEnabled ? VK_TRUE : VK_FALSE);
   vkCmdSetDepthTestEnable(wrapper_->cmdBuf_, (op != VK_COMPARE_OP_ALWAYS || desc.isDepthWriteEnabled) ? VK_TRUE : VK_FALSE);
+  vkCmdSetDepthBoundsTestEnable(wrapper_->cmdBuf_, desc.isDepthBoundsTestEnabled ? VK_TRUE : VK_FALSE);
+
+  if (desc.isDepthBoundsTestEnabled) {
+    LVK_ASSERT_MSG(ctx_->supportsDepthBounds(), "The depth bounds test requires the `depthBounds` feature (see supportsDepthBounds())");
+  }
 
 #if defined(ANDROID)
   // This is a workaround for the issue.
@@ -3120,6 +3174,39 @@ void lvk::CommandBuffer::cmdBindDepthState(const DepthState& desc) {
   }
 #endif
   vkCmdSetDepthCompareOp(wrapper_->cmdBuf_, op);
+}
+
+void lvk::CommandBuffer::cmdBindStencilState(const StencilState& state) {
+  LVK_PROFILER_FUNCTION();
+
+  vkCmdSetStencilTestEnable(wrapper_->cmdBuf_, state.enable ? VK_TRUE : VK_FALSE);
+
+  if (!state.enable) {
+    // the rest of the stencil state is only required while the test is enabled
+    return;
+  }
+
+  const StencilFaceState& front = state.front;
+  const StencilFaceState& back = state.back;
+
+  const VkStencilOp frontFailOp = stencilOpToVkStencilOp(front.stencilFailureOp);
+  const VkStencilOp frontPassOp = stencilOpToVkStencilOp(front.depthStencilPassOp);
+  const VkStencilOp frontDepthFailOp = stencilOpToVkStencilOp(front.depthFailureOp);
+  const VkCompareOp frontCompareOp = compareOpToVkCompareOp(front.stencilCompareOp);
+  const VkStencilOp backFailOp = stencilOpToVkStencilOp(back.stencilFailureOp);
+  const VkStencilOp backPassOp = stencilOpToVkStencilOp(back.depthStencilPassOp);
+  const VkStencilOp backDepthFailOp = stencilOpToVkStencilOp(back.depthFailureOp);
+  const VkCompareOp backCompareOp = compareOpToVkCompareOp(back.stencilCompareOp);
+
+  vkCmdSetStencilCompareMask(wrapper_->cmdBuf_, VK_STENCIL_FACE_FRONT_BIT, front.readMask);
+  vkCmdSetStencilWriteMask(wrapper_->cmdBuf_, VK_STENCIL_FACE_FRONT_BIT, front.writeMask);
+  vkCmdSetStencilReference(wrapper_->cmdBuf_, VK_STENCIL_FACE_FRONT_BIT, front.reference);
+  vkCmdSetStencilCompareMask(wrapper_->cmdBuf_, VK_STENCIL_FACE_BACK_BIT, back.readMask);
+  vkCmdSetStencilWriteMask(wrapper_->cmdBuf_, VK_STENCIL_FACE_BACK_BIT, back.writeMask);
+  vkCmdSetStencilReference(wrapper_->cmdBuf_, VK_STENCIL_FACE_BACK_BIT, back.reference);
+
+  vkCmdSetStencilOp(wrapper_->cmdBuf_, VK_STENCIL_FACE_FRONT_BIT, frontFailOp, frontPassOp, frontDepthFailOp, frontCompareOp);
+  vkCmdSetStencilOp(wrapper_->cmdBuf_, VK_STENCIL_FACE_BACK_BIT, backFailOp, backPassOp, backDepthFailOp, backCompareOp);
 }
 
 void lvk::CommandBuffer::cmdBindVertexBuffer(uint32_t index, BufferHandle buffer, uint64_t bufferOffset, uint64_t bufferSize) {
@@ -3468,6 +3555,14 @@ void lvk::CommandBuffer::cmdSetDepthBiasEnable(bool enable) {
   vkCmdSetDepthBiasEnable(wrapper_->cmdBuf_, enable ? VK_TRUE : VK_FALSE);
 }
 
+void lvk::CommandBuffer::cmdSetDepthBounds(float minDepthBounds, float maxDepthBounds) {
+  vkCmdSetDepthBounds(wrapper_->cmdBuf_, minDepthBounds, maxDepthBounds);
+}
+
+void lvk::CommandBuffer::cmdSetPrimitiveRestartEnable(bool enable) {
+  vkCmdSetPrimitiveRestartEnable(wrapper_->cmdBuf_, enable ? VK_TRUE : VK_FALSE);
+}
+
 void lvk::CommandBuffer::cmdSetFragmentShadingRate(const Dimensions& fragmentSize,
                                                    ShadingRateCombinerOp primitiveOp,
                                                    ShadingRateCombinerOp attachmentOp) {
@@ -3724,6 +3819,9 @@ void lvk::CommandBuffer::cmdUpdateTLAS(AccelStructHandle handle, BufferHandle in
 
   lvk::AccelerationStructure* as = ctx_->accelStructuresPool_.get(handle);
 
+  LVK_ASSERT_MSG(as->buildFlags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR,
+                 "TLAS must be created with AccelStructBuildFlagBits_AllowUpdate to be updated");
+
   const VkAccelerationStructureGeometryKHR accelerationStructureGeometry{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
       .geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
@@ -3742,7 +3840,7 @@ void lvk::CommandBuffer::cmdUpdateTLAS(AccelStructHandle handle, BufferHandle in
   VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-      .flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR,
+      .flags = as->buildFlags,
       .geometryCount = 1,
       .pGeometries = &accelerationStructureGeometry,
   };
@@ -3776,7 +3874,7 @@ void lvk::CommandBuffer::cmdUpdateTLAS(AccelStructHandle handle, BufferHandle in
   const VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo = {
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-      .flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR,
+      .flags = as->buildFlags,
       .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR,
       .srcAccelerationStructure = as->vkHandle,
       .dstAccelerationStructure = as->vkHandle,
@@ -4545,6 +4643,8 @@ lvk::VulkanContext::~VulkanContext() {
     }
   }
 
+  waitDeferredTasks(); // frees pool slots, so it has to run before the leak checks and the pool teardown
+
   if (shaderModulesPool_.numObjects()) {
     LLOGW("Leaked %u shader modules\n", shaderModulesPool_.numObjects());
   }
@@ -4572,8 +4672,6 @@ lvk::VulkanContext::~VulkanContext() {
   renderPipelinesPool_.clear();
   shaderModulesPool_.clear();
   texturesPool_.clear();
-
-  waitDeferredTasks();
 
   immediateCompute_.reset(nullptr);
   immediate_.reset(nullptr);
@@ -5069,6 +5167,25 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
     return {};
   }
 
+  if (!formatProperties_[desc.format].sType) {
+    // precache format properties
+    formatProperties_[desc.format].sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2;
+    vkGetPhysicalDeviceFormatProperties2(vkPhysicalDevice_, vkFormat, &formatProperties_[desc.format]);
+  }
+
+  if (usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT) {
+    if (!LVK_VERIFY(formatProperties_[desc.format].formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
+      Result::setResult(outResult, Result::Code::RuntimeError, "Format does not support sampled images on this device");
+      return {};
+    }
+  }
+  if (usageFlags & VK_IMAGE_USAGE_STORAGE_BIT) {
+    if (!LVK_VERIFY(formatProperties_[desc.format].formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)) {
+      Result::setResult(outResult, Result::Code::RuntimeError, "Format does not support storage images on this device");
+      return {};
+    }
+  }
+
   LVK_ASSERT_MSG(numLevels > 0, "The image must contain at least one mip-level");
   LVK_ASSERT_MSG(numLayers > 0, "The image must contain at least one layer");
   LVK_ASSERT_MSG(vkSamples > 0, "The image must contain at least one sample");
@@ -5449,6 +5566,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
     (void)std::snprintf(debugNameBuffer, sizeof(debugNameBuffer) - 1, "Buffer: %s", desc.debugName);
   }
   lvk::AccelerationStructure accelStruct = {
+      .buildFlags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
       .buildRangeInfo =
           {
               .primitiveCount = desc.buildRange.primitiveCount,
@@ -5473,6 +5591,11 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
       .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
   };
   VK_ASSERT(vkCreateAccelerationStructureKHR(vkDevice_, &ciAccelerationStructure, nullptr, &accelStruct.vkHandle));
+
+  if (!LVK_VERIFY(accelStruct.vkHandle)) {
+    Result::setResult(outResult, Result::Code::RuntimeError, "Cannot create VkAccelerationStructureKHR");
+    return {};
+  }
 
   lvk::Holder<lvk::BufferHandle> scratchBuffer = createBuffer(
       {
@@ -5523,6 +5646,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
   }
   lvk::AccelerationStructure accelStruct = {
       .isTLAS = true,
+      .buildFlags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
       .buildRangeInfo =
           {
               .primitiveCount = desc.buildRange.primitiveCount,
@@ -5547,7 +5671,12 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
       .size = accelerationStructureBuildSizesInfo.accelerationStructureSize,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
   };
-  vkCreateAccelerationStructureKHR(vkDevice_, &ciAccelerationStructure, nullptr, &accelStruct.vkHandle);
+  VK_ASSERT(vkCreateAccelerationStructureKHR(vkDevice_, &ciAccelerationStructure, nullptr, &accelStruct.vkHandle));
+
+  if (!LVK_VERIFY(accelStruct.vkHandle)) {
+    Result::setResult(outResult, Result::Code::RuntimeError, "Cannot create VkAccelerationStructureKHR");
+    return {};
+  }
 
   lvk::Holder<lvk::BufferHandle> scratchBuffer = createBuffer(
       {
@@ -5847,12 +5976,20 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
       .dynamicState(VK_DYNAMIC_STATE_SCISSOR)
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS)
       .dynamicState(VK_DYNAMIC_STATE_BLEND_CONSTANTS)
+      .dynamicState(VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK)
+      .dynamicState(VK_DYNAMIC_STATE_STENCIL_WRITE_MASK)
+      .dynamicState(VK_DYNAMIC_STATE_STENCIL_REFERENCE)
+      .dynamicState(VK_DYNAMIC_STATE_DEPTH_BOUNDS)
       // from Vulkan 1.3 or VK_EXT_extended_dynamic_state
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE)
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE)
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_COMPARE_OP)
+      .dynamicState(VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE)
+      .dynamicState(VK_DYNAMIC_STATE_STENCIL_OP)
+      .dynamicState(VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE)
       // from Vulkan 1.3 or VK_EXT_extended_dynamic_state2
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE)
+      .dynamicState(VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE, meshModule == nullptr) // forbidden on mesh pipelines (no input assembly)
       // from VK_KHR_fragment_shading_rate
       .dynamicState(VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR, has_KHR_fragment_shading_rate_)
       .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, passState.hasAttachmentFSR)
@@ -5862,18 +5999,8 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
       .rasterizationSamples(getVulkanSampleCountFlags(desc.samplesCount, getFramebufferMSAABitMask()), desc.minSampleShading)
       .alphaToCoverage(desc.alphaToCoverage)
       .polygonMode(polygonModeToVkPolygonMode(desc.polygonMode))
-      .stencilStateOps(VK_STENCIL_FACE_FRONT_BIT,
-                       stencilOpToVkStencilOp(desc.frontFaceStencil.stencilFailureOp),
-                       stencilOpToVkStencilOp(desc.frontFaceStencil.depthStencilPassOp),
-                       stencilOpToVkStencilOp(desc.frontFaceStencil.depthFailureOp),
-                       compareOpToVkCompareOp(desc.frontFaceStencil.stencilCompareOp))
-      .stencilStateOps(VK_STENCIL_FACE_BACK_BIT,
-                       stencilOpToVkStencilOp(desc.backFaceStencil.stencilFailureOp),
-                       stencilOpToVkStencilOp(desc.backFaceStencil.depthStencilPassOp),
-                       stencilOpToVkStencilOp(desc.backFaceStencil.depthFailureOp),
-                       compareOpToVkCompareOp(desc.backFaceStencil.stencilCompareOp))
-      .stencilMasks(VK_STENCIL_FACE_FRONT_BIT, 0xFF, desc.frontFaceStencil.writeMask, desc.frontFaceStencil.readMask)
-      .stencilMasks(VK_STENCIL_FACE_BACK_BIT, 0xFF, desc.backFaceStencil.writeMask, desc.backFaceStencil.readMask)
+      .provokingVertex(desc.provokingVertexLast ? VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT : VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT,
+                       has_EXT_provoking_vertex_)
       .shaderStage(taskModule ? lvk::getPipelineShaderStageCreateInfo(
                                     VK_SHADER_STAGE_TASK_BIT_EXT, taskModule->ci, desc.entryPointTask, &si, taskModule->sm)
                               : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
@@ -6261,14 +6388,6 @@ lvk::Holder<lvk::RayTracingPipelineHandle> lvk::VulkanContext::createRayTracingP
 }
 
 lvk::Holder<lvk::RenderPipelineHandle> lvk::VulkanContext::createRenderPipeline(const RenderPipelineDesc& desc, Result* outResult) {
-  const bool hasColorAttachments = desc.getNumColorAttachments() > 0;
-  const bool hasDepthAttachment = desc.depthFormat != Format_Invalid;
-  const bool hasAnyAttachments = hasColorAttachments || hasDepthAttachment;
-  if (!LVK_VERIFY(hasAnyAttachments)) {
-    Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Need at least one attachment");
-    return {};
-  }
-
   if (desc.smMesh.valid()) {
     if (!LVK_VERIFY(!desc.vertexInput.getNumAttributes() && !desc.vertexInput.getNumInputBindings())) {
       Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Cannot have vertexInput with mesh shaders");
@@ -6424,8 +6543,15 @@ void lvk::VulkanContext::destroy(SamplerHandle handle) {
 
   VkSampler sampler = *samplersPool_.get(handle);
 
-  samplersPool_.destroy(handle);
+  if (!sampler) {
+    // a null sampler means it has already been destroyed
+    return;
+  }
 
+  *samplersPool_.get(handle) = VK_NULL_HANDLE; // a repeated destroy() is a no-op; the descriptor set falls back to the dummy sampler
+
+  // return the slot to the free list only after the last submission using it has completed
+  deferredTask(std::packaged_task<void()>([this, handle]() { samplersPool_.destroy(handle); }));
   deferredTask(std::packaged_task<void()>([device = vkDevice_, sampler = sampler]() { vkDestroySampler(device, sampler, nullptr); }));
 }
 
@@ -6463,16 +6589,20 @@ void lvk::VulkanContext::destroy(BufferHandle handle) {
 void lvk::VulkanContext::destroy(lvk::TextureHandle handle) {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_DESTROY);
 
-  SCOPE_EXIT {
-    texturesPool_.destroy(handle);
-    awaitingCreation_ = true; // make the validation layers happy
-  };
-
   lvk::VulkanImage* tex = texturesPool_.get(handle);
 
-  if (!tex) {
+  if (!tex || !tex->vkImage_) {
+    // a null `vkImage_` means the texture has already been destroyed
     return;
   }
+
+  SCOPE_EXIT {
+    *tex = VulkanImage{}; // a repeated destroy() is a no-op; the descriptor set falls back to the dummy texture
+    awaitingCreation_ = true;
+    // return the slot to the free list only after the last submission using it has completed
+    // (a slot reused earlier could be patched into the descriptor set while an in-flight command buffer still reads it)
+    deferredTask(std::packaged_task<void()>([this, handle]() { texturesPool_.destroy(handle); }));
+  };
 
   deferredTask(std::packaged_task<void()>(
       [device = getVkDevice(), imageView = tex->imageView_]() { vkDestroyImageView(device, imageView, nullptr); }));
@@ -6541,8 +6671,17 @@ void lvk::VulkanContext::destroy(lvk::QueryPoolHandle handle) {
 void lvk::VulkanContext::destroy(lvk::AccelStructHandle handle) {
   AccelerationStructure* accelStruct = accelStructuresPool_.get(handle);
 
+  if (!accelStruct->vkHandle) {
+    // a null `vkHandle` means the acceleration structure has already been destroyed
+    return;
+  }
+
   SCOPE_EXIT {
-    accelStructuresPool_.destroy(handle);
+    // a repeated destroy() is a no-op; this also releases the backing buffers
+    *accelStruct = AccelerationStructure{};
+    // return the slot to the free list only after the last submission using it has completed
+    // (a slot reused earlier could be patched into the descriptor set while an in-flight command buffer still reads it)
+    deferredTask(std::packaged_task<void()>([this, handle]() { accelStructuresPool_.destroy(handle); }));
   };
 
   deferredTask(std::packaged_task<void()>(
@@ -7416,6 +7555,7 @@ lvk::Result lvk::VulkanContext::createInstance() {
 
   const VkBool32 gpuav_enable = enableGpuAV ? VK_TRUE : VK_FALSE;
   const VkBool32 gpuav_post_process_descriptor_indexing = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/9222
+  const VkBool32 syncval_enable = config_.enableValidation && config_.enableValidationSync ? VK_TRUE : VK_FALSE;
   const VkBool32 legacy_detection = config_.enableValidation ? VK_TRUE : VK_FALSE;
   const char* legacy_detection_mode = "ONLY_ENABLED";
 #define LAYER_SETTINGS_BOOL32(name, var)         \
@@ -7434,6 +7574,8 @@ lvk::Result lvk::VulkanContext::createInstance() {
   const VkLayerSettingEXT settings[] = {
       LAYER_SETTINGS_BOOL32("gpuav_enable", &gpuav_enable),
       LAYER_SETTINGS_BOOL32("gpuav_post_process_descriptor_indexing", &gpuav_post_process_descriptor_indexing),
+      LAYER_SETTINGS_BOOL32("validate_sync", &syncval_enable),
+      LAYER_SETTINGS_BOOL32("syncval_submit_time_validation", &syncval_enable),
       LAYER_SETTINGS_BOOL32("legacy_detection", &legacy_detection),
       LAYER_SETTINGS_STRING("legacy_detection_mode", &legacy_detection_mode),
   };
@@ -7679,12 +7821,12 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
   LVK_ASSERT(desc.numVertices);
   LVK_ASSERT(desc.indexBuffer.valid());
   LVK_ASSERT(desc.vertexBuffer.valid());
-  LVK_ASSERT(desc.transformBuffer.valid());
   LVK_ASSERT(desc.buildRange.primitiveCount);
 
   LVK_ASSERT(buffersPool_.get(desc.indexBuffer)->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
   LVK_ASSERT(buffersPool_.get(desc.vertexBuffer)->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
-  LVK_ASSERT(buffersPool_.get(desc.transformBuffer)->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+  LVK_ASSERT(!desc.transformBuffer.valid() || (buffersPool_.get(desc.transformBuffer)->vkUsageFlags_ &
+                                               VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR));
 
   VkGeometryFlagsKHR geometryFlags = 0;
 
@@ -7709,7 +7851,7 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
                       .maxVertex = desc.numVertices - 1,
                       .indexType = indexFormatToVkIndexType(desc.indexFormat),
                       .indexData = {.deviceAddress = gpuAddress(desc.indexBuffer)},
-                      .transformData = {.deviceAddress = gpuAddress(desc.transformBuffer)},
+                      .transformData = {.deviceAddress = desc.transformBuffer.valid() ? gpuAddress(desc.transformBuffer) : 0},
                   },
           },
       .flags = geometryFlags,
@@ -7718,7 +7860,7 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
   const VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-      .flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
+      .flags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
       .geometryCount = 1,
       .pGeometries = &outGeometry,
   };
@@ -7931,6 +8073,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .depthClamp = VK_TRUE,
       .depthBiasClamp = VK_TRUE,
       .fillModeNonSolid = vkFeatures10_.features.fillModeNonSolid, // enable if supported
+      .depthBounds = vkFeatures10_.features.depthBounds, // enable if supported
       .largePoints = VK_TRUE,
       .samplerAnisotropy = VK_TRUE,
       .textureCompressionETC2 = vkFeatures10_.features.textureCompressionETC2, // enable if supported
@@ -7987,6 +8130,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .runtimeDescriptorArray = VK_TRUE,
       .scalarBlockLayout = VK_TRUE,
       .uniformBufferStandardLayout = VK_TRUE,
+      .shaderSubgroupExtendedTypes = vkFeatures12_.shaderSubgroupExtendedTypes, // enable if supported
       .hostQueryReset = vkFeatures12_.hostQueryReset, // enable if supported
       .timelineSemaphore = VK_TRUE,
       .bufferDeviceAddress = VK_TRUE,
@@ -8076,9 +8220,19 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
       .taskShader = VK_TRUE,
       .meshShader = VK_TRUE,
+      .multiviewMeshShader = vkMeshShaderFeatures_.multiviewMeshShader,
       // VUID-VkPhysicalDeviceMeshShaderFeaturesEXT-primitiveFragmentShadingRateMeshShader-07033 requires `primitiveFragmentShadingRate`
       .primitiveFragmentShadingRateMeshShader = vkMeshShaderFeatures_.primitiveFragmentShadingRateMeshShader &&
                                                 has_KHR_fragment_shading_rate_,
+  };
+  VkPhysicalDeviceProvokingVertexFeaturesEXT provokingVertexFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROVOKING_VERTEX_FEATURES_EXT,
+      .provokingVertexLast = VK_TRUE,
+  };
+  VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT fragmentShaderInterlockFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT,
+      .fragmentShaderSampleInterlock = VK_TRUE,
+      .fragmentShaderPixelInterlock = VK_TRUE,
   };
   VkPhysicalDevicePresentModeFifoLatestReadyFeaturesKHR presentModeLatestReadyFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_MODE_FIFO_LATEST_READY_FEATURES_KHR,
@@ -8195,6 +8349,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   addOptionalExtension(VK_EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_EXTENSION_NAME,
                        has_EXT_dynamic_rendering_unused_attachments_,
                        &dynamicRenderingUnusedAttachmentsFeatures);
+  addOptionalExtension(VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME, has_EXT_provoking_vertex_, &provokingVertexFeatures);
+  addOptionalExtension(
+      VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME, has_EXT_fragment_shader_interlock_, &fragmentShaderInterlockFeatures);
   addOptionalExtension(VK_KHR_SHARED_PRESENTABLE_IMAGE_EXTENSION_NAME, has_KHR_shared_presentable_image_);
   addOptionalExtension(
       VK_KHR_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME, has_KHR_present_mode_fifo_latest_ready_, &presentModeLatestReadyFeatures);
@@ -9129,7 +9286,7 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
 }
 
 lvk::SamplerHandle lvk::VulkanContext::createSampler(const VkSamplerCreateInfo& ci,
-                                                     lvk::Result* /*outResult*/,
+                                                     lvk::Result* outResult,
                                                      lvk::Format yuvFormat,
                                                      const char* debugName) {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
@@ -9149,6 +9306,12 @@ lvk::SamplerHandle lvk::VulkanContext::createSampler(const VkSamplerCreateInfo& 
 
   VkSampler sampler = VK_NULL_HANDLE;
   VK_ASSERT(vkCreateSampler(vkDevice_, &cinfo, nullptr, &sampler));
+
+  if (!LVK_VERIFY(sampler)) {
+    Result::setResult(outResult, Result::Code::RuntimeError, "Cannot create VkSampler");
+    return {};
+  }
+
   VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_SAMPLER, (uint64_t)sampler, debugName));
 
   SamplerHandle handle = samplersPool_.create(std::move(sampler));
@@ -9160,8 +9323,12 @@ lvk::SamplerHandle lvk::VulkanContext::createSampler(const VkSamplerCreateInfo& 
 
 void lvk::VulkanContext::querySurfaceCapabilities() {
   // enumerate only the formats we are using
-  const VkFormat depthFormats[] = {
-      VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D16_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT, VK_FORMAT_D16_UNORM};
+  const VkFormat depthFormats[] = {VK_FORMAT_D32_SFLOAT_S8_UINT,
+                                   VK_FORMAT_D24_UNORM_S8_UINT,
+                                   VK_FORMAT_D16_UNORM_S8_UINT,
+                                   VK_FORMAT_D32_SFLOAT,
+                                   VK_FORMAT_D16_UNORM,
+                                   VK_FORMAT_S8_UINT};
   for (const VkFormat& depthFormat : depthFormats) {
     VkFormatProperties2 props = {
         .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
@@ -9268,4 +9435,45 @@ bool lvk::VulkanContext::isExtensionEnabled(const char* ext) const {
       return true;
   }
   return false;
+}
+
+bool lvk::VulkanContext::supportsTextureFormat(Format format, TextureUsageFlags usageFlags) const {
+  const VkFormat vkFormat = lvk::formatToVkFormat(format);
+
+  if (vkFormat == VK_FORMAT_UNDEFINED) {
+    return false;
+  }
+  if ((usageFlags & lvk::TextureUsageBits_FragmentDensityMap) && !has_EXT_fragment_density_map_) {
+    return false;
+  }
+  if ((usageFlags & lvk::TextureUsageBits_ShadingRateAttachment) && !has_KHR_fragment_shading_rate_) {
+    return false;
+  }
+
+  VkFormatFeatureFlags requiredFeatures = 0;
+
+  if (usageFlags & lvk::TextureUsageBits_Sampled) {
+    requiredFeatures |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+  }
+  if (usageFlags & lvk::TextureUsageBits_Storage) {
+    requiredFeatures |= VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT;
+  }
+  if (usageFlags & (lvk::TextureUsageBits_Attachment | lvk::TextureUsageBits_InputAttachment)) {
+    // an input attachment needs the same feature bit as the attachment it reads
+    requiredFeatures |= lvk::isDepthOrStencilFormat(format) ? VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+                                                            : VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT;
+  }
+  if (usageFlags & lvk::TextureUsageBits_FragmentDensityMap) {
+    requiredFeatures |= VK_FORMAT_FEATURE_FRAGMENT_DENSITY_MAP_BIT_EXT;
+  }
+  if (usageFlags & lvk::TextureUsageBits_ShadingRateAttachment) {
+    requiredFeatures |= VK_FORMAT_FEATURE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
+  }
+
+  VkFormatProperties2 props = {
+      .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
+  };
+  vkGetPhysicalDeviceFormatProperties2(getVkPhysicalDevice(), vkFormat, &props);
+
+  return (props.formatProperties.optimalTilingFeatures & requiredFeatures) == requiredFeatures;
 }

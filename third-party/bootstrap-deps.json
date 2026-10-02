@@ -12,7 +12,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/glslang.git",
-        "revision": "16.5.0"
+        "revision": "16.6.0"
     }
 },
 {
@@ -140,7 +140,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/OpenXR-SDK.git",
-        "sha1": "release-1.1.61"
+        "sha1": "release-1.1.63"
     }
 },
 {
@@ -204,7 +204,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/wolfpld/tracy.git",
-        "revision": "v0.14.0"
+        "revision": "v0.14.1"
     }
 },
 {
@@ -270,7 +270,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/shader-slang/slang",
-        "revision": "v2026.17",
+        "revision": "v2026.17.1",
         "recursive": true
     }
 },

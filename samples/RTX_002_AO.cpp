@@ -518,8 +518,10 @@ float4 fragmentMain(VSOutput input, float4 fragCoord : SV_Position) : SV_Target 
     occlusion = pow(clamp(occlusion, 0, 1), pc.aoPower);
   }
 
-  // directional shadow
-  if (pc.enableShadows) {
+  // directional shadow; surfaces facing away from the light are always shadowed
+  if (pc.enableShadows && dot(n, pc.lightDir.xyz) <= 0.0) {
+    occlusion *= 0.5;
+  } else if (pc.enableShadows) {
     RayDesc ray;
     ray.Origin = vtx.worldPos;
     ray.Direction = pc.lightDir.xyz;
@@ -1039,8 +1041,10 @@ void main() {
     }
     occlusion = pow(clamp(occlusion, 0, 1), pc.aoPower);
   }
-  // directional shadow
-  if (pc.enableShadows) {
+  // directional shadow; surfaces facing away from the light are always shadowed
+  if (pc.enableShadows && dot(n, pc.lightDir.xyz) <= 0.0) {
+    occlusion *= 0.5;
+  } else if (pc.enableShadows) {
     rayQueryEXT rq;
     rayQueryInitializeEXT(rq, kTLAS[pc.tlas], gl_RayFlagsTerminateOnFirstHitEXT, 0xff, vtx.worldPos, 0.01, pc.lightDir.xyz, +1000.0);
     while (rayQueryProceedEXT(rq)) {}

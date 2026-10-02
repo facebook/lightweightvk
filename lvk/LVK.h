@@ -423,18 +423,26 @@ struct SamplerStateDesc {
   const char* debugName = "";
 };
 
-struct StencilState {
+struct StencilFaceState {
   StencilOp stencilFailureOp = StencilOp_Keep;
   StencilOp depthFailureOp = StencilOp_Keep;
   StencilOp depthStencilPassOp = StencilOp_Keep;
   CompareOp stencilCompareOp = CompareOp_AlwaysPass;
   uint32_t readMask = static_cast<uint32_t>(~0);
   uint32_t writeMask = static_cast<uint32_t>(~0);
+  uint32_t reference = 0;
+};
+
+struct StencilState {
+  bool enable = false;
+  StencilFaceState front = {};
+  StencilFaceState back = {};
 };
 
 struct DepthState {
   CompareOp compareOp = CompareOp_AlwaysPass;
   bool isDepthWriteEnabled = false;
+  bool isDepthBoundsTestEnabled = false; // requires `IContext::supportsDepthBounds()`; set the range with `cmdSetDepthBounds()`
 };
 
 enum PolygonMode : uint8_t {
@@ -571,14 +579,21 @@ enum Format : uint8_t {
   Format_ETC2_RGB8,
   Format_ETC2_SRGB8,
   Format_EAC_RG11,
+  Format_BC1_RGBA,
+  Format_BC1_SRGBA,
   Format_BC3_RGBA,
   Format_BC3_SRGBA,
+  Format_BC4_R,
   Format_BC5_RG, // 2-channel block compression (tangent-space normal maps etc)
   Format_BC5_RG_SN, // signed variant of `Format_BC5_RG`
   Format_BC7_RGBA,
   Format_BC7_SRGBA,
   Format_ASTC_4x4_RGBA, // requires `textureCompressionASTC_LDR`
   Format_ASTC_4x4_SRGBA, // requires `textureCompressionASTC_LDR`
+  Format_ASTC_5x5_RGBA, // requires `textureCompressionASTC_LDR`
+  Format_ASTC_5x5_SRGBA, // requires `textureCompressionASTC_LDR`
+  Format_ASTC_6x6_RGBA, // requires `textureCompressionASTC_LDR`
+  Format_ASTC_6x6_SRGBA, // requires `textureCompressionASTC_LDR`
 
   Format_Z_UN16,
   Format_Z_UN24,
@@ -760,9 +775,7 @@ struct RenderPipelineDesc final {
   CullMode cullMode = lvk::CullMode_None;
   WindingMode frontFace = lvk::WindingMode_CCW;
   PolygonMode polygonMode = lvk::PolygonMode_Fill;
-
-  StencilState backFaceStencil = {};
-  StencilState frontFaceStencil = {};
+  bool provokingVertexLast = false; // requires `VK_EXT_provoking_vertex`
 
   uint32_t samplesCount = 1u;
   uint32_t patchControlPoints = 0;
@@ -821,6 +834,9 @@ struct RenderPass final {
 
   uint32_t layerCount = 1;
   uint32_t viewMask = 0;
+  // the render area of an attachmentless render pass - both must be set explicitly, there is no attachment to derive them from
+  uint32_t attachmentlessWidth = 0;
+  uint32_t attachmentlessHeight = 0;
 
   uint32_t getNumColorAttachments() const {
     uint32_t n = 0;
@@ -866,8 +882,10 @@ enum BufferUsageBits : uint8_t {
   BufferUsageBits_AccelStructStorage = 1 << 7
 };
 
+using BufferUsageFlags = uint8_t;
+
 struct BufferDesc final {
-  uint8_t usage = 0;
+  BufferUsageFlags usage = 0;
   StorageType storage = StorageType_HostVisible;
   size_t size = 0;
   const void* data = nullptr;
@@ -904,6 +922,47 @@ enum TextureUsageBits : uint8_t {
   TextureUsageBits_ShadingRateAttachment = 1 << 5,
 };
 
+using TextureUsageFlags = uint8_t;
+
+// Pipeline stages for `ICommandBuffer::cmdBarrier()`
+enum PipelineStageBits : uint32_t {
+  PipelineStageBits_DrawIndirect = 1 << 0,
+  PipelineStageBits_VertexInput = 1 << 1, // index/vertex attribute fetch
+  PipelineStageBits_Vertex = 1 << 2, // vertex/tessellation/geometry shaders
+  PipelineStageBits_Task = 1 << 3,
+  PipelineStageBits_Mesh = 1 << 4,
+  PipelineStageBits_DepthStencil = 1 << 5, // early/late fragment tests
+  PipelineStageBits_Fragment = 1 << 6,
+  PipelineStageBits_ColorAttachment = 1 << 7,
+  PipelineStageBits_Compute = 1 << 8,
+  PipelineStageBits_RayTracing = 1 << 9,
+  PipelineStageBits_AccelStructBuild = 1 << 10,
+  PipelineStageBits_Transfer = 1 << 11,
+  PipelineStageBits_Host = 1 << 12,
+  PipelineStageBits_AllCommands = 1 << 13,
+};
+using PipelineStageFlags = uint32_t;
+
+// Memory access types for `ICommandBuffer::cmdBarrier()`
+enum AccessBits : uint32_t {
+  AccessBits_IndirectRead = 1 << 0,
+  AccessBits_IndexRead = 1 << 1,
+  AccessBits_VertexAttributeRead = 1 << 2,
+  AccessBits_ShaderRead = 1 << 3,
+  AccessBits_ShaderWrite = 1 << 4,
+  AccessBits_ColorRead = 1 << 5,
+  AccessBits_ColorWrite = 1 << 6,
+  AccessBits_DepthStencilRead = 1 << 7,
+  AccessBits_DepthStencilWrite = 1 << 8,
+  AccessBits_TransferRead = 1 << 9,
+  AccessBits_TransferWrite = 1 << 10,
+  AccessBits_HostRead = 1 << 11,
+  AccessBits_HostWrite = 1 << 12,
+  AccessBits_AccelStructRead = 1 << 13,
+  AccessBits_AccelStructWrite = 1 << 14,
+};
+using AccessFlags = uint32_t;
+
 enum Swizzle : uint8_t {
   Swizzle_Default = 0,
   Swizzle_0,
@@ -931,7 +990,7 @@ struct TextureDesc {
   Dimensions dimensions = {1, 1, 1};
   uint32_t numLayers = 1;
   uint32_t numSamples = 1;
-  uint8_t usage = TextureUsageBits_Sampled;
+  TextureUsageFlags usage = TextureUsageBits_Sampled;
   uint32_t numMipLevels = 1;
   StorageType storage = StorageType_Device;
   ComponentMapping components = {};
@@ -1073,11 +1132,21 @@ struct Dependencies {
   ldr::Span<SubmitHandle> waitGraphics = {}; // graphics work an async-compute submit must wait for
 };
 
+// A global memory and execution barrier for the hazards not covered by `Dependencies`
+// Image layouts are not changed by this: use `Dependencies` or `cmdTransitionToShaderReadOnly()`
+struct Barrier {
+  PipelineStageFlags srcStages = PipelineStageBits_AllCommands;
+  AccessFlags srcAccess = 0;
+  PipelineStageFlags dstStages = PipelineStageBits_AllCommands;
+  AccessFlags dstAccess = 0;
+};
+
 // NOLINTNEXTLINE(clang-diagnostic-deprecated-copy-with-dtor)
 class ICommandBuffer {
  public:
   virtual ~ICommandBuffer() = default;
 
+  virtual void cmdBarrier(const Barrier& barrier) = 0; // don't call between cmdBeginRendering()/cmdEndRendering()
   virtual void cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const = 0;
   virtual void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const = 0;
   // no extraDstStage parameter: this is only used within a render pass
@@ -1102,6 +1171,7 @@ class ICommandBuffer {
 
   virtual void cmdBindRenderPipeline(lvk::RenderPipelineHandle handle) = 0;
   virtual void cmdBindDepthState(const DepthState& state) = 0;
+  virtual void cmdBindStencilState(const StencilState& state) = 0;
 
   virtual void cmdBindVertexBuffer(uint32_t index,
                                    BufferHandle buffer,
@@ -1159,6 +1229,9 @@ class ICommandBuffer {
   // the argument order is correct, so the `clamp` parameter can have a default value
   virtual void cmdSetDepthBias(float constantFactor, float slopeFactor, float clamp = 0.0f) = 0;
   virtual void cmdSetDepthBiasEnable(bool enable) = 0;
+  virtual void cmdSetDepthBounds(float minDepthBounds, float maxDepthBounds) = 0;
+  // requires `LineStrip` or `TriangleStrip`; the restart index is the max value representable by the bound `IndexFormat`
+  virtual void cmdSetPrimitiveRestartEnable(bool enable) = 0;
   virtual void cmdSetFragmentShadingRate(const Dimensions& fragmentSize, // 2D, e.g. 1x1 (full rate) or 2x2
                                          ShadingRateCombinerOp primitiveOp = ShadingRateCombinerOp_Keep,
                                          ShadingRateCombinerOp attachmentOp = ShadingRateCombinerOp_Keep) = 0;
@@ -1282,6 +1355,16 @@ class IContext {
 
   virtual bool isExtensionEnabled(const char* ext) const = 0;
   virtual bool supportsAsyncCompute() const = 0;
+  virtual bool supportsDepthBounds() const = 0;
+  virtual bool supportsMeshShader() const = 0;
+  virtual bool supportsProvokingVertex() const = 0;
+  virtual bool supportsRayTracingPipeline() const = 0;
+  virtual bool supportsShaderInterlock() const = 0;
+  virtual bool supportsTextureFormat(Format format, TextureUsageFlags usageFlags = TextureUsageBits_Sampled) const = 0;
+
+  // the maximum number of views in a multiview render pass, i.e. 1 unless multiview is supported
+  [[nodiscard]] virtual uint32_t getMultiviewMaxViewCount() const = 0;
+  [[nodiscard]] virtual uint32_t getMultiviewMaxMeshViewCount() const = 0;
 
 #pragma region Performance queries
   virtual double getTimestampPeriodToMs() const = 0;
@@ -1321,6 +1404,7 @@ struct ContextConfig {
   bool terminateOnValidationError = false; // invoke std::terminate() on any validation error
   bool enableValidation = true;
   bool enableValidationGpuAV = true;
+  bool enableValidationSync = true;
   bool generateSPIRVDebugInfo = true;
   lvk::ColorSpace swapchainRequestedColorSpace = lvk::ColorSpace_SRGB_NONLINEAR;
   // owned by the application - should be alive until createVulkanContextWithSwapchain() returns

@@ -298,15 +298,10 @@ class VulkanPipelineBuilder final {
   VulkanPipelineBuilder& rasterizationSamples(VkSampleCountFlagBits samples, float minSampleShading);
   VulkanPipelineBuilder& alphaToCoverage(bool enable);
   VulkanPipelineBuilder& shaderStage(VkPipelineShaderStageCreateInfo stage);
-  VulkanPipelineBuilder& stencilStateOps(VkStencilFaceFlags faceMask,
-                                         VkStencilOp failOp,
-                                         VkStencilOp passOp,
-                                         VkStencilOp depthFailOp,
-                                         VkCompareOp compareOp);
-  VulkanPipelineBuilder& stencilMasks(VkStencilFaceFlags faceMask, uint32_t compareMask, uint32_t writeMask, uint32_t reference);
   VulkanPipelineBuilder& cullMode(VkCullModeFlags mode);
   VulkanPipelineBuilder& frontFace(VkFrontFace mode);
   VulkanPipelineBuilder& polygonMode(VkPolygonMode mode);
+  VulkanPipelineBuilder& provokingVertex(VkProvokingVertexModeEXT mode, bool enable = true);
   VulkanPipelineBuilder& vertexInputState(const VkPipelineVertexInputStateCreateInfo& state);
   VulkanPipelineBuilder& viewMask(uint32_t mask);
   VulkanPipelineBuilder& colorAttachments(const VkPipelineColorBlendAttachmentState* states,
@@ -338,8 +333,8 @@ class VulkanPipelineBuilder final {
   VkPipelineVertexInputStateCreateInfo vertexInputState_;
   VkPipelineInputAssemblyStateCreateInfo inputAssembly_;
   VkPipelineRasterizationStateCreateInfo rasterizationState_;
+  VkPipelineRasterizationProvokingVertexStateCreateInfoEXT provokingVertexState_ = {};
   VkPipelineMultisampleStateCreateInfo multisampleState_;
-  VkPipelineDepthStencilStateCreateInfo depthStencilState_;
   VkPipelineTessellationStateCreateInfo tessellationState_;
 
   uint32_t viewMask_ = 0;
@@ -407,6 +402,7 @@ struct ShaderModuleState final {
 
 struct AccelerationStructure {
   bool isTLAS = false;
+  VkBuildAccelerationStructureFlagsKHR buildFlags = 0; // an update has to be built with the same flags
   VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo = {};
   VkAccelerationStructureKHR vkHandle = VK_NULL_HANDLE;
   uint64_t deviceAddress = 0;
@@ -423,6 +419,7 @@ class CommandBuffer final : public ICommandBuffer {
 
   CommandBuffer& operator=(CommandBuffer&& other) = default;
 
+  void cmdBarrier(const Barrier& barrier) override;
   void cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const override;
   void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const override;
   void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const override;
@@ -446,6 +443,7 @@ class CommandBuffer final : public ICommandBuffer {
 
   void cmdBindRenderPipeline(lvk::RenderPipelineHandle handle) override;
   void cmdBindDepthState(const DepthState& state) override;
+  void cmdBindStencilState(const StencilState& state) override;
 
   void cmdBindVertexBuffer(uint32_t index, BufferHandle buffer, uint64_t bufferOffset, uint64_t bufferSize) override;
   void cmdBindIndexBuffer(BufferHandle indexBuffer, IndexFormat indexFormat, uint64_t bufferOffset, uint64_t bufferSize) override;
@@ -482,6 +480,8 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdSetBlendColor(const float color[4]) override;
   void cmdSetDepthBias(float constantFactor, float slopeFactor, float clamp) override;
   void cmdSetDepthBiasEnable(bool enable) override;
+  void cmdSetDepthBounds(float minDepthBounds, float maxDepthBounds) override;
+  void cmdSetPrimitiveRestartEnable(bool enable) override;
   void cmdSetFragmentShadingRate(const Dimensions& fragmentSize,
                                  ShadingRateCombinerOp primitiveOp,
                                  ShadingRateCombinerOp attachmentOp) override;
@@ -684,6 +684,30 @@ class VulkanContext final : public IContext {
   bool isExtensionEnabled(const char* ext) const override;
   bool supportsAsyncCompute() const override {
     return immediateCompute_ != nullptr;
+  }
+  bool supportsDepthBounds() const override {
+    return vkFeatures10_.features.depthBounds == VK_TRUE;
+  }
+  bool supportsTextureFormat(Format format, TextureUsageFlags usageFlags) const override;
+  bool supportsShaderInterlock() const override {
+    return has_EXT_fragment_shader_interlock_;
+  }
+  bool supportsRayTracingPipeline() const override {
+    return has_KHR_acceleration_structure_ && has_KHR_ray_tracing_pipeline_;
+  }
+  bool supportsMeshShader() const override {
+    return has_EXT_mesh_shader_;
+  }
+  bool supportsProvokingVertex() const override {
+    return has_EXT_provoking_vertex_;
+  }
+  [[nodiscard]] uint32_t getMultiviewMaxViewCount() const override {
+    return vkFeatures11_.multiview ? vkPhysicalDeviceVulkan11Properties_.maxMultiviewViewCount : 1u;
+  }
+  [[nodiscard]] uint32_t getMultiviewMaxMeshViewCount() const override {
+    return has_EXT_mesh_shader_ && vkFeatures11_.multiview && vkMeshShaderFeatures_.multiviewMeshShader
+               ? vkMeshShaderProperties_.maxMeshMultiviewViewCount
+               : 1u;
   }
 
   double getTimestampPeriodToMs() const override;
@@ -909,6 +933,8 @@ class VulkanContext final : public IContext {
   bool has_EXT_device_fault_ = false;
   bool has_EXT_shader_tile_image = false;
   bool has_EXT_mesh_shader_ = false;
+  bool has_EXT_provoking_vertex_ = false;
+  bool has_EXT_fragment_shader_interlock_ = false;
   bool has_MVK_macos_surface_ = false;
   bool has_KHR_shared_presentable_image_ = false;
   bool has_KHR_present_mode_fifo_latest_ready_ = false;
@@ -925,6 +951,7 @@ class VulkanContext final : public IContext {
   uint32_t deviceLocalMemoryTypeMask_ = 0; // bitmask of device-local memory type indices
   std::vector<const char*> enabledInstanceExtensionNames_;
   std::vector<const char*> enabledDeviceExtensionNames_;
+  std::vector<VkFormatProperties2> formatProperties_{lvk::Format_YUV_420p + 1};
 
   TextureHandle dummyTexture_;
 
