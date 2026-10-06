@@ -253,6 +253,38 @@ enum PresentMode : uint8_t {
   PresentMode_FIFO_Latest_Ready, // VK_KHR_present_mode_fifo_latest_ready
 };
 
+enum SurfaceTransform : uint8_t {
+  SurfaceTransform_Identity = 0,
+  SurfaceTransform_Rotate90,
+  SurfaceTransform_Rotate180,
+  SurfaceTransform_Rotate270,
+};
+
+inline bool isQuarterTurn(SurfaceTransform transform) {
+  return transform == SurfaceTransform_Rotate90 || transform == SurfaceTransform_Rotate270;
+}
+
+inline void getSurfaceTransformRotation(SurfaceTransform transform, float& outCos, float& outSin) {
+  switch (transform) {
+  case SurfaceTransform_Rotate90:
+    outCos = 0.0f;
+    outSin = -1.0f;
+    break;
+  case SurfaceTransform_Rotate180:
+    outCos = -1.0f;
+    outSin = 0.0f;
+    break;
+  case SurfaceTransform_Rotate270:
+    outCos = 0.0f;
+    outSin = 1.0f;
+    break;
+  default:
+    outCos = 1.0f;
+    outSin = 0.0f;
+    break;
+  }
+}
+
 enum TextureType : uint8_t {
   TextureType_2D,
   TextureType_3D,
@@ -550,6 +582,7 @@ enum Format : uint8_t {
   Format_RG_F32,
 
   Format_RGBA_UN8,
+  Format_RGBA_SN8,
   Format_RGBA_UI8,
   Format_RGBA_I8,
   Format_RGBA_UI16,
@@ -1249,6 +1282,7 @@ class ICommandBuffer {
                             const TextureLayers& dstLayers = {}) = 0;
   virtual void cmdGenerateMipmap(TextureHandle handle) = 0;
   virtual void cmdUpdateTLAS(AccelStructHandle handle, BufferHandle instancesBuffer) = 0;
+  virtual void cmdUpdateBLAS(const ldr::Span<AccelStructHandle>& handles) = 0;
 
 #if defined(LVK_WITH_RAW_VULKAN)
   virtual operator VkCommandBuffer() const = 0;
@@ -1331,12 +1365,13 @@ class IContext {
   [[nodiscard]] virtual Format getFormat(TextureHandle handle) const = 0;
 #pragma endregion
 
+  virtual Result initSwapchain(uint32_t width, uint32_t height) = 0; // recreates the existing swapchain as well
   virtual TextureHandle getCurrentSwapchainTexture() = 0;
   virtual Format getSwapchainFormat() const = 0;
   virtual ColorSpace getSwapchainColorSpace() const = 0;
   virtual uint32_t getSwapchainCurrentImageIndex() const = 0;
   virtual uint32_t getNumSwapchainImages() const = 0;
-  virtual void recreateSwapchain(int newWidth, int newHeight) = 0;
+  [[nodiscard]] virtual SurfaceTransform getSwapchainSurfaceTransform() const = 0;
   [[nodiscard]] virtual bool setCurrentPresentMode(PresentMode mode) = 0; // VK_KHR_swapchain_maintenance1
   [[nodiscard]] virtual PresentMode getCurrentPresentMode() const = 0;
 
@@ -1358,9 +1393,12 @@ class IContext {
   virtual bool supportsDepthBounds() const = 0;
   virtual bool supportsMeshShader() const = 0;
   virtual bool supportsProvokingVertex() const = 0;
+  virtual bool supportsRayQuery() const = 0;
   virtual bool supportsRayTracingPipeline() const = 0;
   virtual bool supportsShaderInterlock() const = 0;
   virtual bool supportsTextureFormat(Format format, TextureUsageFlags usageFlags = TextureUsageBits_Sampled) const = 0;
+  virtual bool supportsTensorsARM() const = 0;
+  virtual bool supportsDataGraphARM() const = 0;
 
   // the maximum number of views in a multiview render pass, i.e. 1 unless multiview is supported
   [[nodiscard]] virtual uint32_t getMultiviewMaxViewCount() const = 0;
@@ -1407,6 +1445,7 @@ struct ContextConfig {
   bool enableValidationSync = true;
   bool generateSPIRVDebugInfo = true;
   lvk::ColorSpace swapchainRequestedColorSpace = lvk::ColorSpace_SRGB_NONLINEAR;
+  bool swapchainUseSurfacePreTransform = false; // apps should rotate their own output based on getSwapchainSurfaceTransform()
   // owned by the application - should be alive until createVulkanContextWithSwapchain() returns
   const void* pipelineCacheData = nullptr;
   size_t pipelineCacheDataSize = 0;

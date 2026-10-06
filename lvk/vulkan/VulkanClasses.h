@@ -145,6 +145,7 @@ class VulkanSwapchain final {
   const VkSurfaceFormatKHR& getSurfaceFormat() const;
   uint32_t getSwapchainCurrentImageIndex() const;
   uint32_t getNumSwapchainImages() const;
+  SurfaceTransform getSurfaceTransform() const;
   // runtime present mode switching without swapchain recreation (VK_KHR_swapchain_maintenance1), returns `false` if the mode cannot be set
   [[nodiscard]] bool setCurrentPresentMode(VkPresentModeKHR mode);
 
@@ -160,6 +161,7 @@ class VulkanSwapchain final {
   bool getNextImage_ = true;
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
   VkSurfaceFormatKHR surfaceFormat_ = {.format = VK_FORMAT_UNDEFINED};
+  VkSurfaceTransformFlagBitsKHR preTransform_ = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
   VkPresentModeKHR currentPresentMode_ = VK_PRESENT_MODE_FIFO_KHR; // rewritten at swapchain creation
   VkPresentModeKHR registeredPresentModes_[kMaxPresentModes] = {};
   uint32_t numRegisteredPresentModes_ = 0;
@@ -210,7 +212,7 @@ class VulkanImmediateCommands final {
   void signalSemaphore(VkSemaphore semaphore, uint64_t signalValue);
   VkSemaphore acquireLastSubmitSemaphore();
   // timeline semaphore signaled by every submit() on this queue; lets another queue wait for a specific submission to complete
-  VkSemaphore getTimelineSemaphore() const {
+  const VkSemaphore& getTimelineSemaphore() const {
     return submitTimelineSemaphore_;
   }
   uint64_t getTimelineValue(SubmitHandle handle) const;
@@ -240,13 +242,13 @@ class VulkanImmediateCommands final {
   SubmitHandle lastSubmitHandle_ = SubmitHandle();
   SubmitHandle nextSubmitHandle_ = SubmitHandle();
   VkSemaphoreSubmitInfo lastSubmitSemaphore_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-                                                .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
+                                                .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT};
   VkSemaphoreSubmitInfo waitSemaphore_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-                                          .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT}; // extra "wait" semaphore
+                                          .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT}; // extra "wait" semaphore
   VkSemaphoreSubmitInfo waitTimeline_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-                                         .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT}; // timeline wait (cross-queue)
+                                         .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT}; // timeline wait (cross-queue)
   VkSemaphoreSubmitInfo signalSemaphore_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-                                            .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT}; // extra "signal" semaphore
+                                            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT}; // extra "signal" semaphore
   VkSemaphore lastPresentSemaphore_ = VK_NULL_HANDLE; // present-wait semaphore of the last vkQueuePresentKHR()
   VkFence lastPresentFence_ = VK_NULL_HANDLE; // its present fence; acquire() waits it before reusing that slot
   VkSemaphore submitTimelineSemaphore_ = VK_NULL_HANDLE; // monotonic timeline signaled by every submit() (cross-queue waits)
@@ -407,7 +409,8 @@ struct AccelerationStructure {
   VkAccelerationStructureKHR vkHandle = VK_NULL_HANDLE;
   uint64_t deviceAddress = 0;
   lvk::Holder<lvk::BufferHandle> buffer;
-  lvk::Holder<lvk::BufferHandle> scratchBuffer; // Store only for TLAS
+  lvk::Holder<lvk::BufferHandle> scratchBuffer; // TLAS, and BLAS built with AllowUpdate
+  VkAccelerationStructureGeometryKHR geometry = {};
 };
 
 // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
@@ -499,6 +502,7 @@ class CommandBuffer final : public ICommandBuffer {
                     const TextureLayers& dstLayers) override;
   void cmdGenerateMipmap(TextureHandle handle) override;
   void cmdUpdateTLAS(AccelStructHandle handle, BufferHandle instancesBuffer) override;
+  void cmdUpdateBLAS(const ldr::Span<AccelStructHandle>& handles) override;
 
   operator VkCommandBuffer() const
 #if defined(LVK_WITH_RAW_VULKAN)
@@ -671,8 +675,8 @@ class VulkanContext final : public IContext {
   Format getSwapchainFormat() const override;
   ColorSpace getSwapchainColorSpace() const override;
   uint32_t getSwapchainCurrentImageIndex() const override;
+  SurfaceTransform getSwapchainSurfaceTransform() const override;
   uint32_t getNumSwapchainImages() const override;
-  void recreateSwapchain(int newWidth, int newHeight) override;
   bool setCurrentPresentMode(PresentMode mode) override;
   PresentMode getCurrentPresentMode() const override;
 
@@ -689,8 +693,17 @@ class VulkanContext final : public IContext {
     return vkFeatures10_.features.depthBounds == VK_TRUE;
   }
   bool supportsTextureFormat(Format format, TextureUsageFlags usageFlags) const override;
+  bool supportsTensorsARM() const override {
+    return has_ARM_tensors_;
+  }
+  bool supportsDataGraphARM() const override {
+    return has_ARM_data_graph_;
+  }
   bool supportsShaderInterlock() const override {
     return has_EXT_fragment_shader_interlock_;
+  }
+  bool supportsRayQuery() const override {
+    return has_KHR_acceleration_structure_ && has_KHR_ray_query_;
   }
   bool supportsRayTracingPipeline() const override {
     return has_KHR_acceleration_structure_ && has_KHR_ray_tracing_pipeline_;
@@ -724,7 +737,7 @@ class VulkanContext final : public IContext {
 
   uint32_t queryDevices(HWDeviceDesc* outDevices, uint32_t maxOutDevices = 1);
   lvk::Result initContext(const HWDeviceDesc& desc);
-  lvk::Result initSwapchain(uint32_t width, uint32_t height);
+  lvk::Result initSwapchain(uint32_t width, uint32_t height) override;
 
   BufferHandle createBuffer(VkDeviceSize bufferSize,
                             VkBufferUsageFlags usageFlags,
@@ -774,6 +787,11 @@ class VulkanContext final : public IContext {
   void* getVmaAllocator() const;
 
   void checkAndUpdateDescriptorSets();
+  // patch one slot of the descriptor set in use instead of rebuilding all of them;
+  // return `false` when the caller has to fall back to a full rebuild via `awaitingCreation_`
+  [[nodiscard]] bool writeTextureDescriptor(uint32_t index);
+  [[nodiscard]] bool writeSamplerDescriptor(uint32_t index);
+  [[nodiscard]] bool writeAccelStructDescriptor(uint32_t index);
   void bindDefaultDescriptorSets(VkCommandBuffer cmdBuf, VkPipelineBindPoint bindPoint, VkPipelineLayout layout) const;
 
   [[nodiscard]] uint32_t getMaxStorageBufferRange() const override;
@@ -821,6 +839,7 @@ class VulkanContext final : public IContext {
   void getBuildInfoTLAS(const AccelStructDesc& desc,
                         VkAccelerationStructureGeometryKHR& outGeometry,
                         VkAccelerationStructureBuildSizesInfoKHR& outSizesInfo) const;
+  void createDummyTLAS();
 
  private:
   friend class lvk::VulkanSwapchain;
@@ -857,6 +876,9 @@ class VulkanContext final : public IContext {
   // queried (not chained by default) - only added to vkFeatures10_ when VK_EXT_fragment_density_map is supported
   VkPhysicalDeviceFragmentDensityMapFeaturesEXT vkFragmentDensityMapFeatures_ = {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT};
+  // queried (not chained by default) - only added to vkFeatures10_ when VK_ARM_tensors / VK_ARM_data_graph are supported
+  VkPhysicalDeviceTensorFeaturesARM vkTensorFeatures_ = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TENSOR_FEATURES_ARM};
+  VkPhysicalDeviceDataGraphFeaturesARM vkDataGraphFeatures_ = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DATA_GRAPH_FEATURES_ARM};
   // provided by Vulkan 1.4
   VkPhysicalDeviceVulkan14Properties vkPhysicalDeviceVulkan14Properties_ = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_PROPERTIES,
@@ -944,6 +966,8 @@ class VulkanContext final : public IContext {
   bool has_EXT_fragment_density_map2_ = false;
   bool has_EXT_host_image_copy_ = false; // promoted to Vulkan 1.4
   bool has_EXT_dynamic_rendering_unused_attachments_ = false;
+  bool has_ARM_tensors_ = false;
+  bool has_ARM_data_graph_ = false;
   // VK_EXT_host_image_copy
   bool hostImageCopyToShaderReadOnly_ = false; // SHADER_READ_ONLY_OPTIMAL is a usable copy destination
   bool hostImageCopyToGeneral_ = false; // GENERAL is a usable copy destination (for images which cannot be sampled)
@@ -954,6 +978,9 @@ class VulkanContext final : public IContext {
   std::vector<VkFormatProperties2> formatProperties_{lvk::Format_YUV_420p + 1};
 
   TextureHandle dummyTexture_;
+  // BLAS and empty slots of `kBinding_AccelerationStructures` need a valid TLAS too
+  BufferHandle dummyTLASBuffer_;
+  VkAccelerationStructureKHR dummyTLAS_ = VK_NULL_HANDLE;
 
   ldr::Pool<lvk::ShaderModule, lvk::ShaderModuleState> shaderModulesPool_;
   ldr::Pool<lvk::RenderPipeline, lvk::RenderPipelineState> renderPipelinesPool_;

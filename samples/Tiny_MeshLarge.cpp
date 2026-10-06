@@ -36,9 +36,7 @@
 
 #include <fast_obj.h>
 #include <meshoptimizer.h>
-#include <shared/Camera.h>
 #include <shared/UtilsCubemap.h>
-#include <shared/UtilsFPS.h>
 #include <stb/stb_image.h>
 #include <stb/stb_image_resize2.h>
 #include <taskflow/taskflow.hpp>
@@ -49,25 +47,12 @@
 #include <lvk/HelpersImGui.h>
 #include <lvk/LVK.h>
 
+#include "VulkanApp.h"
+
 #include <ktx-software/lib/src/gl_format.h>
 #include <ktx.h>
 #include <ldrutils/lmath/Colors.h>
 #include <ldrutils/lutils/ScopeExit.h>
-
-#if defined(ANDROID)
-#include <android_native_app_glue.h>
-#include <ctime>
-#include <jni.h>
-#elif LVK_WITH_GLFW
-#include <GLFW/glfw3.h>
-#elif LVK_WITH_SDL3
-#include <SDL3/SDL.h>
-#if __has_include(<imgui_impl_sdl3.h>)
-#include <imgui_impl_sdl3.h> // external ImGui
-#else
-#include <imgui/backends/imgui_impl_sdl3.h> // bundled ImGui
-#endif
-#endif
 
 #include "DEMO_002_Bistro.cpp" // temporary
 
@@ -82,7 +67,6 @@ constexpr bool kEnableCompression = false;
 #else
 constexpr bool kEnableCompression = true;
 #endif
-constexpr bool kPreferIntegratedGPU = false;
 #if defined(NDEBUG)
 constexpr bool kEnableValidationLayers = false;
 #else
@@ -91,8 +75,6 @@ constexpr bool kEnableValidationLayers = true;
 
 std::string folderThirdParty;
 std::string folderContentRoot;
-
-std::unique_ptr<lvk::ImGuiRenderer> imgui_;
 
 enum GPUTimestamp {
   GPUTimestamp_BeginSceneRendering = 0,
@@ -451,16 +433,8 @@ void main() {
 }
 )";
 
-using glm::mat4;
-using glm::vec2;
-using glm::vec3;
-using glm::vec4;
-
-int width_ = 0;
-int height_ = 0;
-FramesPerSecondCounter fps_;
-
-std::unique_ptr<lvk::IContext> ctx_;
+VulkanApp* app_ = nullptr;
+lvk::IContext* ctx_ = nullptr;
 lvk::Framebuffer fbMain_; // swapchain
 lvk::Framebuffer fbOffscreen_;
 lvk::Holder<lvk::TextureHandle> fbOffscreenColor_;
@@ -499,11 +473,6 @@ lvk::RenderPass renderPassShadow_;
 lvk::DepthState depthState_;
 lvk::DepthState depthStateLEqual_;
 
-// scene navigation
-CameraPositioner_FirstPerson positioner_(vec3(-100, 40, -47), vec3(0, 35, 0), vec3(0, 1, 0));
-Camera camera_(positioner_);
-glm::vec2 mousePos_ = glm::vec2(0.0f);
-bool mousePressed_ = false;
 bool enableComputePass_ = false;
 bool enableWireframe_ = false;
 bool showPerfStats_ = false;
@@ -638,7 +607,7 @@ void createPipelines();
 void createShadowMap();
 void createOffscreenFramebuffer();
 
-bool init(lvk::LVKwindow* window) {
+bool init() {
   {
     const uint32_t pixel = 0xFFFFFFFF;
     textureDummyWhite_ = ctx_->createTexture(
@@ -717,9 +686,6 @@ bool init(lvk::LVKwindow* window) {
   createOffscreenFramebuffer();
   createPipelines();
 
-  imgui_ = std::make_unique<lvk::ImGuiRenderer>(
-      *ctx_, window, (folderThirdParty + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), float(height_) / 70.0f);
-
   queryPoolTimestamps_ = ctx_->createQueryPool(GPUTimestamp_NUM_TIMESTAMPS, "queryPoolTimestamps_");
 
   if (!initModel()) {
@@ -733,8 +699,6 @@ bool init(lvk::LVKwindow* window) {
 }
 
 void destroy() {
-  imgui_ = nullptr;
-
   vb0_ = nullptr;
   ib0_ = nullptr;
   sbMaterials_ = nullptr;
@@ -773,6 +737,7 @@ void destroy() {
   fbOffscreenResolve_ = nullptr;
   queryPoolTimestamps_ = nullptr;
   ctx_ = nullptr;
+  app_ = nullptr;
 
   std::printf("Waiting for the loader thread to exit...\n");
 
@@ -895,21 +860,19 @@ bool loadAndCache(const char* cacheFileName) {
 }
 
 bool loadFromCache(const char* cacheFileName) {
-  FILE* cacheFile = std::fopen(cacheFileName, "rb");
-  SCOPE_EXIT {
-    if (cacheFile) {
-      std::fclose(cacheFile);
-    }
-  };
-  if (!cacheFile) {
-    return false;
-  }
-#define CHECK_READ(expected, read) \
-  if ((read) != (expected)) {      \
-    return false;                  \
-  }
+  const std::vector<uint8_t> cache = app_->loadFile(cacheFileName);
+  const uint8_t* cursor = cache.data();
+  const uint8_t* end = cursor + cache.size();
+
+#define CHECK_READ(dst, numBytes)                       \
+  if (static_cast<size_t>(end - cursor) < (numBytes)) { \
+    return false;                                       \
+  }                                                     \
+  std::memcpy(dst, cursor, numBytes);                   \
+  cursor += (numBytes)
+
   uint32_t versionProbe = 0;
-  CHECK_READ(1, std::fread(&versionProbe, sizeof(versionProbe), 1, cacheFile));
+  CHECK_READ(&versionProbe, sizeof(versionProbe));
   if (versionProbe != kMeshCacheVersion) {
     LLOGL("Cache file has wrong version id\n");
     return false;
@@ -917,15 +880,15 @@ bool loadFromCache(const char* cacheFileName) {
   uint32_t numMaterials = 0;
   uint32_t numVertices = 0;
   uint32_t numIndices = 0;
-  CHECK_READ(1, std::fread(&numMaterials, sizeof(numMaterials), 1, cacheFile));
-  CHECK_READ(1, std::fread(&numVertices, sizeof(numVertices), 1, cacheFile));
-  CHECK_READ(1, std::fread(&numIndices, sizeof(numIndices), 1, cacheFile));
+  CHECK_READ(&numMaterials, sizeof(numMaterials));
+  CHECK_READ(&numVertices, sizeof(numVertices));
+  CHECK_READ(&numIndices, sizeof(numIndices));
   cachedMaterials_.resize(numMaterials);
   vertexData_.resize(numVertices);
   indexData_.resize(numIndices);
-  CHECK_READ(numMaterials, std::fread(cachedMaterials_.data(), sizeof(CachedMaterial), numMaterials, cacheFile));
-  CHECK_READ(numVertices, std::fread(vertexData_.data(), sizeof(VertexData), numVertices, cacheFile));
-  CHECK_READ(numIndices, std::fread(indexData_.data(), sizeof(uint32_t), numIndices, cacheFile));
+  CHECK_READ(cachedMaterials_.data(), sizeof(CachedMaterial) * numMaterials);
+  CHECK_READ(vertexData_.data(), sizeof(VertexData) * numVertices);
+  CHECK_READ(indexData_.data(), sizeof(uint32_t) * numIndices);
 #undef CHECK_READ
   // normalize path separators so a `cache.data` generated on Windows works on Android
 #if defined(__linux__) || defined(__APPLE__) || defined(ANDROID)
@@ -1119,8 +1082,8 @@ void createShadowMap() {
 }
 
 void createOffscreenFramebuffer() {
-  const uint32_t w = width_;
-  const uint32_t h = height_;
+  const uint32_t w = app_->width_;
+  const uint32_t h = app_->height_;
   lvk::TextureDesc descDepth = {
       .type = lvk::TextureType_2D,
       .format = lvk::Format_Z_UN24,
@@ -1171,30 +1134,18 @@ void createOffscreenFramebuffer() {
   fbOffscreen_ = fb;
 }
 
-void resize() {
-  if (!width_ || !height_) {
-    return;
-  }
-  ctx_->recreateSwapchain(width_, height_);
-  createOffscreenFramebuffer();
-}
-
 void showTimeGPU();
 double getCurrentTimestamp();
 void processLoadedMaterials(lvk::ICommandBuffer& buffer);
 
-void render(double delta) {
+void render(lvk::TextureHandle colorTexture) {
   LVK_PROFILER_FUNCTION();
 
-  if (!width_ && !height_)
-    return;
-
-  lvk::TextureHandle nativeDrawable = ctx_->getCurrentSwapchainTexture();
-  fbMain_.color[0].texture = nativeDrawable;
+  fbMain_.color[0].texture = colorTexture;
 
   // imGui
   {
-    imgui_->beginFrame(fbMain_);
+    app_->imgui_->beginFrame(fbMain_);
     ImGui::ShowDemoWindow();
 
     ImGui::Begin("Keyboard hints:", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
@@ -1236,8 +1187,8 @@ void render(double delta) {
       ImGui::SetNextWindowBgAlpha(0.30f);
       ImGui::SetNextWindowSize(ImVec2(ImGui::CalcTextSize("FPS : _______").x, 0));
       if (ImGui::Begin("##FPS", nullptr, flags)) {
-        ImGui::Text("FPS : %i", static_cast<int>(fps_.getFPS()));
-        ImGui::Text("Ms  : %.1f", 1000.0 / fps_.getFPS());
+        ImGui::Text("FPS : %i", static_cast<int>(app_->fpsCounter_.getFPS()));
+        ImGui::Text("Ms  : %.1f", 1000.0 / app_->fpsCounter_.getFPS());
       }
       ImGui::End();
     }
@@ -1246,12 +1197,10 @@ void render(double delta) {
       showTimeGPU();
   }
 
-  positioner_.update(delta, mousePos_, mousePressed_);
-
   timestampBeginRendering = getCurrentTimestamp();
 
   const float fov = float(45.0f * (M_PI / 180.0f));
-  const float aspectRatio = static_cast<float>(width_) / static_cast<float>(height_);
+  const float aspectRatio = static_cast<float>(app_->width_) / static_cast<float>(app_->height_);
 
   const mat4 shadowProj = glm::perspective(float(60.0f * (M_PI / 180.0f)), 1.0f, 10.0f, 4000.0f);
   const mat4 shadowView = mat4(vec4(0.772608519f, 0.532385886f, -0.345892131f, 0),
@@ -1262,7 +1211,7 @@ void render(double delta) {
 
   perFrame_ = UniformsPerFrame{
       .proj = glm::perspective(fov, aspectRatio, 0.5f, 500.0f),
-      .view = camera_.getViewMatrix(),
+      .view = app_->camera_.getViewMatrix(),
       .light = scaleBias * shadowProj * shadowView,
       .texSkyboxRadiance = skyboxTextureReference_.index(),
       .texSkyboxIrradiance = skyboxTextureIrradiance_.index(),
@@ -1378,14 +1327,14 @@ void render(double delta) {
         uint32_t height;
       } bindings = {
           .texture = tex.index(),
-          .width = static_cast<uint32_t>(width_),
-          .height = static_cast<uint32_t>(height_),
+          .width = static_cast<uint32_t>(app_->width_),
+          .height = static_cast<uint32_t>(app_->height_),
       };
       buffer.cmdPushConstants(bindings);
       buffer.cmdDispatch(
           {
-              .width = 1 + static_cast<uint32_t>(width_) / 16,
-              .height = 1 + static_cast<uint32_t>(height_) / 16,
+              .width = 1 + static_cast<uint32_t>(app_->width_) / 16,
+              .height = 1 + static_cast<uint32_t>(app_->height_) / 16,
               .depth = 1u,
           },
           {
@@ -1416,7 +1365,7 @@ void render(double delta) {
       buffer.cmdDraw(3);
       buffer.cmdPopDebugGroupLabel();
 
-      imgui_->endFrame(buffer);
+      app_->imgui_->endFrame(buffer);
     }
     buffer.cmdEndRendering();
 
@@ -1565,7 +1514,8 @@ LoadedImage loadImage(const char* fileName, int channels) {
   }
 
   int w, h;
-  uint8_t* pixels = stbi_load(fileName, &w, &h, nullptr, channels);
+  const std::vector<uint8_t> file = app_->loadFile(fileName);
+  uint8_t* pixels = stbi_load_from_memory(file.data(), static_cast<int>(file.size()), &w, &h, nullptr, channels);
 
   const LoadedImage img = {
       .w = static_cast<uint32_t>(w),
@@ -1645,11 +1595,12 @@ lvk::Format ktx2iglTextureFormat(ktx_uint32_t format) {
   return lvk::Format_RGBA_UN8;
 }
 
-void loadCubemapTexture(const std::string& fileNameKTX, lvk::Holder<lvk::TextureHandle>& tex) {
+void loadCubemapTexture(const std::vector<uint8_t>& dataKTX, const std::string& debugName, lvk::Holder<lvk::TextureHandle>& tex) {
   LVK_PROFILER_FUNCTION();
 
   ktxTexture1* texture = nullptr;
-  (void)LVK_VERIFY(ktxTexture1_CreateFromNamedFile(fileNameKTX.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &texture) == KTX_SUCCESS);
+  (void)LVK_VERIFY(ktxTexture1_CreateFromMemory(dataKTX.data(), dataKTX.size(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &texture) ==
+                   KTX_SUCCESS);
   SCOPE_EXIT {
     ktxTexture_Destroy(ktxTexture(texture));
   };
@@ -1673,7 +1624,7 @@ void loadCubemapTexture(const std::string& fileNameKTX, lvk::Holder<lvk::Texture
         // if compression is enabled, upload all mip-levels
         .dataNumMipLevels = kEnableCompression ? lvk::calcNumMipLevels(width, height) : 1u,
         .generateMipmaps = !kEnableCompression,
-        .debugName = fileNameKTX.c_str(),
+        .debugName = debugName.c_str(),
     });
   }
 }
@@ -1814,15 +1765,21 @@ void loadSkyboxTexture() {
   const std::string fileNameRefKTX = folderContentRoot + skyboxFileName + "_ReferenceMap.ktx";
   const std::string fileNameIrrKTX = folderContentRoot + skyboxFileName + "_IrradianceMap.ktx";
 
-  if (!std::filesystem::exists(fileNameRefKTX) || !std::filesystem::exists(fileNameIrrKTX)) {
+  std::vector<uint8_t> dataRefKTX = app_->loadFile(fileNameRefKTX.c_str());
+  std::vector<uint8_t> dataIrrKTX = app_->loadFile(fileNameIrrKTX.c_str());
+
+  if (dataRefKTX.empty() || dataIrrKTX.empty()) {
     const std::string inFilename = folderContentRoot + skyboxSubdir + skyboxFileName + ".hdr";
     LLOGL("Cubemap in KTX format not found. Extracting from HDR file `%s`...\n", inFilename.c_str());
 
     processCubemap(inFilename, fileNameRefKTX, fileNameIrrKTX);
+
+    dataRefKTX = app_->loadFile(fileNameRefKTX.c_str());
+    dataIrrKTX = app_->loadFile(fileNameIrrKTX.c_str());
   }
 
-  loadCubemapTexture(fileNameRefKTX, skyboxTextureReference_);
-  loadCubemapTexture(fileNameIrrKTX, skyboxTextureIrradiance_);
+  loadCubemapTexture(dataRefKTX, fileNameRefKTX, skyboxTextureReference_);
+  loadCubemapTexture(dataIrrKTX, fileNameIrrKTX, skyboxTextureIrradiance_);
 }
 
 lvk::Format formatFromChannels(uint32_t channels) {
@@ -2002,8 +1959,8 @@ void showTimeGPU() {
   const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
                                  ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
   ImGui::SetNextWindowBgAlpha(0.8f);
-  ImGui::SetNextWindowPos({20, height_ * 0.8f}, ImGuiCond_Appearing);
-  ImGui::SetNextWindowSize({width_ * 0.4f, 0});
+  ImGui::SetNextWindowPos({20, app_->height_ * 0.8f}, ImGuiCond_Appearing);
+  ImGui::SetNextWindowSize({app_->width_ * 0.4f, 0});
   ImGui::Begin("GPU Stats", nullptr, flags);
   ImGui::Text("%s", text);
 
@@ -2056,419 +2013,90 @@ void showTimeGPU() {
 #endif // LVK_WITH_IMPLOT
 }
 
-#if !defined(ANDROID)
-
-#if LVK_WITH_GLFW
-GLFWkeyfun g_PrevKeyCallback = nullptr;
-GLFWmousebuttonfun g_PrevMouseButtonCallback = nullptr;
-
-void handleKeyInput(int key, bool pressed) {
-  if (key == GLFW_KEY_N && pressed) {
-    drawNormals_ = !drawNormals_;
-  }
-  if (key == GLFW_KEY_C && pressed) {
-    enableComputePass_ = !enableComputePass_;
-  }
-  if (key == GLFW_KEY_T && pressed) {
-    enableWireframe_ = !enableWireframe_;
-  }
-  if (key == GLFW_KEY_P && pressed) {
-    showPerfStats_ = !showPerfStats_;
-  }
-  if (key == GLFW_KEY_W) {
-    positioner_.movement_.forward_ = pressed;
-  }
-  if (key == GLFW_KEY_S) {
-    positioner_.movement_.backward_ = pressed;
-  }
-  if (key == GLFW_KEY_A) {
-    positioner_.movement_.left_ = pressed;
-  }
-  if (key == GLFW_KEY_D) {
-    positioner_.movement_.right_ = pressed;
-  }
-  if (key == GLFW_KEY_1) {
-    positioner_.movement_.up_ = pressed;
-  }
-  if (key == GLFW_KEY_2) {
-    positioner_.movement_.down_ = pressed;
-  }
-  if (key == GLFW_KEY_LEFT_SHIFT || key == GLFW_KEY_RIGHT_SHIFT) {
-    positioner_.movement_.fastSpeed_ = pressed;
-  }
-  if (key == GLFW_KEY_SPACE) {
-    positioner_.setUpVector(vec3(0.0f, 1.0f, 0.0f));
-  }
-}
-
-void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
-  if (!ImGui::GetIO().WantCaptureMouse) {
-    if (button == GLFW_MOUSE_BUTTON_LEFT) {
-      mousePressed_ = (action == GLFW_PRESS);
-    }
-  } else {
-    // release the mouse
-    mousePressed_ = false;
-  }
-  // call the previous installed callback
-  if (g_PrevMouseButtonCallback)
-    g_PrevMouseButtonCallback(window, button, action, mods);
-}
-
-void saveScreenshot();
-
-void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-  const bool pressed = action != GLFW_RELEASE && !ImGui::GetIO().WantCaptureKeyboard;
-  if (key == GLFW_KEY_ESCAPE && pressed) {
-    loaderShouldExit_.store(true, std::memory_order_release);
-    glfwSetWindowShouldClose(window, GLFW_TRUE);
-  }
-  handleKeyInput(key, pressed);
-  if (mods & GLFW_MOD_SHIFT) {
-    positioner_.movement_.fastSpeed_ = pressed;
-  }
-  if (key == GLFW_KEY_F9 && action == GLFW_PRESS) {
-    saveScreenshot();
-  }
-  // call the previous installed callback
-  if (g_PrevKeyCallback)
-    g_PrevKeyCallback(window, key, scancode, action, mods);
-}
-#endif
-
 double getCurrentTimestamp() {
-#if LVK_WITH_GLFW
   return glfwGetTime();
-#elif LVK_WITH_SDL3
-  return static_cast<double>(SDL_GetTicks()) * 0.001;
-#endif
 }
 
-#if LVK_WITH_SDL3
-void handleSDLKeyInput(SDL_Keycode key, bool pressed) {
-  if (key == SDLK_N && pressed) {
-    drawNormals_ = !drawNormals_;
-  }
-  if (key == SDLK_C && pressed) {
-    enableComputePass_ = !enableComputePass_;
-  }
-  if (key == SDLK_T && pressed) {
-    enableWireframe_ = !enableWireframe_;
-  }
-  if (key == SDLK_P && pressed) {
-    showPerfStats_ = !showPerfStats_;
-  }
-  if (key == SDLK_W) {
-    positioner_.movement_.forward_ = pressed;
-  }
-  if (key == SDLK_S) {
-    positioner_.movement_.backward_ = pressed;
-  }
-  if (key == SDLK_A) {
-    positioner_.movement_.left_ = pressed;
-  }
-  if (key == SDLK_D) {
-    positioner_.movement_.right_ = pressed;
-  }
-  if (key == SDLK_1) {
-    positioner_.movement_.up_ = pressed;
-  }
-  if (key == SDLK_2) {
-    positioner_.movement_.down_ = pressed;
-  }
-  if (key == SDLK_SPACE) {
-    positioner_.setUpVector(vec3(0.0f, 1.0f, 0.0f));
-  }
-}
-#endif
-
-bool findContentFolder() {
-  using namespace std::filesystem;
-#if defined(LVK_PROJECT_ROOT_PATH)
-  path dir = current_path();
-  while (dir != dir.root_path() && !exists(dir / path(LVK_PROJECT_ROOT_PATH) / "lvk")) {
-    dir = dir.parent_path();
-  }
-  const path root = dir / path(LVK_PROJECT_ROOT_PATH);
-  folderThirdParty = (root / path("third-party/deps/src/")).string();
-  folderContentRoot = (root / path("third-party/content/")).string();
-#else
-  path subdir("third-party/content/");
-  path dir = current_path();
-  // find the content somewhere above our current build directory
-  while (dir != current_path().root_path() && !exists(dir / subdir)) {
-    dir = dir.parent_path();
-  }
-  if (!exists(dir / subdir)) {
-    std::printf("Cannot find the content directory. Run `deploy_content.py` before running this app.");
-    LVK_ASSERT(false);
-    return false;
-  }
-  folderThirdParty = (dir / path("third-party/deps/src/")).string();
-  folderContentRoot = (dir / subdir).string();
-#endif
-  return true;
-}
-
-void saveScreenshot() {
-  ktxTextureCreateInfo createInfo = {
-      .glInternalformat = GL_RGBA8,
-      .vkFormat = VK_FORMAT_B8G8R8A8_UNORM,
-      .baseWidth = static_cast<uint32_t>(width_),
-      .baseHeight = static_cast<uint32_t>(height_),
-      .baseDepth = 1u,
-      .numDimensions = 2u,
-      .numLevels = 1u,
-      .numLayers = 1u,
-      .numFaces = 1u,
-      .generateMipmaps = KTX_FALSE,
+VULKAN_APP_MAIN {
+  const VulkanAppConfig cfg{
+      .resizable = true,
+      .initialCameraPos = vec3(-100, 40, -47),
+      .initialCameraTarget = vec3(0, 35, 0),
+      .initialCameraUpVector = vec3(0, 1, 0),
+      .contextConfig = {.enableValidation = kEnableValidationLayers},
   };
+  VULKAN_APP_DECLARE(app, cfg);
 
-  ktxTexture1* texture = nullptr;
-  (void)LVK_VERIFY(ktxTexture1_Create(&createInfo, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture) == KTX_SUCCESS);
-  ctx_->download(
-      ctx_->getCurrentSwapchainTexture(), {.dimensions = {static_cast<uint32_t>(width_), static_cast<uint32_t>(height_)}}, texture->pData);
-  ktxTexture_WriteToNamedFile(ktxTexture(texture), "screenshot.ktx");
-  ktxTexture_Destroy(ktxTexture(texture));
-}
-
-int main(int /*argc*/, char* /*argv*/[]) {
-#if defined(LVK_WITH_MINILOG)
-  minilog::initialize(nullptr, {.threadNames = false});
-#endif
-
-  if (!findContentFolder()) {
-    return EXIT_FAILURE;
-  }
-
-  lvk::LVKwindow* window = lvk::initWindow("Vulkan Bistro", width_, height_);
-  ctx_ = lvk::createVulkanContextWithSwapchain(window,
-                                               width_,
-                                               height_,
-                                               {
-                                                   .enableValidation = kEnableValidationLayers,
-                                               },
-                                               kPreferIntegratedGPU ? lvk::HWDeviceType_Integrated : lvk::HWDeviceType_Discrete);
-  if (!ctx_) {
-    return EXIT_FAILURE;
-  }
+  app_ = &app;
+  ctx_ = app.ctx_.get();
+  folderThirdParty = app.folderThirdParty_;
+  folderContentRoot = app.folderContentRoot_;
 
   if (kEnableCompression) {
-    std::printf("Compressing textures... It can take a while in debug builds...(needs to be done once)\n");
+    LLOGL("Compressing textures... It can take a while in debug builds...(needs to be done once)\n");
   }
 
-  if (!init(window)) {
-    return EXIT_FAILURE;
+  if (!init()) {
+    VULKAN_APP_EXIT();
   }
 
-  double prevTime = getCurrentTimestamp();
-
+#if !defined(ANDROID)
 #if LVK_WITH_GLFW
-  glfwSetFramebufferSizeCallback(window, [](GLFWwindow*, int width, int height) {
-    width_ = width;
-    height_ = height;
-    resize();
-  });
-
-  glfwSetCursorPosCallback(window, [](auto* window, double x, double y) {
-    int width, height;
-    glfwGetFramebufferSize(window, &width, &height);
-    if (width && height) {
-      mousePos_ = vec2(x / width, 1.0f - y / height);
-      ImGui::GetIO().MousePos = ImVec2(x, y);
+  app.addKeyCallback([](GLFWwindow* window, int key, int, int action, int) {
+    const bool pressed = action != GLFW_RELEASE && !ImGui::GetIO().WantCaptureKeyboard;
+    if (key == GLFW_KEY_N && pressed) {
+      drawNormals_ = !drawNormals_;
+    }
+    if (key == GLFW_KEY_C && pressed) {
+      enableComputePass_ = !enableComputePass_;
+    }
+    if (key == GLFW_KEY_T && pressed) {
+      enableWireframe_ = !enableWireframe_;
+    }
+    if (key == GLFW_KEY_P && pressed) {
+      showPerfStats_ = !showPerfStats_;
+    }
+    if (key == GLFW_KEY_ESCAPE && pressed) {
+      loaderShouldExit_.store(true, std::memory_order_release);
     }
   });
-
-  g_PrevMouseButtonCallback = glfwSetMouseButtonCallback(window, mouseButtonCallback);
-  g_PrevKeyCallback = glfwSetKeyCallback(window, keyCallback);
-
-  // Main loop
-  while (!glfwWindowShouldClose(window)) {
-    glfwPollEvents();
-
-    const double newTime = getCurrentTimestamp();
-    const double delta = newTime - prevTime;
-    prevTime = newTime;
-
-    if (!width_ || !height_)
-      continue;
-
-    fps_.tick(delta);
-
-    render(delta);
-  }
-
-  // destroy all the Vulkan stuff before closing the window
-  destroy();
-
-  glfwDestroyWindow(window);
-  glfwTerminate();
-
-  return 0;
-}
 #elif LVK_WITH_SDL3
-  bool running = true;
-  SDL_Event event;
+  app.addKeyCallback([](SDL_Window* window, SDL_KeyboardEvent* event) {
+    const bool pressed = event->down && !ImGui::GetIO().WantCaptureKeyboard;
+    if (event->key == SDLK_N && pressed) {
+      drawNormals_ = !drawNormals_;
+    }
+    if (event->key == SDLK_C && pressed) {
+      enableComputePass_ = !enableComputePass_;
+    }
+    if (event->key == SDLK_T && pressed) {
+      enableWireframe_ = !enableWireframe_;
+    }
+    if (event->key == SDLK_P && pressed) {
+      showPerfStats_ = !showPerfStats_;
+    }
+    if (event->key == SDLK_ESCAPE && pressed) {
+      loaderShouldExit_.store(true, std::memory_order_release);
+    }
+  });
+#endif
+#endif // !ANDROID
 
-  // Main loop
-  while (running) {
-    while (SDL_PollEvent(&event)) {
-      ImGui_ImplSDL3_ProcessEvent(&event);
+  int lastWidth = app.width_;
+  int lastHeight = app.height_;
 
-      switch (event.type) {
-      case SDL_EVENT_QUIT:
-        running = false;
-        break;
-      case SDL_EVENT_WINDOW_RESIZED:
-      case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-        SDL_GetWindowSizeInPixels(window, &width_, &height_);
-        resize();
-        break;
-      case SDL_EVENT_MOUSE_MOTION:
-        mousePos_ = vec2(static_cast<float>(event.motion.x) / width_, 1.0f - static_cast<float>(event.motion.y) / height_);
-        break;
-      case SDL_EVENT_MOUSE_BUTTON_DOWN:
-      case SDL_EVENT_MOUSE_BUTTON_UP: {
-        if (!ImGui::GetIO().WantCaptureMouse) {
-          if (event.button.button == SDL_BUTTON_LEFT) {
-            mousePressed_ = (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
-          }
-        } else {
-          // release the mouse
-          mousePressed_ = false;
-        }
-        break;
-      }
-      case SDL_EVENT_KEY_DOWN:
-      case SDL_EVENT_KEY_UP: {
-        const bool pressed = (event.type == SDL_EVENT_KEY_DOWN) && !ImGui::GetIO().WantCaptureMouse;
-        const SDL_Keycode key = event.key.key;
-        if (key == SDLK_ESCAPE && pressed) {
-          loaderShouldExit_.store(true, std::memory_order_release);
-          running = false;
-        }
-        handleSDLKeyInput(key, pressed);
-        positioner_.movement_.fastSpeed_ = (event.key.mod & SDL_KMOD_SHIFT) != 0;
-        if (key == SDLK_F9 && pressed) {
-          saveScreenshot();
-        }
-        break;
-      }
-      }
-    };
-    const double newTime = getCurrentTimestamp();
-    const double delta = newTime - prevTime;
-    prevTime = newTime;
+  app.run([&](ldr::Span<const RenderView> views, float deltaSeconds) {
+    if (lastWidth != app.width_ || lastHeight != app.height_) {
+      lastWidth = app.width_;
+      lastHeight = app.height_;
+      createOffscreenFramebuffer();
+    }
+    render(views[0].colorTexture);
+  });
 
-    if (!width_ || !height_)
-      continue;
+  loaderShouldExit_.store(true, std::memory_order_release);
 
-    fps_.tick(delta);
-
-    render(delta);
-  }
-
-  // destroy all the Vulkan stuff before closing the window
   destroy();
 
-  SDL_DestroyWindow(window);
-  SDL_Quit();
-
-  return 0;
+  VULKAN_APP_EXIT();
 }
-#endif // LVK_WITH_GLFW / LVK_WITH_SDL3
-#else
-double getCurrentTimestamp() {
-  timespec t = {0, 0};
-  clock_gettime(CLOCK_MONOTONIC, &t);
-  return static_cast<double>(t.tv_sec) + 1.0e-9 * t.tv_nsec;
-}
-
-extern "C" {
-void handle_cmd(android_app* app, int32_t cmd) {
-  switch (cmd) {
-  case APP_CMD_INIT_WINDOW:
-    if (app->window != nullptr) {
-      width_ = ANativeWindow_getWidth(app->window);
-      height_ = ANativeWindow_getHeight(app->window);
-      ctx_ = lvk::createVulkanContextWithSwapchain(app->window,
-                                                   width_,
-                                                   height_,
-                                                   {
-                                                       .enableValidation = kEnableValidationLayers,
-                                                   },
-                                                   kPreferIntegratedGPU ? lvk::HWDeviceType_Integrated : lvk::HWDeviceType_Discrete);
-      if (!init(nullptr)) {
-        LLOGW("Failed to initialize the app\n");
-        std::terminate();
-      }
-    }
-    break;
-  case APP_CMD_TERM_WINDOW:
-    destroy();
-    break;
-  }
-}
-
-void resize_callback(ANativeActivity* activity, ANativeWindow* window) {
-  int w = ANativeWindow_getWidth(window);
-  int h = ANativeWindow_getHeight(window);
-  if (width_ != w || height_ != h) {
-    width_ = w;
-    height_ = h;
-    if (ctx_) {
-      resize();
-    }
-  }
-}
-
-void android_main(android_app* app) {
-#if defined(LVK_WITH_MINILOG)
-  minilog::initialize(nullptr, {.threadNames = false});
-#endif
-  app->onAppCmd = handle_cmd;
-  app->activity->callbacks->onNativeWindowResized = resize_callback;
-
-  // find the content folder
-  {
-    using namespace std::filesystem;
-    if (const char* externalStorage = std::getenv("EXTERNAL_STORAGE")) {
-      folderThirdParty = (std::filesystem::path(externalStorage) / "LVK" / "deps" / "src").string() + "/";
-      folderContentRoot = (std::filesystem::path(externalStorage) / "LVK" / "content").string() + "/";
-      if (!exists(folderThirdParty) || !exists(folderContentRoot)) {
-        LLOGW("Cannot find the content directory. Run `deploy_content_android.py` before running this app.\n");
-        LVK_ASSERT(false);
-        std::terminate();
-      }
-    } else {
-      LLOGW("Cannot find EXTERNAL_STORAGE.\n");
-      LVK_ASSERT(false);
-      std::terminate();
-    }
-  }
-
-  fps_.printFPS_ = false;
-
-  double prevTime = getCurrentTimestamp();
-
-  int events = 0;
-  android_poll_source* source = nullptr;
-  do {
-    double newTime = getCurrentTimestamp();
-    double delta = newTime - prevTime;
-    if (fps_.tick(delta)) {
-      LLOGL("FPS: %.1f\n", fps_.getFPS());
-    }
-    prevTime = newTime;
-    if (ctx_) {
-      render(delta);
-    }
-    if (ALooper_pollOnce(0, nullptr, &events, reinterpret_cast<void**>(&source)) >= 0) {
-      if (source) {
-        source->process(app, source);
-      }
-    }
-  } while (!app->destroyRequested);
-}
-} // extern "C"
-#endif

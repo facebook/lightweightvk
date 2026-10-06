@@ -251,6 +251,8 @@ VkFormat lvk::formatToVkFormat(lvk::Format format) {
     return VK_FORMAT_B8G8R8A8_UINT;
   case lvk::Format_RGBA_UN8:
     return VK_FORMAT_R8G8B8A8_UNORM;
+  case lvk::Format_RGBA_SN8:
+    return VK_FORMAT_R8G8B8A8_SNORM;
   case lvk::Format_RGBA_UI8:
     return VK_FORMAT_R8G8B8A8_UINT;
   case lvk::Format_RGBA_I8:
@@ -410,6 +412,8 @@ lvk::Format lvk::vkFormatToFormat(VkFormat format) {
     return Format_BGRA_UI8;
   case VK_FORMAT_R8G8B8A8_UNORM:
     return Format_RGBA_UN8;
+  case VK_FORMAT_R8G8B8A8_SNORM:
+    return Format_RGBA_SN8;
   case VK_FORMAT_R8G8B8A8_UINT:
     return Format_RGBA_UI8;
   case VK_FORMAT_R8G8B8A8_SINT:
@@ -1428,6 +1432,7 @@ uint32_t lvk::getBytesPerPixel(VkFormat format) {
   case VK_FORMAT_B8G8R8_UNORM:
     return 3;
   case VK_FORMAT_R8G8B8A8_UNORM:
+  case VK_FORMAT_R8G8B8A8_SNORM:
   case VK_FORMAT_B8G8R8A8_UNORM:
   case VK_FORMAT_R8G8B8A8_SRGB:
   case VK_FORMAT_B8G8R8A8_SRGB:

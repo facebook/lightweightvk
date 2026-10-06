@@ -267,7 +267,7 @@ static void resize_callback(ANativeActivity* activity, ANativeWindow* window) {
     app->width_ = w;
     app->height_ = h;
     if (app->ctx_) {
-      app->ctx_->recreateSwapchain(w, h);
+      app->ctx_->initSwapchain(w, h);
       app->depthTexture_.reset();
       LLOGD("Swapchain recreated");
     }
@@ -433,7 +433,7 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
         return;
       app->width_ = width;
       app->height_ = height;
-      app->ctx_->recreateSwapchain(width, height);
+      app->ctx_->initSwapchain(width, height);
       app->depthTexture_.reset();
     });
     glfwSetMouseButtonCallback(window_, [](GLFWwindow* window, int button, int action, int mods) {
@@ -737,7 +737,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
         if (width_ != w || height_ != h) {
           width_ = w;
           height_ = h;
-          ctx_->recreateSwapchain(width_, height_);
+          ctx_->initSwapchain(width_, height_);
           depthTexture_.reset();
         }
         break;
@@ -887,7 +887,9 @@ void VulkanApp::drawFPS() {
 std::vector<uint8_t> VulkanApp::loadFile(const char* filePath) const {
 #if defined(ANDROID)
   if (tarReader_ && std::strncmp(filePath, tarBasePath_.c_str(), tarBasePath_.size()) == 0) {
-    const TarFileReader::FileData& fd = tarReader_->getFile(filePath + tarBasePath_.size());
+    // archive names are normalized, so `Exterior/../BuildingTextures/x.png` has to be collapsed first
+    const std::string name = std::filesystem::path(filePath).lexically_normal().generic_string();
+    const TarFileReader::FileData& fd = tarReader_->getFile(name.c_str() + tarBasePath_.size());
     if (fd.ptr)
       return std::vector<uint8_t>(fd.ptr, fd.ptr + fd.size);
   }

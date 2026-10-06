@@ -71,6 +71,7 @@ layout(push_constant) uniform PushConstants {
   VertexBuffer vb;
   uint textureId;
   uint samplerId;
+  vec2 clipRotation;
 } pc;
 
 void main() {
@@ -86,7 +87,10 @@ void main() {
   Vertex v = pc.vb.vertices[gl_VertexIndex];
   out_color = unpackUnorm4x8(v.rgba);
   out_uv = vec2(v.u, v.v);
-  gl_Position = proj * vec4(v.x, v.y, 0, 1);
+  vec4 p = proj * vec4(v.x, v.y, 0, 1);
+  float c = pc.clipRotation.x;
+  float s = pc.clipRotation.y;
+  gl_Position = vec4(c * p.x - s * p.y, s * p.x + c * p.y, p.z, p.w);
 })";
 
 const char* codeFS = R"(
@@ -102,6 +106,7 @@ layout(push_constant) uniform PushConstants {
   vec2 vb;
   uint textureId;
   uint samplerId;
+  vec2 clipRotation;
 } pc;
 
 void main() {
@@ -109,6 +114,29 @@ void main() {
   // Render UI in linear color space to sRGB framebuffer.
   out_color = kNonLinearColorSpace ? vec4(pow(c.rgb, vec3(2.2)), c.a) : c;
 })";
+
+void rotateRect(lvk::SurfaceTransform transform, uint32_t imageWidth, uint32_t imageHeight, float& x, float& y, float& w, float& h) {
+  const float x0 = x;
+  const float y0 = y;
+  switch (transform) {
+  case lvk::SurfaceTransform_Rotate90:
+    x = static_cast<float>(imageWidth) - y0 - h;
+    y = x0;
+    std::swap(w, h);
+    break;
+  case lvk::SurfaceTransform_Rotate180:
+    x = static_cast<float>(imageWidth) - x0 - w;
+    y = static_cast<float>(imageHeight) - y0 - h;
+    break;
+  case lvk::SurfaceTransform_Rotate270:
+    x = y0;
+    y = static_cast<float>(imageHeight) - x0 - w;
+    std::swap(w, h);
+    break;
+  default:
+    break;
+  }
+}
 
 } // namespace
 
@@ -264,7 +292,9 @@ void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
 #endif // LVK_WITH_GLFW || LVK_WITH_SDL3
   {
     const lvk::Dimensions dim = ctx_.getDimensions(desc.color[0].texture);
-    io.DisplaySize = ImVec2(static_cast<float>(dim.width), static_cast<float>(dim.height));
+    const bool quarterTurn = lvk::isQuarterTurn(ctx_.getSwapchainSurfaceTransform());
+    io.DisplaySize = quarterTurn ? ImVec2(static_cast<float>(dim.height), static_cast<float>(dim.width))
+                                 : ImVec2(static_cast<float>(dim.width), static_cast<float>(dim.height));
   }
   ImGui::NewFrame();
 }
@@ -336,13 +366,21 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
     return;
   }
 
+  const lvk::SurfaceTransform surfaceTransform = ctx_.getSwapchainSurfaceTransform();
+  float rotationCos = 1.0f;
+  float rotationSin = 0.0f;
+  lvk::getSurfaceTransformRotation(surfaceTransform, rotationCos, rotationSin);
+  const bool quarterTurn = lvk::isQuarterTurn(surfaceTransform);
+  const float image_width = quarterTurn ? fb_height : fb_width;
+  const float image_height = quarterTurn ? fb_width : fb_height;
+
   cmdBuffer.cmdPushDebugGroupLabel("ImGui Rendering", 0xff00ff00);
   cmdBuffer.cmdBindDepthState({});
   cmdBuffer.cmdBindViewport({
       .x = 0.0f,
       .y = 0.0f,
-      .width = fb_width,
-      .height = fb_height,
+      .width = image_width,
+      .height = image_height,
   });
 
   const float L = dd->DisplayPos.x;
@@ -425,17 +463,30 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
         uint64_t vb = 0;
         uint32_t textureId = 0;
         uint32_t samplerId = 0;
+        float clipRotation[2] = {1.0f, 0.0f};
       } bindData = {
           .LRTB = {L, R, T, B},
           .vb = ctx_.gpuAddress(drawableData.vb_),
           .textureId = static_cast<uint32_t>(cmd.GetTexID()),
           .samplerId = samplerClamp_.index(),
+          .clipRotation = {rotationCos, rotationSin},
       };
       cmdBuffer.cmdPushConstants(bindData);
-      cmdBuffer.cmdBindScissorRect({static_cast<uint32_t>(clipMin.x),
-                                    static_cast<uint32_t>(clipMin.y),
-                                    static_cast<uint32_t>(clipMax.x - clipMin.x),
-                                    static_cast<uint32_t>(clipMax.y - clipMin.y)});
+      float scissorX = clipMin.x;
+      float scissorY = clipMin.y;
+      float scissorW = clipMax.x - clipMin.x;
+      float scissorH = clipMax.y - clipMin.y;
+      rotateRect(surfaceTransform,
+                 static_cast<uint32_t>(image_width),
+                 static_cast<uint32_t>(image_height),
+                 scissorX,
+                 scissorY,
+                 scissorW,
+                 scissorH);
+      cmdBuffer.cmdBindScissorRect({static_cast<uint32_t>(scissorX),
+                                    static_cast<uint32_t>(scissorY),
+                                    static_cast<uint32_t>(scissorW),
+                                    static_cast<uint32_t>(scissorH)});
       cmdBuffer.cmdDrawIndexed(cmd.ElemCount, 1u, idxOffset + cmd.IdxOffset, static_cast<int32_t>(vtxOffset + cmd.VtxOffset));
     }
     idxOffset += cmdList->IdxBuffer.Size;

@@ -17,7 +17,7 @@
 
 ### Coding style
 
-Follow the conventions documented in [`CLAUDE.md`](../CLAUDE.md) and enforced by [`.clang-format`](../.clang-format):
+Follow the conventions documented in [`AGENTS.md`](../AGENTS.md) and enforced by [`.clang-format`](../.clang-format):
 
 - 2-space indent, 140-column limit, no tabs, left-aligned pointers.
 - Types: `PascalCase`. Functions: `lowerCamelCase()`. Enums: `EnumName_Value`. Macros: `LVK_*`.

@@ -916,9 +916,13 @@ namespace lvk {
 
 // NOLINTNEXTLINE(facebook-hte-ShadowingClass)
 struct DeferredTask {
-  DeferredTask(std::packaged_task<void()>&& task, SubmitHandle handle) : task_(std::move(task)), handle_(handle) {}
+  DeferredTask(std::packaged_task<void()>&& task, SubmitHandle handle, SubmitHandle handleCompute)
+  : task_(std::move(task))
+  , handle_(handle)
+  , handleCompute_(handleCompute) {}
   std::packaged_task<void()> task_;
   SubmitHandle handle_;
+  SubmitHandle handleCompute_;
 };
 
 struct VulkanContextImpl final {
@@ -1389,6 +1393,13 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
   };
   vkGetPhysicalDeviceFormatProperties2(ctx.getVkPhysicalDevice(), surfaceFormat_.format, &props);
 
+  // identity asks the presentation engine to rotate for us
+  preTransform_ = ctx.config_.swapchainUseSurfacePreTransform ? caps.surfaceCapabilities.currentTransform
+                                                              : VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+  if (preTransform_ & (VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR | VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR)) {
+    std::swap(width, height);
+  }
+
   // trim the image extent
   width_ = width = std::min(width, caps.surfaceCapabilities.maxImageExtent.width);
   height_ = height = std::min(height, caps.surfaceCapabilities.maxImageExtent.height);
@@ -1480,11 +1491,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
       .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
       .queueFamilyIndexCount = 1,
       .pQueueFamilyIndices = &ctx.deviceQueues_.graphicsQueueFamilyIndex,
-#if defined(ANDROID)
-      .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
-#else
-      .preTransform = ctx.deviceSurfaceCaps_.surfaceCapabilities.currentTransform,
-#endif
+      .preTransform = preTransform_,
       .compositeAlpha = isCompositeAlphaOpaqueSupported ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR : VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
       .presentMode = currentPresentMode_,
       .clipped = VK_TRUE,
@@ -1564,6 +1571,17 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
 }
 
 lvk::VulkanSwapchain::~VulkanSwapchain() {
+  if (ctx_.has_KHR_swapchain_maintenance1_ && !getNextImage_) {
+    // the image was acquired but never presented: give it back instead of letting it die with the swapchain
+    const VkReleaseSwapchainImagesInfoKHR info = {
+        .sType = VK_STRUCTURE_TYPE_RELEASE_SWAPCHAIN_IMAGES_INFO_KHR,
+        .swapchain = swapchain_,
+        .imageIndexCount = 1,
+        .pImageIndices = &currentImageIndex_,
+    };
+    VK_ASSERT(vkReleaseSwapchainImagesKHR(device_, &info));
+  }
+
   for (TextureHandle handle : swapchainTextures_) {
     ctx_.destroy(handle);
   }
@@ -1656,6 +1674,19 @@ uint32_t lvk::VulkanSwapchain::getSwapchainCurrentImageIndex() const {
   return currentImageIndex_;
 }
 
+lvk::SurfaceTransform lvk::VulkanSwapchain::getSurfaceTransform() const {
+  switch (preTransform_) {
+  case VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR:
+    return SurfaceTransform_Rotate90;
+  case VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR:
+    return SurfaceTransform_Rotate180;
+  case VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR:
+    return SurfaceTransform_Rotate270;
+  default:
+    return SurfaceTransform_Identity;
+  }
+}
+
 bool lvk::VulkanSwapchain::setCurrentPresentMode(VkPresentModeKHR mode) {
   for (uint32_t i = 0; i != numRegisteredPresentModes_; i++) {
     if (registeredPresentModes_[i] == mode) {
@@ -1712,7 +1743,7 @@ lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device,
 : device_(device)
 , queueFamilyIndex_(queueFamilyIndex)
 , has_EXT_device_fault_(has_EXT_device_fault)
-, debugName_(debugName) {
+, debugName_(debugName ? debugName : "") {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
 
   vkGetDeviceQueue(device, queueFamilyIndex, 0, &queue_);
@@ -1723,7 +1754,10 @@ lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device,
       .queueFamilyIndex = queueFamilyIndex,
   };
   VK_ASSERT(vkCreateCommandPool(device, &ci, nullptr, &commandPool_));
-  VK_ASSERT(lvk::setDebugObjectName(device, VK_OBJECT_TYPE_COMMAND_POOL, (uint64_t)commandPool_, debugName));
+
+  char objectName[256] = {0};
+  (void)std::snprintf(objectName, sizeof(objectName) - 1, "Command Pool: %s", debugName_);
+  VK_ASSERT(lvk::setDebugObjectName(device, VK_OBJECT_TYPE_COMMAND_POOL, (uint64_t)commandPool_, objectName));
 
   const VkCommandBufferAllocateInfo ai = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -1734,24 +1768,19 @@ lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device,
 
   for (uint32_t i = 0; i != kMaxCommandBuffers; i++) {
     CommandBufferWrapper& buf = buffers_[i];
-    char fenceName[256] = {0};
-    char semaphoreName[256] = {0};
-    if (debugName) {
-      (void)std::snprintf(fenceName, sizeof(fenceName) - 1, "Fence: %s (cmdbuf %u)", debugName, i);
-      (void)std::snprintf(semaphoreName, sizeof(semaphoreName) - 1, "Semaphore: %s (cmdbuf %u)", debugName, i);
-    }
-    buf.semaphore_ = lvk::createSemaphore(device, semaphoreName);
-    buf.fence_ = lvk::createFence(device, fenceName);
+    (void)std::snprintf(objectName, sizeof(objectName) - 1, "Semaphore: cmdbuf %u (%s)", i, debugName_);
+    buf.semaphore_ = lvk::createSemaphore(device, objectName);
+    (void)std::snprintf(objectName, sizeof(objectName) - 1, "Fence: cmdbuf %u (%s)", i, debugName_);
+    buf.fence_ = lvk::createFence(device, objectName);
     VK_ASSERT(vkAllocateCommandBuffers(device, &ai, &buf.cmdBufAllocated_));
+    (void)std::snprintf(objectName, sizeof(objectName) - 1, "Command Buffer: %u (%s)", i, debugName_);
+    VK_ASSERT(lvk::setDebugObjectName(device, VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)buf.cmdBufAllocated_, objectName));
     buffers_[i].handle_.bufferIndex_ = i;
     buffers_[i].handle_.queueFamilyIndex_ = queueFamilyIndex; // make every SubmitHandle self-describing
   }
 
-  char timelineName[256] = {0};
-  if (debugName) {
-    (void)std::snprintf(timelineName, sizeof(timelineName) - 1, "Semaphore: %s (timeline)", debugName);
-  }
-  submitTimelineSemaphore_ = lvk::createSemaphoreTimeline(device, 0, timelineName);
+  (void)std::snprintf(objectName, sizeof(objectName) - 1, "Semaphore: timeline (%s)", debugName_);
+  submitTimelineSemaphore_ = lvk::createSemaphoreTimeline(device, 0, objectName);
 }
 
 lvk::VulkanImmediateCommands::~VulkanImmediateCommands() {
@@ -1946,11 +1975,11 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
   VkSemaphoreSubmitInfo signalSemaphores[] = {
       VkSemaphoreSubmitInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                             .semaphore = wrapper.semaphore_,
-                            .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT},
+                            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT},
       VkSemaphoreSubmitInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                             .semaphore = submitTimelineSemaphore_,
                             .value = timelineValue,
-                            .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT},
+                            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT},
       {},
   };
   uint32_t numSignalSemaphores = 2;
@@ -3891,19 +3920,19 @@ void lvk::CommandBuffer::cmdUpdateTLAS(AccelStructHandle handle, BufferHandle in
     const VkBufferMemoryBarrier2 barriers[] = {
         {
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-            .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
-            .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
+            .srcStageMask = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+            .srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+            .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
             .buffer = getVkBuffer(ctx_, handle),
             .size = VK_WHOLE_SIZE,
         },
         {
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_HOST_BIT,
-            .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
-            .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_HOST_BIT,
+            .srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+            .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
             .buffer = getVkBuffer(ctx_, instancesBuffer),
             .size = VK_WHOLE_SIZE,
         },
@@ -3919,16 +3948,77 @@ void lvk::CommandBuffer::cmdUpdateTLAS(AccelStructHandle handle, BufferHandle in
   {
     const VkBufferMemoryBarrier2 barrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-        .srcStageMask = VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
-        .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
-        .dstStageMask = VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-        .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+        .srcStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+        .srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+        .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
         .buffer = getVkBuffer(ctx_, handle),
         .offset = 0,
         .size = VK_WHOLE_SIZE,
     };
     const VkDependencyInfo dependencyInfo{
         .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .bufferMemoryBarrierCount = 1, .pBufferMemoryBarriers = &barrier};
+    vkCmdPipelineBarrier2(wrapper_->cmdBuf_, &dependencyInfo);
+  }
+}
+
+void lvk::CommandBuffer::cmdUpdateBLAS(const ldr::Span<AccelStructHandle>& handles) {
+  LVK_PROFILER_FUNCTION();
+
+  if (handles.empty()) {
+    return;
+  }
+
+  std::vector<VkAccelerationStructureBuildGeometryInfoKHR> buildInfos;
+  std::vector<VkAccelerationStructureBuildRangeInfoKHR*> ranges;
+  buildInfos.reserve(handles.size());
+  ranges.reserve(handles.size());
+
+  for (AccelStructHandle handle : handles) {
+    lvk::AccelerationStructure* as = ctx_->accelStructuresPool_.get(handle);
+    LVK_ASSERT(as && !as->isTLAS);
+    LVK_ASSERT_MSG(as->buildFlags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR,
+                   "BLAS must be built with AccelStructBuildFlagBits_AllowUpdate to be refit");
+    buildInfos.push_back(VkAccelerationStructureBuildGeometryInfoKHR{
+        .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
+        .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+        .flags = as->buildFlags,
+        .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR,
+        .srcAccelerationStructure = as->vkHandle,
+        .dstAccelerationStructure = as->vkHandle,
+        .geometryCount = 1,
+        .pGeometries = &as->geometry,
+        .scratchData = {.deviceAddress =
+                            getAlignedAddress(ctx_->gpuAddress(as->scratchBuffer),
+                                              ctx_->accelerationStructureProperties_.minAccelerationStructureScratchOffsetAlignment)},
+    });
+    ranges.push_back(&as->buildRangeInfo);
+  }
+
+  {
+    const VkMemoryBarrier2 barrier = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+        .srcStageMask =
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+        .srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+        .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+    };
+    const VkDependencyInfo dependencyInfo{.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .memoryBarrierCount = 1, .pMemoryBarriers = &barrier};
+    vkCmdPipelineBarrier2(wrapper_->cmdBuf_, &dependencyInfo);
+  }
+
+  vkCmdBuildAccelerationStructuresKHR(wrapper_->cmdBuf_, static_cast<uint32_t>(buildInfos.size()), buildInfos.data(), ranges.data());
+
+  {
+    const VkMemoryBarrier2 barrier = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+        .srcStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+        .srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+        .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
+    };
+    const VkDependencyInfo dependencyInfo{.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .memoryBarrierCount = 1, .pMemoryBarriers = &barrier};
     vkCmdPipelineBarrier2(wrapper_->cmdBuf_, &dependencyInfo);
   }
 }
@@ -4636,6 +4726,11 @@ lvk::VulkanContext::~VulkanContext() {
 
   destroy(dummyTexture_);
 
+  if (dummyTLAS_) {
+    vkDestroyAccelerationStructureKHR(vkDevice_, dummyTLAS_, nullptr);
+    destroy(dummyTLASBuffer_);
+  }
+
   for (VulkanContextImpl::YcbcrConversionData& data : pimpl_->ycbcrConversionData_) {
     if (data.info.conversion != VK_NULL_HANDLE) {
       vkDestroySamplerYcbcrConversion(vkDevice_, data.info.conversion, nullptr);
@@ -4886,7 +4981,6 @@ lvk::Holder<lvk::BufferHandle> lvk::VulkanContext::createBuffer(const BufferDesc
   }
 
   if (desc.usage & BufferUsageBits_Storage) {
-    usageFlags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     usageFlags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                   VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
   }
@@ -4990,7 +5084,11 @@ lvk::Holder<lvk::AccelStructHandle> lvk::VulkanContext::createAccelerationStruct
 
   Result::setResult(outResult, result);
 
-  awaitingCreation_ = true;
+  createDummyTLAS();
+
+  if (!writeAccelStructDescriptor(handle.index())) {
+    awaitingCreation_ = true;
+  }
 
   return {this, handle};
 }
@@ -5410,7 +5508,9 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
 
   TextureHandle handle = texturesPool_.create(std::move(image));
 
-  awaitingCreation_ = true;
+  if (!writeTextureDescriptor(handle.index())) {
+    awaitingCreation_ = true;
+  }
 
   if (desc.data) {
     LVK_ASSERT(desc.type == TextureType_2D || desc.type == TextureType_Cube);
@@ -5551,7 +5651,9 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
 
   TextureHandle handle = texturesPool_.create(std::move(image));
 
-  awaitingCreation_ = true;
+  if (!writeTextureDescriptor(handle.index())) {
+    awaitingCreation_ = true;
+  }
 
   return {this, handle};
 }
@@ -5583,6 +5685,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
           },
           nullptr,
           outResult),
+      .geometry = accelerationStructureGeometry,
   };
   const VkAccelerationStructureCreateInfoKHR ciAccelerationStructure = {
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
@@ -5601,7 +5704,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
       {
           .usage = lvk::BufferUsageBits_Storage,
           .storage = lvk::StorageType_Device,
-          .size = accelerationStructureBuildSizesInfo.buildScratchSize,
+          .size = std::max(accelerationStructureBuildSizesInfo.buildScratchSize, accelerationStructureBuildSizesInfo.updateScratchSize),
           .debugName = "Buffer: BLAS scratch",
       },
       nullptr,
@@ -5631,6 +5734,10 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
       .accelerationStructure = accelStruct.vkHandle,
   };
   accelStruct.deviceAddress = vkGetAccelerationStructureDeviceAddressKHR(vkDevice_, &accelerationDeviceAddressInfo);
+
+  if (desc.buildFlags & lvk::AccelStructBuildFlagBits_AllowUpdate) {
+    accelStruct.scratchBuffer = std::move(scratchBuffer);
+  }
 
   return accelStructuresPool_.create(std::move(accelStruct));
 }
@@ -5903,7 +6010,6 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
   const lvk::ShaderModuleState* meshModule = shaderModulesPool_.get(desc.smMesh);
 
   LVK_ASSERT(vertModule || meshModule);
-  LVK_ASSERT(fragModule);
 
   if (tescModule || teseModule || desc.patchControlPoints) {
     LVK_ASSERT_MSG(tescModule && teseModule, "Both tessellation control and evaluation shaders should be provided");
@@ -6008,8 +6114,9 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
                                     VK_SHADER_STAGE_MESH_BIT_EXT, meshModule->ci, desc.entryPointMesh, &si, meshModule->sm)
                               : lvk::getPipelineShaderStageCreateInfo(
                                     VK_SHADER_STAGE_VERTEX_BIT, vertModule->ci, desc.entryPointVert, &si, vertModule->sm))
-      .shaderStage(
-          lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragModule->ci, desc.entryPointFrag, &si, fragModule->sm))
+      .shaderStage(fragModule ? lvk::getPipelineShaderStageCreateInfo(
+                                    VK_SHADER_STAGE_FRAGMENT_BIT, fragModule->ci, desc.entryPointFrag, &si, fragModule->sm)
+                              : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
       .shaderStage(tescModule ? lvk::getPipelineShaderStageCreateInfo(
                                     VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, tescModule->ci, desc.entryPointTesc, &si, tescModule->sm)
                               : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
@@ -6410,11 +6517,6 @@ lvk::Holder<lvk::RenderPipelineHandle> lvk::VulkanContext::createRenderPipeline(
       Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Missing vertex shader");
       return {};
     }
-  }
-
-  if (!LVK_VERIFY(desc.smFrag.valid())) {
-    Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Missing fragment shader");
-    return {};
   }
 
   RenderPipelineState rps = {.desc_ = desc};
@@ -7325,6 +7427,10 @@ lvk::TextureHandle lvk::VulkanContext::getCurrentSwapchainTexture() {
   return tex; // NOLINT(clang-diagnostic-nrvo)
 }
 
+lvk::SurfaceTransform lvk::VulkanContext::getSwapchainSurfaceTransform() const {
+  return hasSwapchain() ? swapchain_->getSurfaceTransform() : SurfaceTransform_Identity;
+}
+
 uint32_t lvk::VulkanContext::getSwapchainCurrentImageIndex() const {
   if (hasSwapchain()) {
     // make sure we do not use a stale image
@@ -7332,10 +7438,6 @@ uint32_t lvk::VulkanContext::getSwapchainCurrentImageIndex() const {
   }
 
   return hasSwapchain() ? swapchain_->getSwapchainCurrentImageIndex() : 0;
-}
-
-void lvk::VulkanContext::recreateSwapchain(int newWidth, int newHeight) {
-  initSwapchain(newWidth, newHeight);
 }
 
 bool lvk::VulkanContext::setCurrentPresentMode(PresentMode mode) {
@@ -7971,6 +8073,14 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   if (config_.enableFragmentShadingRate && hasExtension(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, allDeviceExtensions)) {
     addNextPhysicalDeviceProperties(&vkFragmentShadingRateProperties_);
   }
+  if (hasExtension(VK_ARM_TENSORS_EXTENSION_NAME, allDeviceExtensions)) {
+    vkTensorFeatures_.pNext = vkFeatures10_.pNext;
+    vkFeatures10_.pNext = &vkTensorFeatures_;
+  }
+  if (hasExtension(VK_ARM_DATA_GRAPH_EXTENSION_NAME, allDeviceExtensions)) {
+    vkDataGraphFeatures_.pNext = vkFeatures10_.pNext;
+    vkFeatures10_.pNext = &vkDataGraphFeatures_;
+  }
 
   if (config_.vulkanVersion >= VulkanVersion_1_4) {
     addNextPhysicalDeviceProperties(&vkPhysicalDeviceVulkan14Properties_);
@@ -8183,6 +8293,16 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
       .rayQuery = VK_TRUE,
   };
+  VkPhysicalDeviceTensorFeaturesARM tensorFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TENSOR_FEATURES_ARM,
+      .shaderTensorAccess = VK_TRUE,
+      .tensors = VK_TRUE,
+  };
+  VkPhysicalDeviceDataGraphFeaturesARM dataGraphFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DATA_GRAPH_FEATURES_ARM,
+      .dataGraph = VK_TRUE,
+      .dataGraphShaderModule = VK_TRUE,
+  };
   VkPhysicalDeviceRayTracingInvocationReorderFeaturesEXT rayTracingInvocationReorderFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_FEATURES_EXT,
       .rayTracingInvocationReorder = VK_TRUE,
@@ -8324,6 +8444,20 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
                         has_KHR_acceleration_structure_,
                         &accelerationStructureFeatures);
   addOptionalExtension(VK_KHR_RAY_QUERY_EXTENSION_NAME, has_KHR_ray_query_, &rayQueryFeatures);
+  // only ask for the feature bits the device reports, otherwise vkCreateDevice() fails
+  if (vkTensorFeatures_.tensors && vkTensorFeatures_.shaderTensorAccess) {
+    addOptionalExtension(VK_ARM_TENSORS_EXTENSION_NAME, has_ARM_tensors_, &tensorFeatures);
+  }
+  if (has_ARM_tensors_ && vkDataGraphFeatures_.dataGraph && vkDataGraphFeatures_.dataGraphShaderModule) {
+    // data graphs consume tensors, and their pipelines are built through VK_KHR_deferred_host_operations
+    bool hasDeferredHostOperations = has_KHR_acceleration_structure_;
+    if (!hasDeferredHostOperations) {
+      addOptionalExtension(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME, hasDeferredHostOperations);
+    }
+    if (hasDeferredHostOperations) {
+      addOptionalExtension(VK_ARM_DATA_GRAPH_EXTENSION_NAME, has_ARM_data_graph_, &dataGraphFeatures);
+    }
+  }
   addOptionalExtension(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, has_KHR_ray_tracing_pipeline_, &rayTracingFeatures);
   addOptionalExtension(
       VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME, has_EXT_ray_tracing_invocation_reorder, &rayTracingInvocationReorderFeatures);
@@ -8604,6 +8738,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     vkTransitionImageLayout = vkTransitionImageLayoutEXT;
   if (!vkCopyMemoryToImage)
     vkCopyMemoryToImage = vkCopyMemoryToImageEXT;
+  if (!vkReleaseSwapchainImagesKHR)
+    vkReleaseSwapchainImagesKHR = vkReleaseSwapchainImagesEXT;
 
   vkGetDeviceQueue(vkDevice_, deviceQueues_.graphicsQueueFamilyIndex, 0, &deviceQueues_.graphicsQueue);
   vkGetDeviceQueue(vkDevice_, deviceQueues_.computeQueueFamilyIndex, 0, &deviceQueues_.computeQueue);
@@ -8771,7 +8907,6 @@ lvk::Result lvk::VulkanContext::initSwapchain(uint32_t width, uint32_t height) {
 
   if (swapchain_) {
     // destroy the old swapchain first
-    // TODO: replace with VK_EXT_swapchain_maintenance1
     VK_ASSERT(vkDeviceWaitIdle(vkDevice_));
     // the guard fence belongs to the swapchain we are about to destroy
     immediate_->setLastPresentSemaphore(VK_NULL_HANDLE, VK_NULL_HANDLE);
@@ -9070,6 +9205,174 @@ void lvk::VulkanContext::bindDefaultDescriptorSets(VkCommandBuffer cmdBuf, VkPip
   vkCmdBindDescriptorSets(cmdBuf, bindPoint, layout, 0, 1, &DSets_[lastUpdatedDSet_].vkDSet, 0, nullptr);
 }
 
+// A newly created resource occupies a slot no pending command buffer can reference: a fresh index has never been bound, and a recycled
+// one is only returned to the free list once the submission which used it has retired. Together with
+// VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT this makes it safe to patch the live descriptor set in place
+bool lvk::VulkanContext::writeTextureDescriptor(uint32_t index) {
+  if (awaitingCreation_ || awaitingNewImmutableSamplers_ || DSets_.empty()) {
+    // a full rebuild is already pending and covers this slot too (immutable samplers require a full rebuild of the descriptor set layout)
+    return false;
+  }
+
+  const DescriptorSet& dset = DSets_[lastUpdatedDSet_];
+
+  if (!dset.vkDSet || index >= dset.maxTextures) {
+    return false; // the descriptor array has to grow first
+  }
+
+  const VulkanImage& img = texturesPool_.objects_[index];
+
+  if (lvk::getNumImagePlanes(img.vkImageFormat_) > 1) {
+    // a YUV texture needs an immutable sampler, which is baked into the layout and cannot be patched per slot
+    return false;
+  }
+
+  const VkImageView dummyImageView = texturesPool_.objects_[0].imageView_;
+  const VkImageView view = img.imageView_;
+  const VkImageView storageView = img.imageViewStorage_ ? img.imageViewStorage_ : view;
+  // multisampled images cannot be directly accessed from shaders
+  const bool isTextureAvailable = (img.vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
+  const bool isSampledImage = isTextureAvailable && img.isSampledImage();
+  const bool isStorageImage = isTextureAvailable && img.isStorageImage();
+
+  const VkDescriptorImageInfo infoSampledImage = {
+      .imageView = isSampledImage ? view : dummyImageView,
+      .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+  };
+  const VkDescriptorImageInfo infoStorageImage = {
+      .imageView = isStorageImage ? storageView : dummyImageView,
+      .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+  };
+
+  const VkWriteDescriptorSet write[] = {
+      VkWriteDescriptorSet{
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = dset.vkDSet,
+          .dstBinding = kBinding_Textures,
+          .dstArrayElement = index,
+          .descriptorCount = 1,
+          .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+          .pImageInfo = &infoSampledImage,
+      },
+      VkWriteDescriptorSet{
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = dset.vkDSet,
+          .dstBinding = kBinding_StorageImages,
+          .dstArrayElement = index,
+          .descriptorCount = 1,
+          .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+          .pImageInfo = &infoStorageImage,
+      },
+  };
+
+  vkUpdateDescriptorSets(vkDevice_, LVK_ARRAY_NUM_ELEMENTS(write), write, 0, nullptr);
+
+  return true;
+}
+
+bool lvk::VulkanContext::writeSamplerDescriptor(uint32_t index) {
+  if (awaitingCreation_ || awaitingNewImmutableSamplers_ || DSets_.empty()) {
+    // a full rebuild is already pending and covers this slot too (immutable samplers require a full rebuild of the descriptor set layout)
+    return false;
+  }
+
+  const DescriptorSet& dset = DSets_[lastUpdatedDSet_];
+
+  if (!dset.vkDSet || index >= dset.maxSamplers) {
+    return false; // the descriptor array has to grow first
+  }
+
+  const VkDescriptorImageInfo info = {
+      .sampler = samplersPool_.objects_[index],
+  };
+  const VkWriteDescriptorSet write = {
+      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+      .dstSet = dset.vkDSet,
+      .dstBinding = kBinding_Samplers,
+      .dstArrayElement = index,
+      .descriptorCount = 1,
+      .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+      .pImageInfo = &info,
+  };
+
+  vkUpdateDescriptorSets(vkDevice_, 1, &write, 0, nullptr);
+
+  return true;
+}
+
+// Every element of `kBinding_AccelerationStructures` has to be a valid TLAS. It is never built - never access it from a shader
+void lvk::VulkanContext::createDummyTLAS() {
+  if (dummyTLAS_) {
+    return;
+  }
+
+  const VkDeviceSize kDummyTLASSize = 256; // just a reservation inside the buffer
+
+  lvk::Holder<lvk::BufferHandle> buffer = createBuffer(
+      {
+          .usage = lvk::BufferUsageBits_AccelStructStorage,
+          .storage = lvk::StorageType_Device,
+          .size = kDummyTLASSize,
+      },
+      "Buffer: dummy TLAS",
+      nullptr);
+
+  if (!LVK_VERIFY(buffer.valid())) {
+    return;
+  }
+
+  const VkAccelerationStructureCreateInfoKHR ciAccelerationStructure = {
+      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
+      .buffer = getVkBuffer(this, buffer),
+      .size = kDummyTLASSize,
+      .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+  };
+  VK_ASSERT(vkCreateAccelerationStructureKHR(vkDevice_, &ciAccelerationStructure, nullptr, &dummyTLAS_));
+
+  if (LVK_VERIFY(dummyTLAS_)) {
+    dummyTLASBuffer_ = buffer.release();
+  }
+}
+
+bool lvk::VulkanContext::writeAccelStructDescriptor(uint32_t index) {
+  if (awaitingCreation_ || awaitingNewImmutableSamplers_ || DSets_.empty()) {
+    // a full rebuild is already pending and covers this slot too (immutable samplers require a full rebuild of the descriptor set layout)
+    return false;
+  }
+
+  if (!dummyTLAS_) {
+    return false; // a BLAS slot cannot be written without it
+  }
+
+  const DescriptorSet& dset = DSets_[lastUpdatedDSet_];
+
+  if (!dset.vkDSet || index >= dset.maxAccelStructs) {
+    return false; // the descriptor array has to grow first
+  }
+
+  const AccelerationStructure& as = accelStructuresPool_.objects_[index];
+  const VkAccelerationStructureKHR handle = as.isTLAS ? as.vkHandle : dummyTLAS_;
+
+  const VkWriteDescriptorSetAccelerationStructureKHR writeAccelStruct = {
+      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
+      .accelerationStructureCount = 1,
+      .pAccelerationStructures = &handle,
+  };
+  const VkWriteDescriptorSet write = {
+      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+      .pNext = &writeAccelStruct,
+      .dstSet = dset.vkDSet,
+      .dstBinding = kBinding_AccelerationStructures,
+      .dstArrayElement = index,
+      .descriptorCount = 1,
+      .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+  };
+
+  vkUpdateDescriptorSets(vkDevice_, 1, &write, 0, nullptr);
+
+  return true;
+}
+
 void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
   if (!awaitingCreation_) {
     // nothing to update here
@@ -9134,6 +9437,18 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
   VkImageView dummyImageView = texturesPool_.objects_[0].imageView_;
   VkSampler dummySampler = samplersPool_.objects_[0];
 
+  // dummy slots use the first YUV texture's Ycbcr sampler, so they need its view too: a written view must carry the same
+  // conversion as its sampler (VUID-VkWriteDescriptorSet-descriptorType-01948)
+  VkImageView dummyYUVImageView = VK_NULL_HANDLE;
+
+  for (const VulkanImage& img : texturesPool_.objects_) {
+    const bool isTextureAvailable = (img.vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
+    if (isTextureAvailable && img.isSampledImage() && lvk::getNumImagePlanes(img.vkImageFormat_) > 1) {
+      dummyYUVImageView = img.imageView_;
+      break;
+    }
+  }
+
   for (const VulkanImage& img : texturesPool_.objects_) {
     const VkImageView view = img.imageView_;
     const VkImageView storageView = img.imageViewStorage_ ? img.imageViewStorage_ : view;
@@ -9153,23 +9468,23 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
         .imageView = isStorageImage ? storageView : dummyImageView,
         .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
     });
-    if (hasYcbcrSamplers && !workaround_noYcbcrSamplerArray_) {
+    if (dummyYUVImageView && !workaround_noYcbcrSamplerArray_) {
       // we don't need to update this if there're no YUV samplers
       infoYUVImages.push_back(VkDescriptorImageInfo{
           .sampler = dummySampler, // this will be replaced by immutable samplers from VkPipeline
-          .imageView = isYUVImage ? view : dummyImageView,
+          .imageView = isYUVImage ? view : dummyYUVImageView,
           .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
       });
     }
   }
 
   // Adreno 840: single YUV descriptor using the active texture inferred from spec constants
-  if (hasYcbcrSamplers && workaround_noYcbcrSamplerArray_) {
+  if (dummyYUVImageView && workaround_noYcbcrSamplerArray_) {
     const uint32_t idx = pimpl_->workaround_activeYuvTextureIndex_;
     const bool isValidYuv = idx < texturesPool_.objects_.size() && lvk::getNumImagePlanes(texturesPool_.objects_[idx].vkImageFormat_) > 1;
     infoYUVImages.push_back(VkDescriptorImageInfo{
         .sampler = dummySampler,
-        .imageView = isValidYuv ? texturesPool_.objects_[idx].imageView_ : dummyImageView,
+        .imageView = isValidYuv ? texturesPool_.objects_[idx].imageView_ : dummyYUVImageView,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     });
   }
@@ -9190,17 +9505,8 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
   std::vector<VkAccelerationStructureKHR> handlesAccelStructs;
   handlesAccelStructs.reserve(accelStructuresPool_.objects_.size());
 
-  // use the first valid TLAS as a dummy
-  const VkAccelerationStructureKHR dummyTLAS = [this]() -> VkAccelerationStructureKHR {
-    for (const lvk::AccelerationStructure& as : accelStructuresPool_.objects_) {
-      if (as.vkHandle && as.isTLAS)
-        return as.vkHandle;
-    }
-    return VK_NULL_HANDLE;
-  }();
-
   for (const lvk::AccelerationStructure& as : accelStructuresPool_.objects_) {
-    handlesAccelStructs.push_back(as.isTLAS ? as.vkHandle : dummyTLAS);
+    handlesAccelStructs.push_back(as.isTLAS ? as.vkHandle : dummyTLAS_);
   }
 
   VkWriteDescriptorSetAccelerationStructureKHR writeAccelStruct = {
@@ -9212,7 +9518,7 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
   VkWriteDescriptorSet write[kBinding_NumBindings] = {};
   uint32_t numWrites = 0;
 
-  if (!handlesAccelStructs.empty()) {
+  if (!handlesAccelStructs.empty() && dummyTLAS_) {
     write[numWrites++] = VkWriteDescriptorSet{
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .pNext = &writeAccelStruct,
@@ -9316,7 +9622,9 @@ lvk::SamplerHandle lvk::VulkanContext::createSampler(const VkSamplerCreateInfo& 
 
   SamplerHandle handle = samplersPool_.create(std::move(sampler));
 
-  awaitingCreation_ = true;
+  if (!writeSamplerDescriptor(handle.index())) {
+    awaitingCreation_ = true;
+  }
 
   return handle;
 }
@@ -9396,7 +9704,9 @@ void lvk::VulkanContext::deferredTask(std::packaged_task<void()>&& task, SubmitH
   if (handle.empty()) {
     handle = immediate_->getNextSubmitHandle();
   }
-  pimpl_->deferredTasks_.emplace_back(std::move(task), handle);
+  // A resource can be in flight on either queue, and the two submit timelines are independent.
+  const SubmitHandle handleCompute = immediateCompute_ ? immediateCompute_->getNextSubmitHandle() : SubmitHandle();
+  pimpl_->deferredTasks_.emplace_back(std::move(task), handle, handleCompute);
 }
 
 void* lvk::VulkanContext::getVmaAllocator() const {
@@ -9406,7 +9716,8 @@ void* lvk::VulkanContext::getVmaAllocator() const {
 void lvk::VulkanContext::processDeferredTasks() const {
   std::vector<DeferredTask>::iterator it = pimpl_->deferredTasks_.begin();
 
-  while (it != pimpl_->deferredTasks_.end() && immediate_->isReady(it->handle_, true)) {
+  while (it != pimpl_->deferredTasks_.end() && immediate_->isReady(it->handle_, true) &&
+         (!immediateCompute_ || immediateCompute_->isReady(it->handleCompute_, true))) {
     (it++)->task_();
   }
 
@@ -9416,6 +9727,9 @@ void lvk::VulkanContext::processDeferredTasks() const {
 void lvk::VulkanContext::waitDeferredTasks() {
   for (auto& task : pimpl_->deferredTasks_) {
     immediate_->wait(task.handle_);
+    if (immediateCompute_ && !task.handleCompute_.empty()) {
+      immediateCompute_->wait(task.handleCompute_);
+    }
     task.task_();
   }
   pimpl_->deferredTasks_.clear();
