@@ -972,7 +972,7 @@ class VulkanContext final : public IContext {
   bool hostImageCopyToShaderReadOnly_ = false; // SHADER_READ_ONLY_OPTIMAL is a usable copy destination
   bool hostImageCopyToGeneral_ = false; // GENERAL is a usable copy destination (for images which cannot be sampled)
   bool hostImageCopyIdenticalMemoryTypeRequirements_ = false; // HOST_TRANSFER preserves memory type requirements
-  uint32_t deviceLocalMemoryTypeMask_ = 0; // bitmask of device-local memory type indices
+  VkPhysicalDeviceMemoryProperties memoryProperties_ = {}; // memory types and heaps (filled only when VK_EXT_host_image_copy is enabled)
   std::vector<const char*> enabledInstanceExtensionNames_;
   std::vector<const char*> enabledDeviceExtensionNames_;
   std::vector<VkFormatProperties2> formatProperties_{lvk::Format_YUV_420p + 1};

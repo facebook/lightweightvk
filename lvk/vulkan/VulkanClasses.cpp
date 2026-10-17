@@ -7,6 +7,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -5373,14 +5374,34 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
 
   if (LVK_VULKAN_USE_VMA && numPlanes == 1) {
     // VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE requires the host-access flag to land in host-visible memory so vmaMapMemory() below works
-    const VmaAllocationCreateInfo vmaAllocInfo = {
+    VmaAllocationCreateInfo vmaAllocInfo = {
         .flags = memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT ? VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
                                                                 : VmaAllocationCreateFlags{0},
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
     };
+    // "prefer device" alone silently lands device images in system memory once VMA cannot find a device-local type for
+    // them (e.g. HOST_TRANSFER images without resizable BAR); require device-local memory and fall back only on failure
+    const bool isDeviceOnly = (memFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) && !(memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    if (isDeviceOnly) {
+      vmaAllocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    }
 
     VkResult result =
         vmaCreateImage(static_cast<VmaAllocator>(getVmaAllocator()), &ci, &vmaAllocInfo, &image.vkImage_, &image.vmaAllocation_, nullptr);
+    if (result != VK_SUCCESS && isDeviceOnly) {
+      static std::atomic<uint32_t> numFallbacks{0};
+      const uint32_t n = ++numFallbacks;
+      if ((n & (n - 1)) == 0) { // log the 1st, 2nd, 4th, 8th, ... fallback
+        LLOGW("vmaCreateImage: no device-local memory for a %ux%u image (VkResult %d, fallback #%u); using any memory type\n",
+              vkExtent.width,
+              vkExtent.height,
+              result,
+              n);
+      }
+      vmaAllocInfo.requiredFlags = 0;
+      result =
+          vmaCreateImage(static_cast<VmaAllocator>(getVmaAllocator()), &ci, &vmaAllocInfo, &image.vkImage_, &image.vmaAllocation_, nullptr);
+    }
 
     if (!LVK_VERIFY(result == VK_SUCCESS)) {
       LLOGW("Failed: error result: %d, memflags: %d,  imageformat: %d\n", result, memFlags, image.vkImageFormat_);
@@ -7902,17 +7923,39 @@ bool lvk::VulkanContext::shouldEnableHostImageCopy(const VkImageCreateInfo& ci) 
     return true;
   }
 
-  // otherwise enable it only if the image can still be device-local with HOST_TRANSFER (e.g. resizable BAR), not forced into host memory
+  // createImage() silently adds HOST_TRANSFER to eligible textures as an upload shortcut: imageData2D() then has the CPU write
+  // texels straight into the image instead of going through the staging buffer. On some drivers (e.g. NVIDIA without resizable
+  // BAR) such images may only live in CPU-addressable memory (a ~256 MiB BAR window or system RAM), which would silently move
+  // textures out of VRAM. So use the shortcut only when the driver says the image can still live in every VRAM heap it could
+  // use without HOST_TRANSFER. A simpler alternative would be to never use host image copy for textures (or use it only when
+  // identicalMemoryTypeRequirements is true, i.e. drop the check below) and always upload through the staging buffer, giving
+  // up a small load-time saving for simpler code.
+  const auto vramHeapsAllowedFor = [this](const VkImageCreateInfo& imageInfo) -> uint32_t {
+    const VkDeviceImageMemoryRequirements imageReqInfo = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS,
+        .pCreateInfo = &imageInfo,
+    };
+    VkMemoryRequirements2 memReq = {.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+    vkGetDeviceImageMemoryRequirements(vkDevice_, &imageReqInfo, &memReq);
+    uint32_t vramHeaps = 0; // bit N set: the image may be placed in DEVICE_LOCAL heap N
+    for (uint32_t i = 0; i != memoryProperties_.memoryTypeCount; ++i) {
+      const uint32_t heapIndex = memoryProperties_.memoryTypes[i].heapIndex;
+      const bool isAllowedMemoryType = (memReq.memoryRequirements.memoryTypeBits & (1u << i)) != 0;
+      const bool isDeviceLocalHeap = (memoryProperties_.memoryHeaps[heapIndex].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0;
+      if (isAllowedMemoryType && isDeviceLocalHeap) {
+        vramHeaps |= 1u << heapIndex;
+      }
+    }
+    return vramHeaps;
+  };
+
   VkImageCreateInfo ciWithHostTransfer = ci;
   ciWithHostTransfer.usage |= VK_IMAGE_USAGE_HOST_TRANSFER_BIT;
-  const VkDeviceImageMemoryRequirements imageReqInfo = {
-      .sType = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS,
-      .pCreateInfo = &ciWithHostTransfer,
-  };
-  VkMemoryRequirements2 memReq = {.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
-  vkGetDeviceImageMemoryRequirements(vkDevice_, &imageReqInfo, &memReq);
+  const uint32_t vramHeapsForPlainImage = vramHeapsAllowedFor(ci);
+  const uint32_t vramHeapsWithHostTransfer = vramHeapsAllowedFor(ciWithHostTransfer);
+  const bool hostTransferKeepsImageInVram = (vramHeapsForPlainImage & ~vramHeapsWithHostTransfer) == 0;
 
-  return (memReq.memoryRequirements.memoryTypeBits & deviceLocalMemoryTypeMask_) != 0;
+  return hostTransferKeepsImageInVram;
 }
 
 void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
@@ -8511,15 +8554,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     hostImageCopyToGeneral_ = std::find(dstLayouts.begin(), dstLayouts.end(), VK_IMAGE_LAYOUT_GENERAL) != dstLayouts.end();
     hostImageCopyIdenticalMemoryTypeRequirements_ = props.identicalMemoryTypeRequirements == VK_TRUE;
 
-    // device-local memory type mask, used to check whether HOST_TRANSFER images stay device-local
+    // memory types and heaps, used to check whether HOST_TRANSFER keeps an image in VRAM
     VkPhysicalDeviceMemoryProperties2 memProps2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2};
     vkGetPhysicalDeviceMemoryProperties2(vkPhysicalDevice_, &memProps2);
-    deviceLocalMemoryTypeMask_ = 0;
-    for (uint32_t i = 0; i < memProps2.memoryProperties.memoryTypeCount; ++i) {
-      if (memProps2.memoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
-        deviceLocalMemoryTypeMask_ |= (1u << i);
-      }
-    }
+    memoryProperties_ = memProps2.memoryProperties;
 
     LLOGD("VK_EXT_host_image_copy: enabled (identicalMemoryTypeRequirements: %s, SHADER_READ_ONLY_OPTIMAL: %s)\n",
           hostImageCopyIdenticalMemoryTypeRequirements_ ? "true" : "false",
