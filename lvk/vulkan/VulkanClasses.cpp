@@ -2604,6 +2604,10 @@ void lvk::CommandBuffer::cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle
   if (lastPipelineBound_ != pipeline) {
     lastPipelineBound_ = pipeline;
     vkCmdBindPipeline(wrapper_->cmdBuf_, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
+    if (rtps->stackSize_) {
+      // the pipeline was created with VK_DYNAMIC_STATE_RAY_TRACING_PIPELINE_STACK_SIZE_KHR
+      vkCmdSetRayTracingPipelineStackSizeKHR(wrapper_->cmdBuf_, rtps->stackSize_);
+    }
     ctx_->checkAndUpdateDescriptorSets();
     ctx_->bindDefaultDescriptorSets(wrapper_->cmdBuf_, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, rtps->pipelineLayout_);
   }
@@ -6333,13 +6337,27 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     }
   }
 
+  // recursion depth: the pipeline's own, else the context default, else the device maximum
+  const uint32_t deviceMaxDepth = rayTracingPipelineProperties_.maxRayRecursionDepth;
+  const uint32_t requestedDepth = rtps->maxRecursionDepth_ ? rtps->maxRecursionDepth_ : config_.maxRayRecursionDepth;
+  const uint32_t maxDepth = requestedDepth ? std::min(requestedDepth, deviceMaxDepth) : deviceMaxDepth;
+
+  const VkDynamicState dynamicStackSize = VK_DYNAMIC_STATE_RAY_TRACING_PIPELINE_STACK_SIZE_KHR;
+  const VkPipelineDynamicStateCreateInfo dynamicState = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+      .dynamicStateCount = 1,
+      .pDynamicStates = &dynamicStackSize,
+  };
+  const bool useDynamicStackSize = rtps->stackSize_ != 0;
+
   const VkRayTracingPipelineCreateInfoKHR ciRayTracingPipeline = {
       .sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR,
       .stageCount = numShaderStages,
       .pStages = ciShaderStages.data(),
       .groupCount = numShaderGroups,
       .pGroups = shaderGroups.data(),
-      .maxPipelineRayRecursionDepth = rayTracingPipelineProperties_.maxRayRecursionDepth,
+      .maxPipelineRayRecursionDepth = maxDepth,
+      .pDynamicState = useDynamicStackSize ? &dynamicState : nullptr,
       .layout = rtps->pipelineLayout_,
   };
   VK_ASSERT(vkCreateRayTracingPipelinesKHR(vkDevice_, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &ciRayTracingPipeline, nullptr, &rtps->pipeline_));
@@ -6503,6 +6521,8 @@ lvk::Holder<lvk::RayTracingPipelineHandle> lvk::VulkanContext::createRayTracingP
       .hitGroups_ = {desc.hitGroups.cbegin(), desc.hitGroups.cend()},
       .specInfo_ = desc.specInfo,
       .debugName_ = desc.debugName,
+      .maxRecursionDepth_ = desc.maxRecursionDepth,
+      .stackSize_ = desc.stackSize,
   };
 
   if (desc.specInfo.data && desc.specInfo.dataSize) {
