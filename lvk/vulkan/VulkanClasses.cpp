@@ -7,7 +7,6 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -5377,34 +5376,26 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   };
 
   if (LVK_VULKAN_USE_VMA && numPlanes == 1) {
+    // "prefer device" alone silently lands device-only images in system memory once VMA finds no device-local type for them
+    // (e.g. HOST_TRANSFER images without resizable BAR), so require DEVICE_LOCAL and retry without it only if that fails
+    const bool isDeviceOnly = (memFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) && !(memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     // VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE requires the host-access flag to land in host-visible memory so vmaMapMemory() below works
-    VmaAllocationCreateInfo vmaAllocInfo = {
+    const VmaAllocationCreateInfo vmaAllocInfo = {
         .flags = memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT ? VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
                                                                 : VmaAllocationCreateFlags{0},
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        .requiredFlags = isDeviceOnly ? VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) : VkMemoryPropertyFlags{0},
     };
-    // "prefer device" alone silently lands device images in system memory once VMA cannot find a device-local type for
-    // them (e.g. HOST_TRANSFER images without resizable BAR); require device-local memory and fall back only on failure
-    const bool isDeviceOnly = (memFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) && !(memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-    if (isDeviceOnly) {
-      vmaAllocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    }
-
     VkResult result =
         vmaCreateImage(static_cast<VmaAllocator>(getVmaAllocator()), &ci, &vmaAllocInfo, &image.vkImage_, &image.vmaAllocation_, nullptr);
     if (result != VK_SUCCESS && isDeviceOnly) {
-      static std::atomic<uint32_t> numFallbacks{0};
-      const uint32_t n = ++numFallbacks;
-      if ((n & (n - 1)) == 0) { // log the 1st, 2nd, 4th, 8th, ... fallback
-        LLOGW("vmaCreateImage: no device-local memory for a %ux%u image (VkResult %d, fallback #%u); using any memory type\n",
-              vkExtent.width,
-              vkExtent.height,
-              result,
-              n);
-      }
-      vmaAllocInfo.requiredFlags = 0;
-      result =
-          vmaCreateImage(static_cast<VmaAllocator>(getVmaAllocator()), &ci, &vmaAllocInfo, &image.vkImage_, &image.vmaAllocation_, nullptr);
+      LLOGW("vmaCreateImage(): no device-local memory for a %ux%u image (VkResult %d); retrying with any memory type\n",
+            vkExtent.width,
+            vkExtent.height,
+            result);
+      const VmaAllocationCreateInfo vmaAllocInfoAnyMemory = {.flags = vmaAllocInfo.flags, .usage = vmaAllocInfo.usage};
+      result = vmaCreateImage(
+          static_cast<VmaAllocator>(getVmaAllocator()), &ci, &vmaAllocInfoAnyMemory, &image.vkImage_, &image.vmaAllocation_, nullptr);
     }
 
     if (!LVK_VERIFY(result == VK_SUCCESS)) {
@@ -7943,13 +7934,10 @@ bool lvk::VulkanContext::shouldEnableHostImageCopy(const VkImageCreateInfo& ci) 
     return true;
   }
 
-  // createImage() silently adds HOST_TRANSFER to eligible textures as an upload shortcut: imageData2D() then has the CPU write
-  // texels straight into the image instead of going through the staging buffer. On some drivers (e.g. NVIDIA without resizable
-  // BAR) such images may only live in CPU-addressable memory (a ~256 MiB BAR window or system RAM), which would silently move
-  // textures out of VRAM. So use the shortcut only when the driver says the image can still live in every VRAM heap it could
-  // use without HOST_TRANSFER. A simpler alternative would be to never use host image copy for textures (or use it only when
-  // identicalMemoryTypeRequirements is true, i.e. drop the check below) and always upload through the staging buffer, giving
-  // up a small load-time saving for simpler code.
+  // createTexture() adds HOST_TRANSFER as an upload shortcut, letting imageData2D() write texels straight into the image instead of
+  // going through the staging buffer. On some drivers (e.g. NVIDIA without resizable BAR) such images may only live in CPU-addressable
+  // memory (a ~256 MiB BAR window or system RAM), which would silently move textures out of VRAM. The simpler alternative is to drop
+  // the check below and always upload through the staging buffer, trading a small load-time saving for less code.
   const auto vramHeapsAllowedFor = [this](const VkImageCreateInfo& imageInfo) -> uint32_t {
     const VkDeviceImageMemoryRequirements imageReqInfo = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS,
@@ -7973,9 +7961,9 @@ bool lvk::VulkanContext::shouldEnableHostImageCopy(const VkImageCreateInfo& ci) 
   ciWithHostTransfer.usage |= VK_IMAGE_USAGE_HOST_TRANSFER_BIT;
   const uint32_t vramHeapsForPlainImage = vramHeapsAllowedFor(ci);
   const uint32_t vramHeapsWithHostTransfer = vramHeapsAllowedFor(ciWithHostTransfer);
-  const bool hostTransferKeepsImageInVram = (vramHeapsForPlainImage & ~vramHeapsWithHostTransfer) == 0;
 
-  return hostTransferKeepsImageInVram;
+  // use the shortcut only if HOST_TRANSFER keeps every VRAM heap the plain image could have used
+  return (vramHeapsForPlainImage & ~vramHeapsWithHostTransfer) == 0;
 }
 
 void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
