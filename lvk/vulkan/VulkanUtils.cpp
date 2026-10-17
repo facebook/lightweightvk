@@ -1132,6 +1132,12 @@ lvk::Result lvk::compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
     switch (stage) {
     case lvk::Stage_Vert:
       return "vertexMain";
+    case Stage_Tesc:
+      return "tessControlMain";
+    case Stage_Tese:
+      return "tessEvalMain";
+    case Stage_Geom:
+      return "geometryMain";
     case lvk::Stage_Frag:
       return "fragmentMain";
     case lvk::Stage_Comp:
