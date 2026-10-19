@@ -99,7 +99,8 @@ Result compileShaderGlslang(lvk::ShaderStage stage,
                             const char* code,
                             std::vector<uint8_t>* outSPIRV,
                             bool generateDebugInfo,
-                            const glslang_resource_t* glslLangResource = nullptr);
+                            const glslang_resource_t* glslLangResource = nullptr,
+                            bool optimize = true);
 Result compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
                           lvk::ShaderStage stage,
                           const char* code,
@@ -162,6 +163,9 @@ VkAccelerationStructureKHR getVkAccelerationStructure(const IContext* ctx, Accel
 VkBuffer getVkBuffer(const IContext* ctx, AccelStructHandle accelStruct);
 VkPipeline getVkPipeline(const IContext* ctx, RayTracingPipelineHandle pipeline);
 VkPipelineLayout getVkPipelineLayout(const IContext* ctx, RayTracingPipelineHandle pipeline);
+// timeline semaphore of the queue that produced `handle`; it reaches `handle.value_` once that submission completes
+// (external code may only wait on it, never signal it: LVK owns the values)
+VkSemaphore getVkTimelineSemaphore(const IContext* ctx, SubmitHandle handle);
 
 VkDeviceSize getBufferSize(const IContext* ctx, lvk::BufferHandle handle);
 

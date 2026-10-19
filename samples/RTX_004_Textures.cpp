@@ -349,6 +349,8 @@ void createBottomLevelAccelerationStructure() {
       .indexBuffer = res.indexBuffer,
       .transformBuffer = transformBuffer,
       .buildRange = {.primitiveCount = static_cast<uint32_t>(LVK_ARRAY_NUM_ELEMENTS(indices)) / 3},
+      // gl_HitTriangleVertexPositionsEXT (VUID-HitTriangleVertexPositionsKHR-None-08751)
+      .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace | lvk::AccelStructBuildFlagBits_AllowDataAccess,
       .debugName = "BLAS",
   });
 }

@@ -126,6 +126,10 @@ macro(ADD_DEMO app) # optional args: `demo_has_slang` `demo_has_openxr`
         set(ABI_STRING "${ABI_STRING}'${str}'")
       endforeach()
       set(ANDROID_ABI_FILTERS ${ABI_STRING})
+      set(ANDROID_JNI_LIBS "")
+      if(LVK_ANDROID_JNI_LIBS)
+        set(ANDROID_JNI_LIBS "'${LVK_ANDROID_JNI_LIBS}'")
+      endif()
 
       configure_file("${LVK_ROOT_DIR}/android/settings.gradle.in"
                      "${CMAKE_BINARY_DIR}/android/${app}/settings.gradle")

@@ -35,6 +35,12 @@ android {
     noCompress.addAll(['png', 'ktx', 'data'])
   }
 
+  sourceSets {
+    main {
+      jniLibs.srcDirs += [@ANDROID_JNI_LIBS@]
+    }
+  }
+
   buildTypes {
     release {
       signingConfig = signingConfigs.debug

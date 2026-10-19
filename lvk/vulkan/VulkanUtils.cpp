@@ -931,7 +931,8 @@ lvk::Result lvk::compileShaderGlslang(lvk::ShaderStage stage,
                                       const char* code,
                                       std::vector<uint8_t>* outSPIRV,
                                       bool generateDebugInfo,
-                                      const glslang_resource_t* glslLangResource) {
+                                      const glslang_resource_t* glslLangResource,
+                                      bool optimize) {
   LVK_PROFILER_FUNCTION();
 
   if (!outSPIRV) {
@@ -995,8 +996,8 @@ lvk::Result lvk::compileShaderGlslang(lvk::ShaderStage stage,
   glslang_spv_options_t options = {
       .generate_debug_info = generateDebugInfo,
       .strip_debug_info = !generateDebugInfo,
-      .disable_optimizer = false,
-      .optimize_size = true,
+      .disable_optimizer = !optimize,
+      .optimize_size = optimize,
       .disassemble = false,
       .validate = true,
       .emit_nonsemantic_shader_debug_info = false,
@@ -1158,6 +1159,8 @@ lvk::Result lvk::compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
       return "intersectionMain";
     case Stage_Callable:
       return "callableMain";
+    case Stage_DataGraph:
+      return "graphMain";
     }
     return "unknown shader type";
   }();
@@ -1613,6 +1616,11 @@ StageAccess lvk::getPipelineStageAccess(VkImageLayout layout) {
         .stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR,
         .access = VK_ACCESS_2_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR,
     };
+  case VK_IMAGE_LAYOUT_TENSOR_ALIASING_ARM:
+    return {
+        .stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+    };
   default:
     LVK_ASSERT_MSG(false, "Unsupported image layout transition!");
     return {
@@ -1694,6 +1702,13 @@ VkPipelineLayout lvk::getVkPipelineLayout(const IContext* ctx, RayTracingPipelin
     return VK_NULL_HANDLE;
 
   return static_cast<const VulkanContext*>(ctx)->rayTracingPipelinesPool_.get(pipeline)->pipelineLayout_;
+}
+
+VkSemaphore lvk::getVkTimelineSemaphore(const IContext* ctx, SubmitHandle handle) {
+  if (!ctx || handle.empty())
+    return VK_NULL_HANDLE;
+
+  return static_cast<const VulkanContext*>(ctx)->getImmediateCommands(handle)->getTimelineSemaphore();
 }
 
 VkDeviceSize lvk::getBufferSize(const IContext* ctx, lvk::BufferHandle handle) {

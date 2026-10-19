@@ -107,6 +107,7 @@ To check CI status: `gh run list` or `gh run view <run-id>`.
 - `LVK_SPIRV_REFLECT_EXTERNAL`: Use external SPIRV-Reflect library (default: OFF)
 - `LVK_ENABLE_LONG_PATHS_WIN32`: Enable long paths on Windows (default: ON)
 - `LVK_ANDROID_ABI`: Enabled ABI on Android (cache string, default: `arm64-v8a`)
+- `LVK_WITH_ML_EMULATION_LAYER`: Download and build the Arm ML Emulation Layer for Vulkan (`VK_LAYER_ML_Graph_Emulation`, `VK_LAYER_ML_Tensor_Emulation`) as an ExternalProject to emulate `VK_ARM_tensors`/`VK_ARM_data_graph` on GPUs without native support (default: OFF). It shares glslang, SPIRV-Headers, SPIRV-Tools and Vulkan-Headers with LVK; the layer manifests are installed into `build/ml-emulation-layer/bin` (Windows) or `build/ml-emulation-layer/share/vulkan/explicit_layer.d`. With `LVK_WITH_SAMPLES_ANDROID` the layer is also cross-built for every `LVK_ANDROID_ABI` (needs `ninja` and the NDK's `llvm-strip`) into `build/ml-emulation-layer-android/jniLibs`, which the generated projects list in `jniLibs.srcDirs`
 
 ## Coding Style
 
@@ -130,6 +131,7 @@ To check CI status: `gh run list` or `gh run view <run-id>`.
 - No STL containers in public API; the only exception is `std::vector` which is allowed in `.cpp` files and samples
 - Use `()` after function names in code comments and commit messages (e.g., `// call doSomething() first`)
 - Instead of deep nested if-blocks, prefer early exit
+- `const char* debugName` (or `debugName_`) is always the last member field of a struct; add new fields before it
 - **Use `const` on local variables whenever possible**
 - **NEVER use `auto` except for lambda types** — always use explicit types
 - **NEVER use `goto`**
@@ -175,6 +177,7 @@ When modifying shared Android behavior (permissions, fullscreen logic, themes), 
 
 ### Common Development Patterns
 - All samples use `VulkanApp` base class (`samples/VulkanApp.h`)
+- Samples that render Bistro/Sponza share `samples/Bistro.h`: the mesh cache (`loadAndCache()`, `loadFromCache()`, `vertexData_`, `indexData_`, `cachedMaterials_`) and the asynchronous BC7 material texture loader (`loadMaterialTextures()`, `processLoadedMaterialTextures()`, `cancelLoadingMaterialTextures()`, `materials_`)
 - Platform abstraction through preprocessor macros
 - Resource management via LVK handles and holders
 - Tracy profiler integration when enabled

@@ -677,6 +677,8 @@ enum ShaderStage : uint8_t {
   Stage_Miss,
   Stage_Intersection,
   Stage_Callable,
+  // VK_ARM_data_graph
+  Stage_DataGraph,
 };
 
 union ClearColorValue {
@@ -846,11 +848,9 @@ struct RayTracingPipelineDesc final {
   ldr::Span<ShaderModuleHandle> smCallable = {};
   ldr::Span<RayTracingHitGroupDesc> hitGroups = {}; // hit groups - one per material
   SpecializationConstantDesc specInfo = {};
+  uint32_t maxRecursionDepth = 0; // 0 = ContextConfig::maxRayRecursionDepth
+  uint32_t stackSize = 0; // in bytes; 0 = driver default
   const char* debugName = "";
-  uint32_t maxRecursionDepth = 0; // maxPipelineRayRecursionDepth; 0 = ContextConfig::maxRayRecursionDepth
-  // pipeline stack size in bytes (dynamic state, set when the pipeline is bound); 0 = the driver default. Not validated: it must cover
-  // the pipeline's shaders at maxRecursionDepth (see vkGetRayTracingShaderGroupStackSizeKHR()), a smaller value is undefined behaviour
-  uint32_t stackSize = 0;
 };
 
 struct RenderPass final {
@@ -1063,6 +1063,7 @@ enum AccelStructType : uint8_t {
   AccelStructType_Invalid = 0,
   AccelStructType_TLAS = 1,
   AccelStructType_BLAS = 2,
+  AccelStructType_OpacityMicromap = 3, // VK_KHR_opacity_micromap, see `IContext::supportsOpacityMicromap()`
 };
 
 enum AccelStructGeomType : uint8_t {
@@ -1077,6 +1078,8 @@ enum AccelStructBuildFlagBits : uint8_t {
   AccelStructBuildFlagBits_PreferFastTrace = 1 << 2,
   AccelStructBuildFlagBits_PreferFastBuild = 1 << 3,
   AccelStructBuildFlagBits_LowMemory = 1 << 4,
+  AccelStructBuildFlagBits_AllowDisableOpacityMicromaps = 1 << 5, // for `AccelStructInstanceFlagBits_DisableOpacityMicromaps`
+  AccelStructBuildFlagBits_AllowDataAccess = 1 << 6, // required by VK_KHR_ray_tracing_position_fetch
 };
 
 enum AccelStructGeometryFlagBits : uint8_t {
@@ -1089,7 +1092,37 @@ enum AccelStructInstanceFlagBits : uint8_t {
   AccelStructInstanceFlagBits_TriangleFlipFacing = 1 << 1,
   AccelStructInstanceFlagBits_ForceOpaque = 1 << 2,
   AccelStructInstanceFlagBits_ForceNoOpaque = 1 << 3,
+  AccelStructInstanceFlagBits_ForceOpacityMicromap2State = 1 << 4,
+  AccelStructInstanceFlagBits_DisableOpacityMicromaps = 1 << 5,
 };
+
+enum OpacityMicromapFormat : uint8_t {
+  OpacityMicromapFormat_2State = 1, // 1 bit per micro-triangle: transparent, opaque
+  OpacityMicromapFormat_4State = 2, // 2 bits per micro-triangle: transparent, opaque, unknown-transparent, unknown-opaque
+};
+
+// whole-triangle values in `AccelStructDesc::micromapIndexBuffer`
+enum OpacityMicromapSpecialIndex : int32_t {
+  OpacityMicromapSpecialIndex_FullyTransparent = -1,
+  OpacityMicromapSpecialIndex_FullyOpaque = -2,
+  OpacityMicromapSpecialIndex_FullyUnknownTransparent = -3,
+  OpacityMicromapSpecialIndex_FullyUnknownOpaque = -4,
+};
+
+struct OpacityMicromapUsage {
+  uint32_t count = 0;
+  uint32_t subdivisionLevel = 0;
+  OpacityMicromapFormat format = OpacityMicromapFormat_4State;
+};
+
+// one element of `AccelStructDesc::micromapTriangles` (matches `VkMicromapTriangleKHR`)
+struct OpacityMicromapTriangle {
+  uint32_t dataOffset = 0; // in bytes, into `AccelStructDesc::micromapData`
+  uint16_t subdivisionLevel = 0; // 4^subdivisionLevel micro-triangles in bird curve order
+  uint16_t format = OpacityMicromapFormat_4State;
+};
+
+static_assert(sizeof(OpacityMicromapTriangle) == 8);
 
 struct AccelStructSizes {
   uint64_t accelerationStructureSize = 0;
@@ -1130,6 +1163,14 @@ struct AccelStructDesc {
   BufferHandle indexBuffer;
   BufferHandle transformBuffer;
   BufferHandle instancesBuffer;
+  AccelStructHandle micromap; // BLAS: optional
+  BufferHandle micromapIndexBuffer; // BLAS: indices into `micromap` triangles or `OpacityMicromapSpecialIndex` values
+  BufferHandle micromapData; // packed micro-triangle states: 0 transparent, 1 opaque, 2 unknown-transparent, 3 unknown-opaque
+  BufferHandle micromapTriangles; // OpacityMicromapTriangle[]
+  IndexFormat micromapIndexFormat = IndexFormat_UI32;
+  uint32_t micromapIndexOffset = 0; // in bytes
+  const OpacityMicromapUsage* micromapUsageCounts = nullptr; // how many triangles use each subdivision level and format
+  uint32_t micromapNumUsageCounts = 0;
   AccelStructBuildRange buildRange = {};
   uint8_t buildFlags = AccelStructBuildFlagBits_PreferFastTrace;
   const char* debugName = "";
@@ -1138,18 +1179,13 @@ struct AccelStructDesc {
 struct SubmitHandle {
   union {
     struct {
-      uint32_t bufferIndex_      : 16;
-      uint32_t queueFamilyIndex_ : 16; // Vulkan queue family this submission ran on; makes a handle self-describing
-      uint32_t submitId_         : 32;
+      uint64_t queueFamilyIndex_ : 16; // Vulkan queue family this submission ran on; makes a handle self-describing
+      uint64_t value_            : 48; // value signaled on that queue's timeline semaphore once this submission completes
     };
     uint64_t handle_ = 0;
   };
-  SubmitHandle() = default;
-  explicit SubmitHandle(uint64_t handle) : handle_(handle) {
-    LVK_ASSERT(submitId_);
-  }
   bool empty() const {
-    return submitId_ == 0;
+    return value_ == 0;
   }
   uint64_t handle() const {
     return handle_;
@@ -1399,6 +1435,7 @@ class IContext {
   virtual bool supportsProvokingVertex() const = 0;
   virtual bool supportsRayQuery() const = 0;
   virtual bool supportsRayTracingPipeline() const = 0;
+  virtual bool supportsOpacityMicromap() const = 0; // VK_KHR_opacity_micromap
   virtual bool supportsShaderInterlock() const = 0;
   virtual bool supportsTextureFormat(Format format, TextureUsageFlags usageFlags = TextureUsageBits_Sampled) const = 0;
   virtual bool supportsTensorsARM() const = 0;
@@ -1434,6 +1471,7 @@ typedef struct SDL_MouseButtonEvent SDL_MouseButtonEvent;
 namespace lvk {
 
 constexpr uint32_t kMaxCustomExtensions = 32;
+constexpr uint32_t kMaxCustomLayers = 8;
 constexpr uint32_t kMaxPresentModes = 8;
 
 enum VulkanVersion {
@@ -1453,8 +1491,7 @@ struct ContextConfig {
   // owned by the application - should be alive until createVulkanContextWithSwapchain() returns
   const void* pipelineCacheData = nullptr;
   size_t pipelineCacheDataSize = 0;
-  // default maxPipelineRayRecursionDepth of ray tracing pipelines (clamped to the device limit); 0 = the device maximum
-  uint32_t maxRayRecursionDepth = 0;
+  uint32_t maxRayRecursionDepth = 0; // default for ray tracing pipelines (clamped to the device limit); 0 = device maximum
   // Define preferred present modes, the first available present mode will  be used. PresentMode_FIFO is always available
   lvk::PresentMode presentModes[kMaxPresentModes] = {
 #if defined(__linux__) || defined(_M_ARM64)
@@ -1465,6 +1502,7 @@ struct ContextConfig {
       PresentMode_FIFO_Relaxed,
       PresentMode_FIFO,
   };
+  const char* layers[kMaxCustomLayers] = {}; // enable extra instance layers before the validation layer
   const char* extensionsInstance[kMaxCustomExtensions] = {}; // add extra instance extensions on top of required ones
   const char* extensionsDevice[kMaxCustomExtensions] = {}; // add extra device extensions on top of required ones
   void* extensionsDeviceFeatures = nullptr; // inserted into VkPhysicalDeviceVulkan11Features::pNext

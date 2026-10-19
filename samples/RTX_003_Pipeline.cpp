@@ -15,19 +15,26 @@
 
 #if USE_SPONZA
 #define MODEL_PATH "src/Sponza/sponza.obj"
+#define TEXTURES_PATH "src/Sponza/"
 #define CACHE_FILE_NAME "cache3.data"
 vec3 lightDir_ = normalize(vec3(0.05f, 1.0f, 0.01f));
 #else
 #define MODEL_PATH "src/bistro/Exterior/exterior.obj"
+#define TEXTURES_PATH "src/bistro/Exterior/"
 #define CACHE_FILE_NAME "cache2.data"
 vec3 lightDir_ = normalize(vec3(0.032f, 0.835f, 0.549f));
 #endif
 bool enableShadows_ = true;
+bool enableRayCones_ = true;
 
 const char* codeSlang = R"(
 struct Material {
   float4 ambient;
   float4 diffuse;
+  uint texAmbient;
+  uint texDiffuse;
+  uint texAlpha;
+  uint padding;
 };
 
 struct Vertex {
@@ -64,6 +71,7 @@ struct PushConstants {
   uint outTexture;
   uint tlas;
   bool enableShadows;
+  float pixelSpreadAngle; // 0 disables ray cones
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -92,6 +100,73 @@ float3 unpackOctahedral16(uint data) {
   return normalize(n);
 }
 
+float2 unpackHalf2(uint d) {
+  return float2(f16tof32(d), f16tof32(d >> 16));
+}
+
+int3 getTriangleIndices() {
+  uint index = 3 * PrimitiveIndex();
+  return int3(
+    pc.indices->idx[index + 0],
+    pc.indices->idx[index + 1],
+    pc.indices->idx[index + 2]
+  );
+}
+
+float2 getTexCoords(int3 triangleIndex, float3 baryCoords) {
+  return unpackHalf2(pc.vertices->vtx[triangleIndex.x].uv) * baryCoords.x +
+         unpackHalf2(pc.vertices->vtx[triangleIndex.y].uv) * baryCoords.y +
+         unpackHalf2(pc.vertices->vtx[triangleIndex.z].uv) * baryCoords.z;
+}
+
+// Ray cones: "Texture Level of Detail Strategies for Real-Time Ray Tracing", Ray Tracing Gems, chapter 20.
+// Only primary rays carry a cone: shadow rays start on a surface and skip the closest-hit shader.
+bool useRayCones() {
+  return pc.pixelSpreadAngle > 0.0 && (RayFlags() & RAY_FLAG_SKIP_CLOSEST_HIT_SHADER) == 0;
+}
+
+// the texture LOD without the texture size term: 0.5 * log2(texelArea / worldArea) + log2(coneWidth / |n.d|)
+float getRayConeLod(int3 triangleIndex) {
+  if (!useRayCones())
+    return 0.0;
+  Vertex v0 = pc.vertices->vtx[triangleIndex.x];
+  Vertex v1 = pc.vertices->vtx[triangleIndex.y];
+  Vertex v2 = pc.vertices->vtx[triangleIndex.z];
+  float3 e1 = mul(ObjectToWorld3x4(), float4(v1.x - v0.x, v1.y - v0.y, v1.z - v0.z, 0.0));
+  float3 e2 = mul(ObjectToWorld3x4(), float4(v2.x - v0.x, v2.y - v0.y, v2.z - v0.z, 0.0));
+  float3 n = cross(e1, e2);
+  float worldArea = max(length(n), 1e-12);
+  float2 uv0 = unpackHalf2(v0.uv);
+  float2 t1 = unpackHalf2(v1.uv) - uv0;
+  float2 t2 = unpackHalf2(v2.uv) - uv0;
+  float texelArea = max(abs(t1.x * t2.y - t2.x * t1.y), 1e-12);
+  float coneWidth = pc.pixelSpreadAngle * RayTCurrent();
+  float cosTheta = max(abs(dot(n / worldArea, normalize(WorldRayDirection()))), 1e-4);
+  return 0.5 * log2(texelArea / worldArea) + log2(coneWidth / cosTheta);
+}
+
+float4 sampleTexture(uint tex, float2 uv, float lod) {
+  if (useRayCones()) {
+    int2 size = textureBindlessSize2D(tex);
+    lod = max(lod + 0.5 * log2(float(size.x * size.y)), 0.0);
+  } else {
+    lod = 0.0;
+  }
+  return textureBindless2DLod(tex, 0, uv, lod);
+}
+
+// texture index 0 is the black dummy texture: treat it as "no texture"
+float4 getDiffuse(Material mat, float2 uv, float lod) {
+  return mat.texDiffuse > 0 ? mat.diffuse * sampleTexture(mat.texDiffuse, uv, lod) : mat.diffuse;
+}
+
+// the same alpha test as in Tiny_MeshLarge
+bool isTransparent(Material mat, float2 uv, float lod) {
+  if (mat.texAlpha > 0 && sampleTexture(mat.texAlpha, uv, lod).r < 0.5)
+    return true;
+  return getDiffuse(mat, uv, lod).a < 0.5;
+}
+
 [shader("raygeneration")]
 void rayGenMain() {
   uint3 launchID = DispatchRaysIndex();
@@ -115,7 +190,7 @@ void rayGenMain() {
 
   TraceRay(
     kTLAS[pc.tlas],
-    RAY_FLAG_FORCE_OPAQUE,
+    RAY_FLAG_NONE,
     0xff,       // instance mask
     0,          // ray contribution to hit group index
     0,          // multiplier for geometry contribution
@@ -151,13 +226,7 @@ void closestHitMain(
     attribs.barycentrics.y
   );
 
-  // Get triangle indices
-  uint index = 3 * PrimitiveIndex();
-  int3 triangleIndex = int3(
-    pc.indices->idx[index + 0],
-    pc.indices->idx[index + 1],
-    pc.indices->idx[index + 2]
-  );
+  int3 triangleIndex = getTriangleIndices();
 
   // Unpack and interpolate normals
   float3 nrm0 = unpackOctahedral16(uint(pc.vertices->vtx[triangleIndex.x].normal));
@@ -172,6 +241,7 @@ void closestHitMain(
   float3 worldNormal = normalize((float3x3)WorldToObject() * normal);
 
   Material mat = pc.materials.mtl[uint(pc.vertices->vtx[triangleIndex.x].mtlIndex)];
+  float4 Kd = getDiffuse(mat, getTexCoords(triangleIndex, baryCoords), getRayConeLod(triangleIndex));
 
   bool isShadowed = pc.enableShadows;
   if (pc.enableShadows) {
@@ -188,7 +258,6 @@ void closestHitMain(
 
     TraceRay(
       kTLAS[pc.tlas],
-      RAY_FLAG_FORCE_OPAQUE |
       RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH |
       RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
       0xff,       // instance mask
@@ -208,9 +277,29 @@ void closestHitMain(
   float NdotL = 0.5 * (NdotL1 + NdotL2);
 
   payload.color = float4(
-    mat.diffuse.rgb * occlusion * max(NdotL, 0.0),
-    mat.diffuse.a
+    Kd.rgb * occlusion * max(NdotL, 0.0),
+    Kd.a
   );
+}
+
+// alpha testing, invoked for both primary and shadow rays
+[shader("anyhit")]
+void anyHitMain(
+  inout RayPayload payload,
+  in BuiltInTriangleIntersectionAttributes attribs
+) {
+  float3 baryCoords = float3(
+    1.0 - attribs.barycentrics.x - attribs.barycentrics.y,
+    attribs.barycentrics.x,
+    attribs.barycentrics.y
+  );
+
+  int3 triangleIndex = getTriangleIndices();
+
+  Material mat = pc.materials.mtl[uint(pc.vertices->vtx[triangleIndex.x].mtlIndex)];
+
+  if (isTransparent(mat, getTexCoords(triangleIndex, baryCoords), getRayConeLod(triangleIndex)))
+    IgnoreHit();
 })";
 
 const char* codeFullscreenSlang = R"(
@@ -247,6 +336,10 @@ float4 fragmentMain(VSOutput input) : SV_Target0 {
 struct Material {
   vec4 ambient;
   vec4 diffuse;
+  uint texAmbient;
+  uint texDiffuse;
+  uint texAlpha;
+  uint padding;
 };
 
 layout(std430, buffer_reference) readonly buffer Materials {
@@ -282,7 +375,97 @@ layout(push_constant) uniform constants {
   uint outTexture;
   uint tlas;
   bool enableShadows;
+  float pixelSpreadAngle; // 0 disables ray cones
 } pc;
+)"
+
+#define HIT_HELPERS \
+  R"(
+layout (set = 0, binding = 0) uniform texture2D kTextures2D[];
+layout (set = 0, binding = 1) uniform sampler kSamplers[];
+
+vec4 textureBindless2DLod(uint textureid, uint samplerid, vec2 uv, float lod) {
+  return textureLod(nonuniformEXT(sampler2D(kTextures2D[textureid], kSamplers[samplerid])), uv, lod);
+}
+
+// https://www.shadertoy.com/view/llfcRl
+vec2 unpackSnorm2x8(uint d) {
+  return vec2(uvec2(d, d >> 8) & 255u) / 127.5 - 1.0;
+}
+vec3 unpackOctahedral16(uint data) {
+  vec2 v = unpackSnorm2x8(data);
+  // https://x.com/Stubbesaurus/status/937994790553227264
+  vec3 n = vec3(v, 1.0 - abs(v.x) - abs(v.y));
+  float t = max(-n.z, 0.0);
+  n.x += (n.x > 0.0) ? -t : t;
+  n.y += (n.y > 0.0) ? -t : t;
+  return normalize(n);
+}
+//
+
+ivec3 getTriangleIndices() {
+  uint index = 3 * gl_PrimitiveID;
+  return ivec3(pc.indices.idx[index + 0],
+               pc.indices.idx[index + 1],
+               pc.indices.idx[index + 2]);
+}
+
+vec2 getTexCoords(ivec3 triangleIndex, vec3 baryCoords) {
+  return unpackHalf2x16(pc.vertices.vtx[triangleIndex.x].uv) * baryCoords.x +
+         unpackHalf2x16(pc.vertices.vtx[triangleIndex.y].uv) * baryCoords.y +
+         unpackHalf2x16(pc.vertices.vtx[triangleIndex.z].uv) * baryCoords.z;
+}
+
+// Ray cones: "Texture Level of Detail Strategies for Real-Time Ray Tracing", Ray Tracing Gems, chapter 20.
+// Only primary rays carry a cone: shadow rays start on a surface and skip the closest-hit shader.
+bool useRayCones() {
+  return pc.pixelSpreadAngle > 0.0 && (gl_IncomingRayFlagsEXT & gl_RayFlagsSkipClosestHitShaderEXT) == 0;
+}
+
+vec3 getPosition(int i) {
+  return vec3(pc.vertices.vtx[i].x, pc.vertices.vtx[i].y, pc.vertices.vtx[i].z);
+}
+
+// the texture LOD without the texture size term: 0.5 * log2(texelArea / worldArea) + log2(coneWidth / |n.d|)
+float getRayConeLod(ivec3 triangleIndex) {
+  if (!useRayCones())
+    return 0.0;
+  // `Vertex` has 16-bit members and cannot be copied into a local variable without GL_EXT_shader_explicit_arithmetic_types
+  vec3 p0 = getPosition(triangleIndex.x);
+  vec3 e1 = gl_ObjectToWorldEXT * vec4(getPosition(triangleIndex.y) - p0, 0.0);
+  vec3 e2 = gl_ObjectToWorldEXT * vec4(getPosition(triangleIndex.z) - p0, 0.0);
+  vec3 n = cross(e1, e2);
+  float worldArea = max(length(n), 1e-12);
+  vec2 uv0 = unpackHalf2x16(pc.vertices.vtx[triangleIndex.x].uv);
+  vec2 t1 = unpackHalf2x16(pc.vertices.vtx[triangleIndex.y].uv) - uv0;
+  vec2 t2 = unpackHalf2x16(pc.vertices.vtx[triangleIndex.z].uv) - uv0;
+  float texelArea = max(abs(t1.x * t2.y - t2.x * t1.y), 1e-12);
+  float coneWidth = pc.pixelSpreadAngle * gl_HitTEXT;
+  float cosTheta = max(abs(dot(n / worldArea, normalize(gl_WorldRayDirectionEXT))), 1e-4);
+  return 0.5 * log2(texelArea / worldArea) + log2(coneWidth / cosTheta);
+}
+
+vec4 sampleTexture(uint tex, vec2 uv, float lod) {
+  if (useRayCones()) {
+    ivec2 size = textureSize(nonuniformEXT(sampler2D(kTextures2D[tex], kSamplers[0])), 0);
+    lod = max(lod + 0.5 * log2(float(size.x * size.y)), 0.0);
+  } else {
+    lod = 0.0;
+  }
+  return textureBindless2DLod(tex, 0, uv, lod);
+}
+
+// texture index 0 is the black dummy texture: treat it as "no texture"
+vec4 getDiffuse(Material mat, vec2 uv, float lod) {
+  return mat.texDiffuse > 0 ? mat.diffuse * sampleTexture(mat.texDiffuse, uv, lod) : mat.diffuse;
+}
+
+// the same alpha test as in Tiny_MeshLarge
+bool isTransparent(Material mat, vec2 uv, float lod) {
+  if (mat.texAlpha > 0 && sampleTexture(mat.texAlpha, uv, lod).r < 0.5)
+    return true;
+  return getDiffuse(mat, uv, lod).a < 0.5;
+}
 )"
 
 const char* codeRayGen = R"(
@@ -311,7 +494,7 @@ void main() {
 
   payload = vec4(0.0, 0.0, 0.0, 1.0);
 
-  traceRayEXT(kTLAS[pc.tlas], gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, tmin, direction.xyz, tmax, 0);
+  traceRayEXT(kTLAS[pc.tlas], gl_RayFlagsNoneEXT, 0xff, 0, 0, 0, origin.xyz, tmin, direction.xyz, tmax, 0);
 
   imageStore(kTextures2DInOut[pc.outTexture], ivec2(gl_LaunchIDEXT.xy), payload);
 }
@@ -354,31 +537,12 @@ layout(location = 0) rayPayloadInEXT vec4 payload;
 layout(location = 1) rayPayloadEXT bool isShadowed;
 
 hitAttributeEXT vec2 attribs;
-)" UBOS_AND_PUSH_CONSTANTS
+)" UBOS_AND_PUSH_CONSTANTS HIT_HELPERS
                              R"(
-
-// https://www.shadertoy.com/view/llfcRl
-vec2 unpackSnorm2x8(uint d) {
-  return vec2(uvec2(d, d >> 8) & 255u) / 127.5 - 1.0;
-}
-vec3 unpackOctahedral16(uint data) {
-  vec2 v = unpackSnorm2x8(data);
-  // https://x.com/Stubbesaurus/status/937994790553227264
-  vec3 n = vec3(v, 1.0 - abs(v.x) - abs(v.y));
-  float t = max(-n.z, 0.0);
-  n.x += (n.x > 0.0) ? -t : t;
-  n.y += (n.y > 0.0) ? -t : t;
-  return normalize(n);
-}
-//
-
 void main() {
   const vec3 baryCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
 
-  uint index = 3 * gl_PrimitiveID;
-  ivec3 triangleIndex = ivec3(pc.indices.idx[index + 0],
-                              pc.indices.idx[index + 1],
-                              pc.indices.idx[index + 2]);
+  ivec3 triangleIndex = getTriangleIndices();
 
   vec3 nrm0 = unpackOctahedral16(uint(pc.vertices.vtx[triangleIndex.x].normal));
   vec3 nrm1 = unpackOctahedral16(uint(pc.vertices.vtx[triangleIndex.y].normal));
@@ -387,6 +551,7 @@ void main() {
   vec3 worldNormal = normalize(vec3(normal * gl_WorldToObjectEXT));
 
   Material mat = pc.materials.mtl[uint(pc.vertices.vtx[triangleIndex.x].mtlIndex)];
+  vec4 Kd = getDiffuse(mat, getTexCoords(triangleIndex, baryCoords), getRayConeLod(triangleIndex));
 
   const float tmin = 0.01;
   const float tmax = 1000.0;
@@ -398,7 +563,7 @@ void main() {
 
     traceRayEXT(
       kTLAS[pc.tlas],
-      gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT,
+      gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT,
       0xff,             // cull mask
       0,                // sbtRecordOffset
       0,                // sbtRecordStride
@@ -416,7 +581,30 @@ void main() {
   float NdotL2 = clamp(dot(worldNormal, normalize(vec3(-1, 1,-1))), 0.0, 1.0);
   float NdotL = 0.5 * (NdotL1 + NdotL2);
 
-  payload = vec4(mat.diffuse.rgb * occlusion * max(NdotL, 0.0), mat.diffuse.a);
+  payload = vec4(Kd.rgb * occlusion * max(NdotL, 0.0), Kd.a);
+}
+)";
+
+// alpha testing, invoked for both primary and shadow rays
+const char* codeAnyHit = R"(
+#version 460
+#extension GL_EXT_ray_tracing : require
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_shader_16bit_storage : require
+
+hitAttributeEXT vec2 attribs;
+)" UBOS_AND_PUSH_CONSTANTS HIT_HELPERS
+                         R"(
+void main() {
+  const vec3 baryCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+
+  ivec3 triangleIndex = getTriangleIndices();
+
+  Material mat = pc.materials.mtl[uint(pc.vertices.vtx[triangleIndex.x].mtlIndex)];
+
+  if (isTransparent(mat, getTexCoords(triangleIndex, baryCoords), getRayConeLod(triangleIndex)))
+    ignoreIntersectionEXT;
 }
 )";
 
@@ -452,6 +640,7 @@ struct {
   lvk::Holder<lvk::ShaderModuleHandle> smMiss_;
   lvk::Holder<lvk::ShaderModuleHandle> smMissShadow_;
   lvk::Holder<lvk::ShaderModuleHandle> smHit_;
+  lvk::Holder<lvk::ShaderModuleHandle> smAnyHit_;
   lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Fullscreen_;
   lvk::Holder<lvk::BufferHandle> vb0_, ib0_; // buffers for vertices and indices
   lvk::Holder<lvk::BufferHandle> sbMaterials_; // storage buffer for materials
@@ -468,16 +657,7 @@ struct UniformsPerFrame {
   mat4 projInverse;
 };
 
-// this goes into our GLSL shaders
-struct GPUMaterial {
-  vec4 ambient = vec4(0.0f);
-  vec4 diffuse = vec4(0.0f);
-};
 } // namespace
-
-static_assert(sizeof(GPUMaterial) % 16 == 0);
-
-std::vector<GPUMaterial> materials_;
 
 void createPipelines();
 
@@ -491,9 +671,9 @@ bool initModel(VulkanApp& app) {
     }
   }
 
-  for (const auto& mtl : cachedMaterials_) {
-    materials_.push_back(GPUMaterial{vec4(mtl.ambient, 1.0f), vec4(mtl.diffuse, 1.0f)});
-  }
+  // textures are streamed in asynchronously, see processLoadedMaterialTextures() in the render loop
+  loadMaterialTextures(app, TEXTURES_PATH);
+
   res.sbMaterials_ = ctx_->createBuffer({.usage = lvk::BufferUsageBits_Storage,
                                          .storage = lvk::StorageType_Device,
                                          .size = sizeof(GPUMaterial) * materials_.size(),
@@ -527,6 +707,7 @@ bool initModel(VulkanApp& app) {
   lvk::AccelStructDesc blasDesc{
       .type = lvk::AccelStructType_BLAS,
       .geometryType = lvk::AccelStructGeomType_Triangles,
+      .geometryFlags = 0, // not opaque: the any-hit shader does alpha testing
       .vertexFormat = lvk::VertexFormat_Float3,
       .vertexBuffer = res.vb0_,
       .vertexStride = sizeof(VertexData),
@@ -632,6 +813,7 @@ VULKAN_APP_MAIN {
   res.smMiss_ = ctx_->createShaderModule({codeSlang, lvk::Stage_Miss, "Shader Module: main (miss)"});
   res.smMissShadow_ = ctx_->createShaderModule({codeSlang, "missMainShadow", lvk::Stage_Miss, "Shader Module: main (miss shadow)"});
   res.smHit_ = ctx_->createShaderModule({codeSlang, lvk::Stage_ClosestHit, "Shader Module: main (closesthit)"});
+  res.smAnyHit_ = ctx_->createShaderModule({codeSlang, lvk::Stage_AnyHit, "Shader Module: main (anyhit)"});
   res.smFullscreenVert_ = ctx_->createShaderModule({codeFullscreenSlang, lvk::Stage_Vert, "Shader Module: fullscreen (vert)"});
   res.smFullscreenFrag_ = ctx_->createShaderModule({codeFullscreenSlang, lvk::Stage_Frag, "Shader Module: fullscreen (frag)"});
 #else
@@ -639,6 +821,7 @@ VULKAN_APP_MAIN {
   res.smMiss_ = ctx_->createShaderModule({codeMiss, lvk::Stage_Miss, "Shader Module: main (miss)"});
   res.smMissShadow_ = ctx_->createShaderModule({codeMissShadow, lvk::Stage_Miss, "Shader Module: main (miss shadow)"});
   res.smHit_ = ctx_->createShaderModule({codeClosestHit, lvk::Stage_ClosestHit, "Shader Module: main (closesthit)"});
+  res.smAnyHit_ = ctx_->createShaderModule({codeAnyHit, lvk::Stage_AnyHit, "Shader Module: main (anyhit)"});
   res.smFullscreenVert_ = ctx_->createShaderModule({kCodeFullscreenVS, lvk::Stage_Vert, "Shader Module: fullscreen (vert)"});
   res.smFullscreenFrag_ = ctx_->createShaderModule({kCodeFullscreenFS, lvk::Stage_Frag, "Shader Module: fullscreen (frag)"});
 #endif // defined(LVK_DEMO_WITH_SLANG)
@@ -650,7 +833,7 @@ VULKAN_APP_MAIN {
               lvk::ShaderModuleHandle(res.smMiss_),
               lvk::ShaderModuleHandle(res.smMissShadow_),
           },
-      .hitGroups = {{.smClosestHit = res.smHit_}},
+      .hitGroups = {{.smClosestHit = res.smHit_, .smAnyHit = res.smAnyHit_}},
   });
 
   res.renderPipelineState_Fullscreen_ = ctx_->createRenderPipeline(lvk::RenderPipelineDesc{
@@ -673,12 +856,15 @@ VULKAN_APP_MAIN {
 
     lvk::ICommandBuffer& buffer = ctx_->acquireCommandBuffer();
 
-    buffer.cmdUpdateBuffer(
-        res.ubPerFrame_,
-        UniformsPerFrame{
-            .viewInverse = glm::inverse(app.camera_.getViewMatrix()),
-            .projInverse = glm::inverse(glm::perspective(float(45.0f * (M_PI / 180.0f)), views[0].aspectRatio, 0.5f, 500.0f)),
-        });
+    processLoadedMaterialTextures(buffer, res.sbMaterials_);
+
+    const float fovY = static_cast<float>(45.0f * (M_PI / 180.0f));
+
+    buffer.cmdUpdateBuffer(res.ubPerFrame_,
+                           UniformsPerFrame{
+                               .viewInverse = glm::inverse(app.camera_.getViewMatrix()),
+                               .projInverse = glm::inverse(glm::perspective(fovY, views[0].aspectRatio, 0.5f, 500.0f)),
+                           });
 
     // Pass 1: ray-trace the scene
     {
@@ -691,6 +877,7 @@ VULKAN_APP_MAIN {
         uint32_t outTexture;
         uint32_t tlas;
         uint32_t enableShadows;
+        float pixelSpreadAngle;
       } pc = {
           .lightDir = vec4(lightDir_, 0.0f),
           .perFrame = ctx_->gpuAddress(res.ubPerFrame_),
@@ -700,11 +887,14 @@ VULKAN_APP_MAIN {
           .outTexture = res.rayTracingOutputImage_.index(),
           .tlas = res.TLAS_.index(),
           .enableShadows = enableShadows_ ? 1u : 0u,
+          // the angle subtended by one pixel (Ray Tracing Gems, chapter 20)
+          .pixelSpreadAngle = enableRayCones_ ? atanf(2.0f * tanf(0.5f * fovY) / static_cast<float>(height)) : 0.0f,
       };
 
       buffer.cmdBindRayTracingPipeline(res.rayTracingPipeline_);
       buffer.cmdPushConstants(pc);
-      buffer.cmdTraceRays(width, height, 1, {.storageImages = {res.rayTracingOutputImage_}});
+      // `sbMaterials_` is updated by processLoadedMaterialTextures() while textures are being streamed in
+      buffer.cmdTraceRays(width, height, 1, {.storageImages = {res.rayTracingOutputImage_}, .buffers = {res.sbMaterials_}});
     }
 
     // Pass 2: render into the swapchain image
@@ -754,8 +944,10 @@ VULKAN_APP_MAIN {
           imGuiPopFlagsAndStyles();
           lightDir_ = glm::normalize(lightDir_);
           ImGui::Unindent(indentSize);
+          ImGui::Checkbox("Ray cones (texture LOD)", &enableRayCones_);
           ImGui::End();
 #endif // !defined(ANDROID)
+          drawMaterialTexturesLoadingProgress();
           app.drawFPS();
           app.imgui_->endFrame(buffer);
         }
@@ -766,6 +958,7 @@ VULKAN_APP_MAIN {
   });
 
   // destroy all the Vulkan stuff before closing the window
+  cancelLoadingMaterialTextures();
   res = {};
 
   VULKAN_APP_EXIT();

@@ -39,6 +39,7 @@ option(LVK_IMPLOT_EXTERNAL         "Use external ImPlot library"             OFF
 option(LVK_GLSLANG_EXTERNAL        "Use external glslang and SPIRV-Tools"    OFF)
 option(LVK_SPIRV_REFLECT_EXTERNAL  "Use external SPIRV-Reflect library"      OFF)
 option(LVK_ENABLE_LONG_PATHS_WIN32 "Enable long paths on Windows"            ON)
+option(LVK_WITH_ML_EMULATION_LAYER "Build the Arm ML Emulation Layer for Vulkan (VK_ARM_tensors/VK_ARM_data_graph)" OFF)
 
 set(LVK_PROJECT_ROOT_PATH "" CACHE STRING "Absolute project root path (empty = auto-detect) - for monorepo")
 
@@ -124,6 +125,7 @@ message(STATUS "LVK_IMPLOT_EXTERNAL         = ${LVK_IMPLOT_EXTERNAL}")
 message(STATUS "LVK_GLSLANG_EXTERNAL        = ${LVK_GLSLANG_EXTERNAL}")
 message(STATUS "LVK_SPIRV_REFLECT_EXTERNAL  = ${LVK_SPIRV_REFLECT_EXTERNAL}")
 message(STATUS "LVK_ENABLE_LONG_PATHS_WIN32 = ${LVK_ENABLE_LONG_PATHS_WIN32}")
+message(STATUS "LVK_WITH_ML_EMULATION_LAYER = ${LVK_WITH_ML_EMULATION_LAYER}")
 # cmake-format: on
 
 # cmake-format: off
@@ -162,6 +164,11 @@ if(LVK_DEPLOY_DEPS)
     set(ENV{LVK_WITH_SLANG} "ON")
   else()
     set(ENV{LVK_WITH_SLANG} "OFF")
+  endif()
+  if(LVK_WITH_ML_EMULATION_LAYER)
+    set(ENV{LVK_WITH_ML_EMULATION_LAYER} "ON")
+  else()
+    set(ENV{LVK_WITH_ML_EMULATION_LAYER} "OFF")
   endif()
   # deploy dependencies during configuration
   execute_process(COMMAND ${Python3_EXECUTABLE} deploy_deps.py WORKING_DIRECTORY ${LVK_ROOT_DIR} COMMAND_ERROR_IS_FATAL ANY)
@@ -276,6 +283,96 @@ if(LVK_WITH_MINILOG)
   target_compile_definitions(LVKLibrary PUBLIC LVK_WITH_MINILOG)
 endif()
 target_include_directories(LVKLibrary PUBLIC "third-party/deps/src")
+
+if(LVK_WITH_ML_EMULATION_LAYER AND NOT ANDROID)
+  include(ExternalProject)
+  set(LVK_DEPS_SRC_DIR "${LVK_ROOT_DIR}/third-party/deps/src")
+  set(LVK_ML_SDK_DIR "${LVK_DEPS_SRC_DIR}/ml-sdk")
+  set(LVK_ML_EMULATION_LAYER_PREFIX "${CMAKE_BINARY_DIR}/ml-emulation-layer")
+  find_program(LVK_GLSLANG_EXECUTABLE NAMES glslang glslangValidator HINTS "$ENV{VULKAN_SDK}/Bin" "$ENV{VULKAN_SDK}/bin")
+  # glslang, SPIRV-Headers, SPIRV-Tools and Vulkan-Headers are shared with LVK
+  # cmake-format: off
+  set(LVK_ML_EMULATION_LAYER_CMAKE_ARGS
+      "-DCMAKE_BUILD_TYPE=Release"
+      "-DCMAKE_INSTALL_PREFIX=${LVK_ML_EMULATION_LAYER_PREFIX}"
+      "-DVULKAN_HEADERS_PATH=${LVK_DEPS_SRC_DIR}/vulkan-headers"
+      "-DSPIRV_HEADERS_PATH=${LVK_DEPS_SRC_DIR}/SPIRV-Headers"
+      "-DSPIRV_TOOLS_PATH=${LVK_DEPS_SRC_DIR}/SPIRV-Tools"
+      "-DGLSLANG_PATH=${LVK_DEPS_SRC_DIR}/glslang"
+      "-DSPIRV_CROSS_PATH=${LVK_ML_SDK_DIR}/SPIRV-Cross"
+      "-DJSON_PATH=${LVK_ML_SDK_DIR}/json"
+      "-DVMEL_TESTS_ENABLE=OFF"
+      "-DVMEL_USE_FLOAT_AS_DOUBLE=OFF")
+  # cmake-format: on
+  if(LVK_GLSLANG_EXECUTABLE)
+    list(APPEND LVK_ML_EMULATION_LAYER_CMAKE_ARGS "-DGLSLANG_EXECUTABLE=${LVK_GLSLANG_EXECUTABLE}")
+  endif()
+  if(WIN32)
+    set(LVK_ML_EMULATION_LAYER_PATH "${LVK_ML_EMULATION_LAYER_PREFIX}/bin")
+    set(LVK_ML_EMULATION_LAYER_LIB_DIRS "${LVK_ML_EMULATION_LAYER_PREFIX}/bin")
+  else()
+    set(LVK_ML_EMULATION_LAYER_PATH "${LVK_ML_EMULATION_LAYER_PREFIX}/share/vulkan/explicit_layer.d")
+    set(LVK_ML_EMULATION_LAYER_LIB_DIRS "${LVK_ML_EMULATION_LAYER_PREFIX}/lib|${LVK_ML_EMULATION_LAYER_PREFIX}/lib64")
+  endif()
+  ExternalProject_Add(MLEmulationLayer
+    SOURCE_DIR "${LVK_ML_SDK_DIR}/emulation-layer"
+    BINARY_DIR "${LVK_ML_EMULATION_LAYER_PREFIX}/build"
+    CMAKE_ARGS ${LVK_ML_EMULATION_LAYER_CMAKE_ARGS}
+    BUILD_ALWAYS ON
+    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config Release --parallel
+    INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --config Release
+    COMMAND ${CMAKE_COMMAND} "-DMANIFEST_DIR=${LVK_ML_EMULATION_LAYER_PATH}" "-DLIBRARY_DIRS=${LVK_ML_EMULATION_LAYER_LIB_DIRS}"
+            -P "${LVK_ROOT_DIR}/cmake/MLEmulationLayerManifests.cmake"
+    USES_TERMINAL_BUILD ON)
+  lvk_set_folder(MLEmulationLayer "third-party/ml-sdk")
+  message(STATUS "Arm ML Emulation Layer manifests: ${LVK_ML_EMULATION_LAYER_PATH}")
+  if(LVK_WITH_SAMPLES_ANDROID)
+    if(DEFINED ENV{ANDROID_NDK})
+      cmake_path(SET LVK_ANDROID_NDK $ENV{ANDROID_NDK})
+    elseif(DEFINED ENV{NDK_ROOT})
+      cmake_path(SET LVK_ANDROID_NDK $ENV{NDK_ROOT})
+    else()
+      message(FATAL_ERROR "ANDROID_NDK (or NDK_ROOT) environment variable is not set")
+    endif()
+    if(CMAKE_HOST_WIN32)
+      set(LVK_ANDROID_NDK_HOST windows-x86_64)
+    elseif(CMAKE_HOST_APPLE)
+      set(LVK_ANDROID_NDK_HOST darwin-x86_64)
+    else()
+      set(LVK_ANDROID_NDK_HOST linux-x86_64)
+    endif()
+    file(GLOB LVK_ANDROID_SDK_CMAKE_BIN "$ENV{ANDROID_HOME}/cmake/*/bin" "$ENV{ANDROID_SDK_ROOT}/cmake/*/bin")
+    find_program(LVK_NINJA_EXECUTABLE ninja HINTS ${LVK_ANDROID_SDK_CMAKE_BIN})
+    find_program(LVK_ANDROID_STRIP llvm-strip HINTS "${LVK_ANDROID_NDK}/toolchains/llvm/prebuilt/${LVK_ANDROID_NDK_HOST}/bin")
+    if(NOT LVK_NINJA_EXECUTABLE OR NOT LVK_ANDROID_STRIP)
+      message(FATAL_ERROR "The Arm ML Emulation Layer for Android needs ninja and llvm-strip: ${LVK_NINJA_EXECUTABLE} ${LVK_ANDROID_STRIP}")
+    endif()
+    set(LVK_ML_EMULATION_LAYER_ANDROID_PREFIX "${CMAKE_BINARY_DIR}/ml-emulation-layer-android")
+    set(LVK_ANDROID_JNI_LIBS "${LVK_ML_EMULATION_LAYER_ANDROID_PREFIX}/jniLibs")
+    set(LVK_ML_EMULATION_LAYER_ANDROID_CMAKE_ARGS ${LVK_ML_EMULATION_LAYER_CMAKE_ARGS})
+    list(FILTER LVK_ML_EMULATION_LAYER_ANDROID_CMAKE_ARGS EXCLUDE REGEX "^-DCMAKE_INSTALL_PREFIX=")
+    foreach(abi ${LVK_ANDROID_ABI})
+      set(libs "${LVK_ANDROID_JNI_LIBS}/${abi}")
+      ExternalProject_Add(MLEmulationLayerAndroid_${abi}
+        SOURCE_DIR "${LVK_ML_SDK_DIR}/emulation-layer"
+        BINARY_DIR "${LVK_ML_EMULATION_LAYER_ANDROID_PREFIX}/build/${abi}"
+        CMAKE_GENERATOR Ninja
+        CMAKE_ARGS ${LVK_ML_EMULATION_LAYER_ANDROID_CMAKE_ARGS}
+                   "-DCMAKE_MAKE_PROGRAM=${LVK_NINJA_EXECUTABLE}"
+                   "-DCMAKE_TOOLCHAIN_FILE=${LVK_ANDROID_NDK}/build/cmake/android.toolchain.cmake"
+                   "-DANDROID_ABI=${abi}"
+                   "-DANDROID_PLATFORM=android-33"
+        BUILD_ALWAYS ON
+        BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --parallel
+        INSTALL_COMMAND ${CMAKE_COMMAND} -E make_directory "${libs}"
+        COMMAND ${CMAKE_COMMAND} -E copy <BINARY_DIR>/graph/libVkLayer_Graph.so <BINARY_DIR>/tensor/libVkLayer_Tensor.so "${libs}"
+        COMMAND ${LVK_ANDROID_STRIP} --strip-unneeded "${libs}/libVkLayer_Graph.so" "${libs}/libVkLayer_Tensor.so"
+        USES_TERMINAL_BUILD ON)
+      lvk_set_folder(MLEmulationLayerAndroid_${abi} "third-party/ml-sdk")
+    endforeach()
+    message(STATUS "Arm ML Emulation Layer for Android: ${LVK_ANDROID_JNI_LIBS}")
+  endif()
+endif()
 
 if(LVK_WITH_GLFW)
   # cmake-format: off

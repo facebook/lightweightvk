@@ -36,7 +36,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/SPIRV-Reflect.git",
-        "revision": "vulkan-sdk-1.4.363.0"
+        "revision": "563dc9a16d0e86145e12a66bb61f0695ca4a14b9"
     }
 },
 {
@@ -164,7 +164,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/ocornut/imgui.git",
-        "revision": "v1.92.9b"
+        "revision": "v1.93.0"
     }
 },
 {
@@ -172,7 +172,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/epezent/implot",
-        "revision": "d65a2bef53d32502407de3a4be80f191e2f412d7"
+        "revision": "851cdbdd60d1dfb64c23e987969694de0f547a6b"
     }
 },
 {
@@ -270,7 +270,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/shader-slang/slang",
-        "revision": "v2026.19",
+        "revision": "v2026.20",
         "recursive": true
     }
 },
@@ -280,7 +280,37 @@
     "source": {
         "type": "git",
         "url": "https://github.com/corporateshark/lightweightvk_screenshot_tests",
-        "revision": "e7cb74ad35153ca978a13827dee892980ce8f799",
+        "revision": "74cc705c229df17b17a5b893d10a03febcef442b",
+        "recursive": false
+    }
+},
+{
+    "name": "ml-sdk/emulation-layer",
+    "predicate": "os.environ.get('LVK_WITH_ML_EMULATION_LAYER') == 'ON'",
+    "source": {
+        "type": "git",
+        "url": "https://github.com/rokuz/ai-ml-emulation-layer-for-vulkan.git",
+        "revision": "249c24c73157efd3b22edc76612f1239718e5528",
+        "recursive": false
+    }
+},
+{
+    "name": "ml-sdk/SPIRV-Cross",
+    "predicate": "os.environ.get('LVK_WITH_ML_EMULATION_LAYER') == 'ON'",
+    "source": {
+        "type": "git",
+        "url": "https://github.com/KhronosGroup/SPIRV-Cross.git",
+        "revision": "vulkan-sdk-1.4.357.0",
+        "recursive": false
+    }
+},
+{
+    "name": "ml-sdk/json",
+    "predicate": "os.environ.get('LVK_WITH_ML_EMULATION_LAYER') == 'ON'",
+    "source": {
+        "type": "git",
+        "url": "https://github.com/nlohmann/json.git",
+        "revision": "v3.12.0",
         "recursive": false
     }
 }

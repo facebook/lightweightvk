@@ -309,6 +309,8 @@ VkShaderStageFlagBits shaderStageToVkShaderStage(lvk::ShaderStage stage) {
     return VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
   case lvk::Stage_Callable:
     return VK_SHADER_STAGE_CALLABLE_BIT_KHR;
+  case lvk::Stage_DataGraph:
+    break; // VK_ARM_data_graph has no shader stage bit
   };
   LVK_ASSERT(false);
   return VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
@@ -348,6 +350,12 @@ VkBuildAccelerationStructureFlagsKHR buildFlagsToVkBuildAccelerationStructureFla
   }
   if (buildFlags & lvk::AccelStructBuildFlagBits_LowMemory) {
     flags |= VK_BUILD_ACCELERATION_STRUCTURE_LOW_MEMORY_BIT_KHR;
+  }
+  if (buildFlags & lvk::AccelStructBuildFlagBits_AllowDisableOpacityMicromaps) {
+    flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_BIT_KHR;
+  }
+  if (buildFlags & lvk::AccelStructBuildFlagBits_AllowDataAccess) {
+    flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR;
   }
 
   return flags;
@@ -1619,10 +1627,11 @@ lvk::TextureHandle lvk::VulkanSwapchain::getCurrentTexture() {
   LVK_PROFILER_FUNCTION();
 
   if (getNextImage_) {
+    // wait until the submission which last rendered into this image has completed
     const VkSemaphoreWaitInfo waitInfo = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
         .semaphoreCount = 1,
-        .pSemaphores = &ctx_.timelineSemaphore_,
+        .pSemaphores = &ctx_.immediate_->getTimelineSemaphore(),
         .pValues = &timelineWaitValues_[currentImageIndex_],
     };
     VK_ASSERT(vkWaitSemaphores(device_, &waitInfo, UINT64_MAX));
@@ -1729,7 +1738,6 @@ lvk::Result lvk::VulkanSwapchain::present(VkSemaphore waitSemaphore) {
 
   // ready to call `acquireNextImage()` on the next `getCurrentVulkanTexture()`
   getNextImage_ = true;
-  currentFrameIndex_++;
 
   LVK_PROFILER_FRAME(nullptr);
 
@@ -1770,13 +1778,9 @@ lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device,
     CommandBufferWrapper& buf = buffers_[i];
     (void)std::snprintf(objectName, sizeof(objectName) - 1, "Semaphore: cmdbuf %u (%s)", i, debugName_);
     buf.semaphore_ = lvk::createSemaphore(device, objectName);
-    (void)std::snprintf(objectName, sizeof(objectName) - 1, "Fence: cmdbuf %u (%s)", i, debugName_);
-    buf.fence_ = lvk::createFence(device, objectName);
     VK_ASSERT(vkAllocateCommandBuffers(device, &ai, &buf.cmdBufAllocated_));
     (void)std::snprintf(objectName, sizeof(objectName) - 1, "Command Buffer: %u (%s)", i, debugName_);
     VK_ASSERT(lvk::setDebugObjectName(device, VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)buf.cmdBufAllocated_, objectName));
-    buffers_[i].handle_.bufferIndex_ = i;
-    buffers_[i].handle_.queueFamilyIndex_ = queueFamilyIndex; // make every SubmitHandle self-describing
   }
 
   (void)std::snprintf(objectName, sizeof(objectName) - 1, "Semaphore: timeline (%s)", debugName_);
@@ -1789,8 +1793,6 @@ lvk::VulkanImmediateCommands::~VulkanImmediateCommands() {
   waitAll();
 
   for (CommandBufferWrapper& buf : buffers_) {
-    // lifetimes of all VkFence objects are managed explicitly we do not use deferredTask() for them
-    vkDestroyFence(device_, buf.fence_, nullptr);
     vkDestroySemaphore(device_, buf.semaphore_, nullptr);
   }
 
@@ -1801,29 +1803,35 @@ lvk::VulkanImmediateCommands::~VulkanImmediateCommands() {
 void lvk::VulkanImmediateCommands::purge() {
   LVK_PROFILER_FUNCTION();
 
-  const uint32_t numBuffers = static_cast<uint32_t>(LVK_ARRAY_NUM_ELEMENTS(buffers_));
+  const uint64_t completedValue = getLastKnownCompletedValue();
 
-  for (uint32_t i = 0; i != numBuffers; i++) {
-    // always start checking with the oldest submitted buffer, then wrap around
-    CommandBufferWrapper& buf = buffers_[(i + lastSubmitHandle_.bufferIndex_ + 1) % numBuffers];
-
+  for (CommandBufferWrapper& buf : buffers_) {
     if (buf.cmdBuf_ == VK_NULL_HANDLE || buf.isEncoding_) {
       continue;
     }
 
-    const VkResult result = vkWaitForFences(device_, 1, &buf.fence_, VK_TRUE, 0);
-
-    if (result == VK_SUCCESS) {
-      VK_ASSERT(vkResetCommandBuffer(buf.cmdBuf_, VkCommandBufferResetFlags{0}));
-      VK_ASSERT(vkResetFences(device_, 1, &buf.fence_));
-      buf.cmdBuf_ = VK_NULL_HANDLE;
-      numAvailableCommandBuffers_++;
-    } else {
-      if (result != VK_TIMEOUT) {
-        VK_ASSERT(result);
-      }
+    if (buf.signaledTimelineValue_ > completedValue) {
+      continue; // still executing
     }
+
+    VK_ASSERT(vkResetCommandBuffer(buf.cmdBuf_, VkCommandBufferResetFlags{0}));
+    buf.cmdBuf_ = VK_NULL_HANDLE;
+    numAvailableCommandBuffers_++;
   }
+}
+
+uint64_t lvk::VulkanImmediateCommands::getLastKnownCompletedValue() const {
+  if (lastKnownCompletedValue_ >= lastSubmitHandle_.value_) {
+    // every submission on this queue is known to have completed, and only submit() can raise the timeline any further
+    return lastKnownCompletedValue_;
+  }
+
+  uint64_t value = 0;
+  VK_ASSERT(vkGetSemaphoreCounterValue(device_, submitTimelineSemaphore_, &value));
+  if (value > lastKnownCompletedValue_) {
+    lastKnownCompletedValue_ = value;
+  }
+  return lastKnownCompletedValue_;
 }
 
 const lvk::VulkanImmediateCommands::CommandBufferWrapper& lvk::VulkanImmediateCommands::acquire() {
@@ -1833,10 +1841,12 @@ const lvk::VulkanImmediateCommands::CommandBufferWrapper& lvk::VulkanImmediateCo
     purge();
   }
 
-  while (!numAvailableCommandBuffers_) {
+  if (!numAvailableCommandBuffers_) {
     LLOGL("Waiting for command buffers...\n");
     LVK_PROFILER_ZONE("Waiting for command buffers...", LVK_PROFILER_COLOR_WAIT);
-    purge();
+    // submissions complete in order, so the oldest one in flight always signals the next timeline value; waiting for it frees a slot
+    wait({{{.queueFamilyIndex_ = queueFamilyIndex_, .value_ = lastKnownCompletedValue_ + 1}}});
+    purge(); // wait() returns without purging if that value has been reached in the meantime
     LVK_PROFILER_ZONE_END();
   }
 
@@ -1864,7 +1874,6 @@ const lvk::VulkanImmediateCommands::CommandBufferWrapper& lvk::VulkanImmediateCo
     lastPresentFence_ = VK_NULL_HANDLE;
   }
 
-  current->handle_.submitId_ = submitCounter_;
   numAvailableCommandBuffers_--;
 
   current->cmdBuf_ = current->cmdBufAllocated_;
@@ -1874,8 +1883,6 @@ const lvk::VulkanImmediateCommands::CommandBufferWrapper& lvk::VulkanImmediateCo
       .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
   };
   VK_ASSERT(vkBeginCommandBuffer(current->cmdBuf_, &bi));
-
-  nextSubmitHandle_ = current->handle_;
 
   return *current;
 }
@@ -1892,12 +1899,18 @@ void lvk::VulkanImmediateCommands::wait(const SubmitHandle handle) {
     return;
   }
 
-  if (!LVK_VERIFY(!buffers_[handle.bufferIndex_].isEncoding_)) {
-    // we are waiting for a buffer which has not been submitted - this is probably a logic error somewhere in the calling code
-    return;
-  }
+  // a value from getNextSubmitHandle() may not be submitted yet; everything submitted so far is all there is to wait for
+  const uint64_t waitValue = std::min<uint64_t>(handle.value_, lastSubmitHandle_.value_);
+  const VkSemaphoreWaitInfo wi = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
+      .semaphoreCount = 1,
+      .pSemaphores = &submitTimelineSemaphore_,
+      .pValues = &waitValue,
+  };
+  VK_ASSERT(vkWaitSemaphores(device_, &wi, UINT64_MAX));
 
-  VK_ASSERT(vkWaitForFences(device_, 1, &buffers_[handle.bufferIndex_].fence_, VK_TRUE, UINT64_MAX));
+  LVK_ASSERT(waitValue >= lastKnownCompletedValue_); // isReady() above refreshed the cache and found it below handle.value_
+  lastKnownCompletedValue_ = waitValue;
 
   purge();
 }
@@ -1905,49 +1918,31 @@ void lvk::VulkanImmediateCommands::wait(const SubmitHandle handle) {
 void lvk::VulkanImmediateCommands::waitAll() {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_WAIT);
 
-  VkFence fences[kMaxCommandBuffers];
+  // the timeline is monotonic within a queue, so the newest submission's value covers every outstanding one
+  const uint64_t waitValue = lastSubmitHandle_.value_;
 
-  uint32_t numFences = 0;
+  if (waitValue) {
+    const VkSemaphoreWaitInfo wi = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
+        .semaphoreCount = 1,
+        .pSemaphores = &submitTimelineSemaphore_,
+        .pValues = &waitValue,
+    };
+    VK_ASSERT(vkWaitSemaphores(device_, &wi, UINT64_MAX));
 
-  for (const CommandBufferWrapper& buf : buffers_) {
-    if (buf.cmdBuf_ != VK_NULL_HANDLE && !buf.isEncoding_) {
-      fences[numFences++] = buf.fence_;
-    }
-  }
-
-  if (numFences) {
-    VK_ASSERT(vkWaitForFences(device_, numFences, fences, VK_TRUE, UINT64_MAX));
+    lastKnownCompletedValue_ = waitValue; // the whole queue has drained
   }
 
   purge();
 }
 
-bool lvk::VulkanImmediateCommands::isReady(const SubmitHandle handle, bool fastCheckNoVulkan) const {
-  LVK_ASSERT(handle.bufferIndex_ < kMaxCommandBuffers);
-
-  if (handle.empty()) {
-    // a null handle
+bool lvk::VulkanImmediateCommands::isReady(const SubmitHandle handle) const {
+  if (handle.value_ <= lastKnownCompletedValue_) {
+    // a null handle, or a submission we already know has completed
     return true;
   }
 
-  const CommandBufferWrapper& buf = buffers_[handle.bufferIndex_];
-
-  if (buf.cmdBuf_ == VK_NULL_HANDLE) {
-    // already recycled and not yet reused
-    return true;
-  }
-
-  if (buf.handle_.submitId_ != handle.submitId_) {
-    // already recycled and reused by another command buffer
-    return true;
-  }
-
-  if (fastCheckNoVulkan) {
-    // do not ask the Vulkan API about it, just let it retire naturally (when submitId for this bufferIndex gets incremented)
-    return false;
-  }
-
-  return vkWaitForFences(device_, 1, &buf.fence_, VK_TRUE, 0) == VK_SUCCESS;
+  return getLastKnownCompletedValue() >= handle.value_;
 }
 
 lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrapper& wrapper) {
@@ -1967,12 +1962,10 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
   if (waitTimeline_.semaphore) {
     waitSemaphores[numWaitSemaphores++] = waitTimeline_;
   }
-  // Signals: per-slot binary semaphore (intra-queue chain / present) + the monotonic cross-queue timeline + an optional extra signal.
-  // The next timeline value is one past the most recent submission's; the highest value always belongs to the last submit,
-  // so we read it back from that slot instead of caching a separate running counter.
-  const uint64_t prevTimelineValue = lastSubmitHandle_.empty() ? 0 : buffers_[lastSubmitHandle_.bufferIndex_].signaledTimelineValue_;
-  const uint64_t timelineValue = prevTimelineValue + 1;
-  VkSemaphoreSubmitInfo signalSemaphores[] = {
+  // Signals: per-slot binary semaphore (intra-queue chain / present) + the monotonic cross-queue timeline.
+  // The next timeline value is one past the most recent submission's, which a SubmitHandle carries verbatim.
+  const uint64_t timelineValue = lastSubmitHandle_.value_ + 1;
+  const VkSemaphoreSubmitInfo signalSemaphores[] = {
       VkSemaphoreSubmitInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                             .semaphore = wrapper.semaphore_,
                             .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT},
@@ -1980,12 +1973,7 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
                             .semaphore = submitTimelineSemaphore_,
                             .value = timelineValue,
                             .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT},
-      {},
   };
-  uint32_t numSignalSemaphores = 2;
-  if (signalSemaphore_.semaphore) {
-    signalSemaphores[numSignalSemaphores++] = signalSemaphore_;
-  }
   wrapper.signaledTimelineValue_ = timelineValue;
 
   LVK_PROFILER_ZONE("vkQueueSubmit2()", LVK_PROFILER_COLOR_SUBMIT);
@@ -2002,10 +1990,10 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
       .pWaitSemaphoreInfos = waitSemaphores,
       .commandBufferInfoCount = 1u,
       .pCommandBufferInfos = &bufferSI,
-      .signalSemaphoreInfoCount = numSignalSemaphores,
+      .signalSemaphoreInfoCount = static_cast<uint32_t>(LVK_ARRAY_NUM_ELEMENTS(signalSemaphores)),
       .pSignalSemaphoreInfos = signalSemaphores,
   };
-  const VkResult result = vkQueueSubmit2(queue_, 1u, &si, wrapper.fence_);
+  const VkResult result = vkQueueSubmit2(queue_, 1u, &si, VK_NULL_HANDLE);
   if (has_EXT_device_fault_ && result == VK_ERROR_DEVICE_LOST) {
     VkDeviceFaultCountsEXT count = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT,
@@ -2078,19 +2066,12 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
   LVK_PROFILER_ZONE_END();
 
   lastSubmitSemaphore_.semaphore = wrapper.semaphore_;
-  lastSubmitHandle_ = wrapper.handle_;
+  lastSubmitHandle_ = {{{.queueFamilyIndex_ = queueFamilyIndex_, .value_ = timelineValue}}};
   waitSemaphore_.semaphore = VK_NULL_HANDLE;
   waitTimeline_.semaphore = VK_NULL_HANDLE;
-  signalSemaphore_.semaphore = VK_NULL_HANDLE;
 
   // reset
   wrapper.isEncoding_ = false;
-  submitCounter_++;
-
-  if (!submitCounter_) {
-    // skip the 0 value - when uint32_t wraps around (null SubmitHandle)
-    submitCounter_++;
-  }
 
   return lastSubmitHandle_;
 }
@@ -2108,13 +2089,6 @@ void lvk::VulkanImmediateCommands::waitTimelineSemaphore(VkSemaphore semaphore, 
   waitTimeline_.value = value;
 }
 
-void lvk::VulkanImmediateCommands::signalSemaphore(VkSemaphore semaphore, uint64_t signalValue) {
-  LVK_ASSERT(signalSemaphore_.semaphore == VK_NULL_HANDLE);
-
-  signalSemaphore_.semaphore = semaphore;
-  signalSemaphore_.value = signalValue;
-}
-
 VkSemaphore lvk::VulkanImmediateCommands::acquireLastSubmitSemaphore() {
   return std::exchange(lastSubmitSemaphore_.semaphore, VK_NULL_HANDLE);
 }
@@ -2124,30 +2098,12 @@ void lvk::VulkanImmediateCommands::setLastPresentSemaphore(VkSemaphore semaphore
   lastPresentFence_ = presentFence;
 }
 
-VkFence lvk::VulkanImmediateCommands::getVkFence(lvk::SubmitHandle handle) const {
-  if (handle.empty()) {
-    return VK_NULL_HANDLE;
-  }
-
-  return buffers_[handle.bufferIndex_].fence_;
-}
-
-uint64_t lvk::VulkanImmediateCommands::getTimelineValue(lvk::SubmitHandle handle) const {
-  if (handle.empty()) {
-    return 0;
-  }
-
-  const CommandBufferWrapper& buf = buffers_[handle.bufferIndex_];
-  // a stale handle (slot already recycled and reused) means the dependency completed long ago - nothing to wait for
-  return buf.handle_.submitId_ == handle.submitId_ ? buf.signaledTimelineValue_ : 0;
-}
-
 lvk::SubmitHandle lvk::VulkanImmediateCommands::getLastSubmitHandle() const {
   return lastSubmitHandle_;
 }
 
 lvk::SubmitHandle lvk::VulkanImmediateCommands::getNextSubmitHandle() const {
-  return nextSubmitHandle_;
+  return {{{.queueFamilyIndex_ = queueFamilyIndex_, .value_ = lastSubmitHandle_.value_ + 1}}};
 }
 
 lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
@@ -2412,7 +2368,6 @@ void lvk::CommandBuffer::addCrossQueueDependencies(const Dependencies& deps) {
   // each queue only needs to wait on the *other* queue's timeline; same-queue ordering is the intra-queue chain's job
   const bool isCompute = immediate_ == ctx_->immediateCompute_.get();
   const ldr::Span<SubmitHandle> crossDeps = isCompute ? deps.waitGraphics : deps.waitCompute;
-  lvk::VulkanImmediateCommands& other = isCompute ? *ctx_->immediate_ : *ctx_->immediateCompute_;
   uint64_t& waitValue = isCompute ? crossQueueGraphicsWaitValue_ : crossQueueComputeWaitValue_;
 
   // each queue signals one monotonic timeline, so waiting on the highest required value covers every dependency at once
@@ -2420,7 +2375,7 @@ void lvk::CommandBuffer::addCrossQueueDependencies(const Dependencies& deps) {
     if (dep.empty()) {
       continue;
     }
-    waitValue = std::max<uint64_t>(waitValue, other.getTimelineValue(dep));
+    waitValue = std::max<uint64_t>(waitValue, dep.value_);
   }
 }
 
@@ -2604,7 +2559,6 @@ void lvk::CommandBuffer::cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle
     lastPipelineBound_ = pipeline;
     vkCmdBindPipeline(wrapper_->cmdBuf_, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
     if (rtps->stackSize_) {
-      // the pipeline was created with VK_DYNAMIC_STATE_RAY_TRACING_PIPELINE_STACK_SIZE_KHR
       vkCmdSetRayTracingPipelineStackSizeKHR(wrapper_->cmdBuf_, rtps->stackSize_);
     }
     ctx_->checkAndUpdateDescriptorSets();
@@ -3317,7 +3271,16 @@ void lvk::CommandBuffer::cmdFillBuffer(BufferHandle buffer, size_t bufferOffset,
 
   bufferBarrier(buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
-  vkCmdFillBuffer(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, size, data);
+  if (ctx_->has_KHR_device_address_commands_ && buf->vkDeviceAddress_) {
+    // vkCmdFillBuffer() is a legacy command when VK_KHR_device_address_commands is enabled
+    const VkDeviceAddressRangeKHR range = {
+        .address = buf->vkDeviceAddress_ + bufferOffset,
+        .size = size == VK_WHOLE_SIZE ? (buf->bufferSize_ - bufferOffset) & ~VkDeviceSize(3) : size,
+    };
+    vkCmdFillMemoryKHR(wrapper_->cmdBuf_, &range, buf->getVkAddressCommandFlags(), data);
+  } else {
+    vkCmdFillBuffer(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, size, data);
+  }
 
   VkPipelineStageFlags2 dstStage = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
 
@@ -3402,7 +3365,13 @@ void lvk::CommandBuffer::cmdUpdateBuffer(BufferHandle buffer, size_t bufferOffse
 
   bufferBarrier(buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
-  vkCmdUpdateBuffer(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, size, data);
+  if (ctx_->has_KHR_device_address_commands_ && buf->vkDeviceAddress_) {
+    // vkCmdUpdateBuffer() is a legacy command when VK_KHR_device_address_commands is enabled
+    const VkDeviceAddressRangeKHR range = {.address = buf->vkDeviceAddress_ + bufferOffset, .size = size};
+    vkCmdUpdateMemoryKHR(wrapper_->cmdBuf_, &range, buf->getVkAddressCommandFlags(), size, data);
+  } else {
+    vkCmdUpdateBuffer(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, size, data);
+  }
 
   VkPipelineStageFlags2 dstStage = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
 
@@ -3852,7 +3821,10 @@ void lvk::CommandBuffer::cmdUpdateTLAS(AccelStructHandle handle, BufferHandle in
 
   lvk::AccelerationStructure* as = ctx_->accelStructuresPool_.get(handle);
 
-  LVK_ASSERT_MSG(as->buildFlags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR,
+  // see createTLAS(): such TLASes are built without AllowUpdate
+  const bool rebuild = ctx_->workaround_noMultiInstanceTLASUpdate_ && as->buildRangeInfo.primitiveCount > 1;
+
+  LVK_ASSERT_MSG((as->buildFlags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR) || rebuild,
                  "TLAS must be created with AccelStructBuildFlagBits_AllowUpdate to be updated");
 
   const VkAccelerationStructureGeometryKHR accelerationStructureGeometry{
@@ -3891,13 +3863,16 @@ void lvk::CommandBuffer::cmdUpdateTLAS(AccelStructHandle handle, BufferHandle in
   accelerationStructureBuildSizesInfo.updateScratchSize += alignment;
   accelerationStructureBuildSizesInfo.buildScratchSize += alignment;
 
-  if (!as->scratchBuffer.valid() || getBufferSize(ctx_, as->scratchBuffer) < accelerationStructureBuildSizesInfo.updateScratchSize) {
+  const VkDeviceSize scratchSize = rebuild ? accelerationStructureBuildSizesInfo.buildScratchSize
+                                           : accelerationStructureBuildSizesInfo.updateScratchSize;
+
+  if (!as->scratchBuffer.valid() || getBufferSize(ctx_, as->scratchBuffer) < scratchSize) {
     LLOGD("Recreating scratch buffer for TLAS update");
     as->scratchBuffer = ctx_->createBuffer(
         lvk::BufferDesc{
             .usage = lvk::BufferUsageBits_Storage,
             .storage = lvk::StorageType_Device,
-            .size = accelerationStructureBuildSizesInfo.updateScratchSize,
+            .size = scratchSize,
             .debugName = "scratchBuffer",
         },
         nullptr,
@@ -3908,8 +3883,8 @@ void lvk::CommandBuffer::cmdUpdateTLAS(AccelStructHandle handle, BufferHandle in
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
       .flags = as->buildFlags,
-      .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR,
-      .srcAccelerationStructure = as->vkHandle,
+      .mode = rebuild ? VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR : VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR,
+      .srcAccelerationStructure = rebuild ? VK_NULL_HANDLE : as->vkHandle,
       .dstAccelerationStructure = as->vkHandle,
       .geometryCount = 1,
       .pGeometries = &accelerationStructureGeometry,
@@ -3983,6 +3958,7 @@ void lvk::CommandBuffer::cmdUpdateBLAS(const ldr::Span<AccelStructHandle>& handl
     LVK_ASSERT(as && !as->isTLAS);
     LVK_ASSERT_MSG(as->buildFlags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR,
                    "BLAS must be built with AccelStructBuildFlagBits_AllowUpdate to be refit");
+    as->geometry.geometry.triangles.pNext = as->opacityMicromap.sType ? &as->opacityMicromap : nullptr;
     buildInfos.push_back(VkAccelerationStructureBuildGeometryInfoKHR{
         .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
         .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
@@ -4302,15 +4278,38 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
             .imageOffset = {.x = region.offset.x, .y = region.offset.y, .z = 0},
             .imageExtent = {.width = region.extent.width, .height = region.extent.height, .depth = 1u},
         };
-        const VkCopyBufferToImageInfo2 copyInfo = {
-            .sType = VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2,
-            .srcBuffer = stagingBuffer->vkBuffer_,
-            .dstImage = image.vkImage_,
-            .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .regionCount = 1,
-            .pRegions = &copy,
-        };
-        vkCmdCopyBufferToImage2(wrapper.cmdBuf_, &copyInfo);
+        if (ctx_.has_KHR_device_address_commands_) {
+          // vkCmdCopyBufferToImage2() is a legacy command when VK_KHR_device_address_commands is enabled
+          const VkDeviceMemoryImageCopyKHR memoryCopy = {
+              .sType = VK_STRUCTURE_TYPE_DEVICE_MEMORY_IMAGE_COPY_KHR,
+              .addressRange = {.address = stagingBuffer->vkDeviceAddress_ + copy.bufferOffset,
+                               .size = stagingBufferSize_ - copy.bufferOffset},
+              .addressFlags = stagingBuffer->getVkAddressCommandFlags(),
+              .addressRowLength = copy.bufferRowLength,
+              .addressImageHeight = copy.bufferImageHeight,
+              .imageSubresource = copy.imageSubresource,
+              .imageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+              .imageOffset = copy.imageOffset,
+              .imageExtent = copy.imageExtent,
+          };
+          const VkCopyDeviceMemoryImageInfoKHR copyInfo = {
+              .sType = VK_STRUCTURE_TYPE_COPY_DEVICE_MEMORY_IMAGE_INFO_KHR,
+              .image = image.vkImage_,
+              .regionCount = 1,
+              .pRegions = &memoryCopy,
+          };
+          vkCmdCopyMemoryToImageKHR(wrapper.cmdBuf_, &copyInfo);
+        } else {
+          const VkCopyBufferToImageInfo2 copyInfo = {
+              .sType = VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2,
+              .srcBuffer = stagingBuffer->vkBuffer_,
+              .dstImage = image.vkImage_,
+              .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+              .regionCount = 1,
+              .pRegions = &copy,
+          };
+          vkCmdCopyBufferToImage2(wrapper.cmdBuf_, &copyInfo);
+        }
         planeOffset += lvk::getTextureBytesPerPlane(imageRegion.extent.width, imageRegion.extent.height, vkFormatToFormat(format), plane);
       }
 
@@ -4394,15 +4393,35 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
         .imageOffset = {.x = offset.x, .y = offset.y, .z = static_cast<int32_t>(currentZ)},
         .imageExtent = {.width = extent.width, .height = extent.height, .depth = batchSlices},
     };
-    const VkCopyBufferToImageInfo2 copyInfo = {
-        .sType = VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2,
-        .srcBuffer = stagingBuffer->vkBuffer_,
-        .dstImage = image.vkImage_,
-        .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .regionCount = 1,
-        .pRegions = &copy,
-    };
-    vkCmdCopyBufferToImage2(wrapper.cmdBuf_, &copyInfo);
+    if (ctx_.has_KHR_device_address_commands_) {
+      // vkCmdCopyBufferToImage2() is a legacy command when VK_KHR_device_address_commands is enabled
+      const VkDeviceMemoryImageCopyKHR memoryCopy = {
+          .sType = VK_STRUCTURE_TYPE_DEVICE_MEMORY_IMAGE_COPY_KHR,
+          .addressRange = {.address = stagingBuffer->vkDeviceAddress_ + copy.bufferOffset, .size = stagingBufferSize_ - copy.bufferOffset},
+          .addressFlags = stagingBuffer->getVkAddressCommandFlags(),
+          .imageSubresource = copy.imageSubresource,
+          .imageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+          .imageOffset = copy.imageOffset,
+          .imageExtent = copy.imageExtent,
+      };
+      const VkCopyDeviceMemoryImageInfoKHR copyInfo = {
+          .sType = VK_STRUCTURE_TYPE_COPY_DEVICE_MEMORY_IMAGE_INFO_KHR,
+          .image = image.vkImage_,
+          .regionCount = 1,
+          .pRegions = &memoryCopy,
+      };
+      vkCmdCopyMemoryToImageKHR(wrapper.cmdBuf_, &copyInfo);
+    } else {
+      const VkCopyBufferToImageInfo2 copyInfo = {
+          .sType = VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2,
+          .srcBuffer = stagingBuffer->vkBuffer_,
+          .dstImage = image.vkImage_,
+          .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+          .regionCount = 1,
+          .pRegions = &copy,
+      };
+      vkCmdCopyBufferToImage2(wrapper.cmdBuf_, &copyInfo);
+    }
 
     // last batch: transition the whole image out of TRANSFER_DST_OPTIMAL
     if (remainingSlices == batchSlices) {
@@ -4484,15 +4503,37 @@ void lvk::VulkanStagingDevice::getImageData(VulkanImage& image,
       .imageOffset = offset,
       .imageExtent = extent,
   };
-  const VkCopyImageToBufferInfo2 copyInfo = {
-      .sType = VK_STRUCTURE_TYPE_COPY_IMAGE_TO_BUFFER_INFO_2,
-      .srcImage = image.vkImage_,
-      .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-      .dstBuffer = stagingBuffer->vkBuffer_,
-      .regionCount = 1,
-      .pRegions = &copy,
-  };
-  vkCmdCopyImageToBuffer2(wrapper1.cmdBuf_, &copyInfo);
+  if (ctx_.has_KHR_device_address_commands_) {
+    // vkCmdCopyImageToBuffer2() is a legacy command when VK_KHR_device_address_commands is enabled
+    const VkDeviceMemoryImageCopyKHR memoryCopy = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_MEMORY_IMAGE_COPY_KHR,
+        .addressRange = {.address = stagingBuffer->vkDeviceAddress_ + copy.bufferOffset, .size = stagingBufferSize_ - copy.bufferOffset},
+        .addressFlags = stagingBuffer->getVkAddressCommandFlags(),
+        .addressRowLength = copy.bufferRowLength,
+        .addressImageHeight = copy.bufferImageHeight,
+        .imageSubresource = copy.imageSubresource,
+        .imageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        .imageOffset = copy.imageOffset,
+        .imageExtent = copy.imageExtent,
+    };
+    const VkCopyDeviceMemoryImageInfoKHR copyInfo = {
+        .sType = VK_STRUCTURE_TYPE_COPY_DEVICE_MEMORY_IMAGE_INFO_KHR,
+        .image = image.vkImage_,
+        .regionCount = 1,
+        .pRegions = &memoryCopy,
+    };
+    vkCmdCopyImageToMemoryKHR(wrapper1.cmdBuf_, &copyInfo);
+  } else {
+    const VkCopyImageToBufferInfo2 copyInfo = {
+        .sType = VK_STRUCTURE_TYPE_COPY_IMAGE_TO_BUFFER_INFO_2,
+        .srcImage = image.vkImage_,
+        .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        .dstBuffer = stagingBuffer->vkBuffer_,
+        .regionCount = 1,
+        .pRegions = &copy,
+    };
+    vkCmdCopyImageToBuffer2(wrapper1.cmdBuf_, &copyInfo);
+  }
 
   desc.handle_ = ctx_.immediate_->submit(wrapper1);
   insertRegion(desc);
@@ -4553,12 +4594,13 @@ void lvk::VulkanStagingDevice::ensureStagingBufferSize(VkDeviceSize sizeNeeded) 
   char debugName[256] = {0};
   (void)std::snprintf(debugName, sizeof(debugName) - 1, "Buffer: staging buffer %u", stagingBufferCounter_++);
 
-  stagingBuffer_ = {&ctx_,
-                    ctx_.createBuffer(stagingBufferSize_,
-                                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-                                      nullptr,
-                                      debugName)};
+  stagingBuffer_ = {
+      &ctx_,
+      ctx_.createBuffer(stagingBufferSize_,
+                        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                        nullptr,
+                        debugName)};
   LVK_ASSERT(!stagingBuffer_.empty());
 
   regions_.clear();
@@ -4726,7 +4768,8 @@ lvk::VulkanContext::~VulkanContext() {
   stagingDevice_.reset(nullptr);
   swapchain_.reset(nullptr); // swapchain has to be destroyed prior to Surface
 
-  vkDestroySemaphore(vkDevice_, timelineSemaphore_, nullptr);
+  // the dummies are destroyed right below: turn the descriptor writes in pending deferred tasks into no-ops
+  awaitingCreation_ = true;
 
   destroy(dummyTexture_);
 
@@ -4857,14 +4900,6 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
 
   const bool shouldPresent = hasSwapchain() && present;
 
-  if (shouldPresent) {
-    // if we a presenting a swapchain image, signal our timeline semaphore
-    const uint64_t signalValue = swapchain_->currentFrameIndex_ + swapchain_->getNumSwapchainImages();
-    // we wait for this value next time we want to acquire this swapchain image
-    swapchain_->timelineWaitValues_[swapchain_->currentImageIndex_] = signalValue;
-    immediate_->signalSemaphore(timelineSemaphore_, signalValue);
-  }
-
   // Submit on the command buffer's own queue (graphics or async-compute)
   LVK_ASSERT(vkCmdBuffer->immediate_);
   lvk::VulkanImmediateCommands& imm = *vkCmdBuffer->immediate_;
@@ -4898,8 +4933,7 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
   if (&imm == immediateCompute_.get()) {
     // Compute waits on the graphics submit timeline for BOTH the write-after-read guard (don't overwrite images the graphics queue
     // may still be reading) and any explicit Dependencies::waitGraphics (read-after-write). A single wait on the highest value covers both.
-    const lvk::SubmitHandle lastGraphics = immediate_->getLastSubmitHandle();
-    const uint64_t waitValue = std::max<uint64_t>(immediate_->getTimelineValue(lastGraphics), vkCmdBuffer->crossQueueGraphicsWaitValue_);
+    const uint64_t waitValue = std::max<uint64_t>(immediate_->getLastSubmitHandle().value_, vkCmdBuffer->crossQueueGraphicsWaitValue_);
     if (waitValue) {
       immediateCompute_->waitTimelineSemaphore(immediate_->getTimelineSemaphore(), waitValue);
     }
@@ -4911,6 +4945,9 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
   vkCmdBuffer->lastSubmitHandle_ = imm.submit(*vkCmdBuffer->wrapper_);
 
   if (shouldPresent) {
+    LVK_ASSERT_MSG(&imm == immediate_.get(), "Only the graphics queue can present");
+    // we wait for this value next time we want to acquire this swapchain image
+    swapchain_->timelineWaitValues_[swapchain_->currentImageIndex_] = vkCmdBuffer->lastSubmitHandle_.value_;
     swapchain_->present(immediate_->acquireLastSubmitSemaphore());
   }
 
@@ -4941,18 +4978,19 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
   return handle;
 }
 
-void lvk::VulkanContext::wait(SubmitHandle handle) {
-  // route to the queue the handle was produced on (a SubmitHandle is self-describing via its queue family index)
+lvk::VulkanImmediateCommands* lvk::VulkanContext::getImmediateCommands(SubmitHandle handle) const {
+  // the async-compute queue exists only when its family differs from the graphics one, so the family index is unambiguous
   const bool isComputeQueue = immediateCompute_ && !handle.empty() && handle.queueFamilyIndex_ == deviceQueues_.computeQueueFamilyIndex;
 
-  (isComputeQueue ? immediateCompute_ : immediate_)->wait(handle);
+  return isComputeQueue ? immediateCompute_.get() : immediate_.get();
+}
+
+void lvk::VulkanContext::wait(SubmitHandle handle) {
+  getImmediateCommands(handle)->wait(handle);
 }
 
 bool lvk::VulkanContext::isReady(SubmitHandle handle) const {
-  // route to the queue the handle was produced on (a SubmitHandle is self-describing via its queue family index)
-  const bool isComputeQueue = immediateCompute_ && !handle.empty() && handle.queueFamilyIndex_ == deviceQueues_.computeQueueFamilyIndex;
-
-  return (isComputeQueue ? immediateCompute_ : immediate_)->isReady(handle);
+  return getImmediateCommands(handle)->isReady(handle);
 }
 
 lvk::Holder<lvk::BufferHandle> lvk::VulkanContext::createBuffer(const BufferDesc& requestedDesc, const char* debugName, Result* outResult) {
@@ -5074,6 +5112,13 @@ lvk::Holder<lvk::AccelStructHandle> lvk::VulkanContext::createAccelerationStruct
     break;
   case AccelStructType_TLAS:
     handle = createTLAS(desc, &result);
+    break;
+  case AccelStructType_OpacityMicromap:
+    if (!LVK_VERIFY(has_KHR_opacity_micromap_)) {
+      Result::setResult(outResult, Result(Result::Code::RuntimeError, "VK_KHR_opacity_micromap is not enabled"));
+      return {};
+    }
+    handle = createOpacityMicromap(desc, &result);
     break;
   default:
     LVK_ASSERT_MSG(false, "Invalid acceleration structure type");
@@ -5676,8 +5721,9 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
 
 lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& desc, Result* outResult) {
   VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
+  VkAccelerationStructureTrianglesOpacityMicromapKHR opacityMicromap{};
   VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
-  getBuildInfoBLAS(desc, accelerationStructureGeometry, accelerationStructureBuildSizesInfo);
+  getBuildInfoBLAS(desc, accelerationStructureGeometry, opacityMicromap, accelerationStructureBuildSizesInfo);
 
   char debugNameBuffer[256] = {0};
   if (desc.debugName) {
@@ -5702,14 +5748,30 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
           nullptr,
           outResult),
       .geometry = accelerationStructureGeometry,
+      .opacityMicromap = opacityMicromap,
   };
-  const VkAccelerationStructureCreateInfoKHR ciAccelerationStructure = {
-      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
-      .buffer = getVkBuffer(this, accelStruct.buffer),
-      .size = accelerationStructureBuildSizesInfo.accelerationStructureSize,
-      .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-  };
-  VK_ASSERT(vkCreateAccelerationStructureKHR(vkDevice_, &ciAccelerationStructure, nullptr, &accelStruct.vkHandle));
+  // must not point to the stack; cmdUpdateBLAS() re-links it
+  accelStruct.geometry.geometry.triangles.pNext = nullptr;
+
+  if (has_KHR_device_address_commands_) {
+    // vkCreateAccelerationStructureKHR() is a legacy command when VK_KHR_device_address_commands is enabled
+    const lvk::VulkanBuffer* buf = buffersPool_.get(accelStruct.buffer);
+    const VkAccelerationStructureCreateInfo2KHR ciAccelerationStructure = {
+        .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_2_KHR,
+        .addressRange = {.address = buf->vkDeviceAddress_, .size = accelerationStructureBuildSizesInfo.accelerationStructureSize},
+        .addressFlags = buf->getVkAddressCommandFlags(),
+        .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+    };
+    VK_ASSERT(vkCreateAccelerationStructure2KHR(vkDevice_, &ciAccelerationStructure, nullptr, &accelStruct.vkHandle));
+  } else {
+    const VkAccelerationStructureCreateInfoKHR ciAccelerationStructure = {
+        .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
+        .buffer = getVkBuffer(this, accelStruct.buffer),
+        .size = accelerationStructureBuildSizesInfo.accelerationStructureSize,
+        .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+    };
+    VK_ASSERT(vkCreateAccelerationStructureKHR(vkDevice_, &ciAccelerationStructure, nullptr, &accelStruct.vkHandle));
+  }
 
   if (!LVK_VERIFY(accelStruct.vkHandle)) {
     Result::setResult(outResult, Result::Code::RuntimeError, "Cannot create VkAccelerationStructureKHR");
@@ -5758,7 +5820,95 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
   return accelStructuresPool_.create(std::move(accelStruct));
 }
 
+lvk::AccelStructHandle lvk::VulkanContext::createOpacityMicromap(const AccelStructDesc& desc, Result* outResult) {
+  VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
+  VkAccelerationStructureGeometryMicromapDataKHR micromapData{};
+  std::vector<VkMicromapUsageKHR> usageCounts;
+  VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
+  getBuildInfoOpacityMicromap(desc, accelerationStructureGeometry, micromapData, usageCounts, accelerationStructureBuildSizesInfo);
+
+  char debugNameBuffer[256] = {0};
+  if (desc.debugName) {
+    (void)std::snprintf(debugNameBuffer, sizeof(debugNameBuffer) - 1, "Buffer: %s", desc.debugName);
+  }
+  lvk::AccelerationStructure accelStruct = {
+      .buildFlags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
+      .buffer = createBuffer(
+          {
+              .usage = lvk::BufferUsageBits_AccelStructStorage,
+              .storage = lvk::StorageType_Device,
+              .size = accelerationStructureBuildSizesInfo.accelerationStructureSize,
+              .debugName = debugNameBuffer,
+          },
+          nullptr,
+          outResult),
+  };
+
+  // VUID-VkAccelerationStructureCreateInfo2KHR-addressRange-11605
+  LVK_ASSERT_MSG(gpuAddress(accelStruct.buffer) % 256 == 0, "Opacity micromap storage must be 256-byte aligned");
+
+  const VkAccelerationStructureCreateInfo2KHR ciAccelerationStructure = {
+      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_2_KHR,
+      .addressRange =
+          {
+              .address = gpuAddress(accelStruct.buffer),
+              .size = accelerationStructureBuildSizesInfo.accelerationStructureSize,
+          },
+      .type = VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR,
+  };
+  VK_ASSERT(vkCreateAccelerationStructure2KHR(vkDevice_, &ciAccelerationStructure, nullptr, &accelStruct.vkHandle));
+
+  if (!LVK_VERIFY(accelStruct.vkHandle)) {
+    Result::setResult(outResult, Result::Code::RuntimeError, "Cannot create VkAccelerationStructureKHR (opacity micromap)");
+    return {};
+  }
+
+  if (desc.debugName) {
+    VK_ASSERT(
+        lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR, (uint64_t)accelStruct.vkHandle, desc.debugName));
+  }
+
+  lvk::Holder<lvk::BufferHandle> scratchBuffer = createBuffer(
+      {
+          .usage = lvk::BufferUsageBits_Storage,
+          .storage = lvk::StorageType_Device,
+          .size = accelerationStructureBuildSizesInfo.buildScratchSize,
+          .debugName = "Buffer: opacity micromap scratch",
+      },
+      nullptr,
+      outResult);
+
+  const VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{
+      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
+      .type = VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR,
+      .flags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
+      .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
+      .dstAccelerationStructure = accelStruct.vkHandle,
+      .geometryCount = 1,
+      .pGeometries = &accelerationStructureGeometry,
+      .scratchData = {.deviceAddress = getAlignedAddress(gpuAddress(scratchBuffer),
+                                                         accelerationStructureProperties_.minAccelerationStructureScratchOffsetAlignment)},
+  };
+
+  const VkAccelerationStructureBuildRangeInfoKHR* accelerationBuildStructureRangeInfos[] = {nullptr};
+
+  lvk::ICommandBuffer& buffer = acquireCommandBuffer();
+  vkCmdBuildAccelerationStructuresKHR(
+      lvk::getVkCommandBuffer(buffer), 1, &accelerationBuildGeometryInfo, accelerationBuildStructureRangeInfos);
+  wait(submit(buffer, {}, {}));
+
+  return accelStructuresPool_.create(std::move(accelStruct));
+}
+
 lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& desc, Result* outResult) {
+  // see cmdUpdateTLAS(): such TLASes are rebuilt instead of updated
+  if (workaround_noMultiInstanceTLASUpdate_ && (desc.buildFlags & AccelStructBuildFlagBits_AllowUpdate) &&
+      desc.buildRange.primitiveCount > 1) {
+    AccelStructDesc descNoUpdate = desc;
+    descNoUpdate.buildFlags &= ~AccelStructBuildFlagBits_AllowUpdate;
+    return createTLAS(descNoUpdate, outResult);
+  }
+
   VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
   VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
   getBuildInfoTLAS(desc, accelerationStructureGeometry, accelerationStructureBuildSizesInfo);
@@ -5788,13 +5938,25 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
           outResult),
   };
 
-  const VkAccelerationStructureCreateInfoKHR ciAccelerationStructure = {
-      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
-      .buffer = getVkBuffer(this, accelStruct.buffer),
-      .size = accelerationStructureBuildSizesInfo.accelerationStructureSize,
-      .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-  };
-  VK_ASSERT(vkCreateAccelerationStructureKHR(vkDevice_, &ciAccelerationStructure, nullptr, &accelStruct.vkHandle));
+  if (has_KHR_device_address_commands_) {
+    // vkCreateAccelerationStructureKHR() is a legacy command when VK_KHR_device_address_commands is enabled
+    const lvk::VulkanBuffer* buf = buffersPool_.get(accelStruct.buffer);
+    const VkAccelerationStructureCreateInfo2KHR ciAccelerationStructure = {
+        .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_2_KHR,
+        .addressRange = {.address = buf->vkDeviceAddress_, .size = accelerationStructureBuildSizesInfo.accelerationStructureSize},
+        .addressFlags = buf->getVkAddressCommandFlags(),
+        .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+    };
+    VK_ASSERT(vkCreateAccelerationStructure2KHR(vkDevice_, &ciAccelerationStructure, nullptr, &accelStruct.vkHandle));
+  } else {
+    const VkAccelerationStructureCreateInfoKHR ciAccelerationStructure = {
+        .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
+        .buffer = getVkBuffer(this, accelStruct.buffer),
+        .size = accelerationStructureBuildSizesInfo.accelerationStructureSize,
+        .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+    };
+    VK_ASSERT(vkCreateAccelerationStructureKHR(vkDevice_, &ciAccelerationStructure, nullptr, &accelStruct.vkHandle));
+  }
 
   if (!LVK_VERIFY(accelStruct.vkHandle)) {
     Result::setResult(outResult, Result::Code::RuntimeError, "Cannot create VkAccelerationStructureKHR");
@@ -6328,27 +6490,22 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     }
   }
 
-  // recursion depth: the pipeline's own, else the context default, else the device maximum
-  const uint32_t deviceMaxDepth = rayTracingPipelineProperties_.maxRayRecursionDepth;
-  const uint32_t requestedDepth = rtps->maxRecursionDepth_ ? rtps->maxRecursionDepth_ : config_.maxRayRecursionDepth;
-  const uint32_t maxDepth = requestedDepth ? std::min(requestedDepth, deviceMaxDepth) : deviceMaxDepth;
-
-  const VkDynamicState dynamicStackSize = VK_DYNAMIC_STATE_RAY_TRACING_PIPELINE_STACK_SIZE_KHR;
-  const VkPipelineDynamicStateCreateInfo dynamicState = {
+  const uint32_t maxDepth = rayTracingPipelineProperties_.maxRayRecursionDepth;
+  const uint32_t depth = rtps->maxRecursionDepth_ ? rtps->maxRecursionDepth_ : config_.maxRayRecursionDepth;
+  const VkDynamicState dynamicState = VK_DYNAMIC_STATE_RAY_TRACING_PIPELINE_STACK_SIZE_KHR;
+  const VkPipelineDynamicStateCreateInfo ciDynamicState = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
       .dynamicStateCount = 1,
-      .pDynamicStates = &dynamicStackSize,
+      .pDynamicStates = &dynamicState,
   };
-  const bool useDynamicStackSize = rtps->stackSize_ != 0;
-
   const VkRayTracingPipelineCreateInfoKHR ciRayTracingPipeline = {
       .sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR,
       .stageCount = numShaderStages,
       .pStages = ciShaderStages.data(),
       .groupCount = numShaderGroups,
       .pGroups = shaderGroups.data(),
-      .maxPipelineRayRecursionDepth = maxDepth,
-      .pDynamicState = useDynamicStackSize ? &dynamicState : nullptr,
+      .maxPipelineRayRecursionDepth = depth ? std::min(depth, maxDepth) : maxDepth,
+      .pDynamicState = rtps->stackSize_ ? &ciDynamicState : nullptr,
       .layout = rtps->pipelineLayout_,
   };
   VK_ASSERT(vkCreateRayTracingPipelinesKHR(vkDevice_, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &ciRayTracingPipeline, nullptr, &rtps->pipeline_));
@@ -6511,9 +6668,9 @@ lvk::Holder<lvk::RayTracingPipelineHandle> lvk::VulkanContext::createRayTracingP
       .smCallable_ = {desc.smCallable.cbegin(), desc.smCallable.cend()},
       .hitGroups_ = {desc.hitGroups.cbegin(), desc.hitGroups.cend()},
       .specInfo_ = desc.specInfo,
-      .debugName_ = desc.debugName,
       .maxRecursionDepth_ = desc.maxRecursionDepth,
       .stackSize_ = desc.stackSize,
+      .debugName_ = desc.debugName,
   };
 
   if (desc.specInfo.data && desc.specInfo.dataSize) {
@@ -6730,12 +6887,20 @@ void lvk::VulkanContext::destroy(lvk::TextureHandle handle) {
     return;
   }
 
+  // the YUV binding is only refreshed by a full rebuild of the descriptor set
+  const bool isYUV = lvk::getNumImagePlanes(tex->vkImageFormat_) > 1;
+
   SCOPE_EXIT {
-    *tex = VulkanImage{}; // a repeated destroy() is a no-op; the descriptor set falls back to the dummy texture
-    awaitingCreation_ = true;
-    // return the slot to the free list only after the last submission using it has completed
+    *tex = VulkanImage{}; // a repeated destroy() is a no-op
+    if (isYUV) {
+      awaitingCreation_ = true;
+    }
+    // once no in-flight submission can read the slot, point it at the dummy texture and return it to the free list
     // (a slot reused earlier could be patched into the descriptor set while an in-flight command buffer still reads it)
-    deferredTask(std::packaged_task<void()>([this, handle]() { texturesPool_.destroy(handle); }));
+    deferredTask(std::packaged_task<void()>([this, handle]() {
+      (void)writeTextureDescriptor(handle.index()); // false: a pending full rebuild covers the slot
+      texturesPool_.destroy(handle);
+    }));
   };
 
   deferredTask(std::packaged_task<void()>(
@@ -7299,7 +7464,8 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
       lvk::getGlslangResource(getVkPhysicalDeviceProperties().limits, has_EXT_mesh_shader_ ? &vkMeshShaderProperties_ : nullptr);
 
   std::vector<uint8_t> spirv;
-  lvk::Result::setResult(outResult, lvk::compileShaderGlslang(stage, source, &spirv, config_.generateSPIRVDebugInfo, &glslangResource));
+  lvk::Result::setResult(outResult,
+                         lvk::compileShaderGlslang(stage, source, &spirv, config_.generateSPIRVDebugInfo, &glslangResource, optimizeSPIRV));
   if (optimizeSPIRV) {
     lvk::optimizeSPIRV(spirv);
   }
@@ -7541,14 +7707,24 @@ lvk::AccelStructSizes lvk::VulkanContext::getAccelStructSizes(const AccelStructD
   }
 
   VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
+  VkAccelerationStructureTrianglesOpacityMicromapKHR opacityMicromap{};
+  VkAccelerationStructureGeometryMicromapDataKHR micromapData{};
+  std::vector<VkMicromapUsageKHR> usageCounts;
   VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
   // NOLINTNEXTLINE(clang-diagnostic-switch-enum)
   switch (desc.type) {
   case AccelStructType_BLAS:
-    getBuildInfoBLAS(desc, accelerationStructureGeometry, accelerationStructureBuildSizesInfo);
+    getBuildInfoBLAS(desc, accelerationStructureGeometry, opacityMicromap, accelerationStructureBuildSizesInfo);
     break;
   case AccelStructType_TLAS:
     getBuildInfoTLAS(desc, accelerationStructureGeometry, accelerationStructureBuildSizesInfo);
+    break;
+  case AccelStructType_OpacityMicromap:
+    if (!LVK_VERIFY(has_KHR_opacity_micromap_)) {
+      Result::setResult(outResult, Result(Result::Code::RuntimeError, "VK_KHR_opacity_micromap is not enabled"));
+      return {};
+    }
+    getBuildInfoOpacityMicromap(desc, accelerationStructureGeometry, micromapData, usageCounts, accelerationStructureBuildSizesInfo);
     break;
   default:
     LVK_ASSERT_MSG(false, "Invalid acceleration structure type");
@@ -7588,6 +7764,17 @@ lvk::Result lvk::VulkanContext::createInstance() {
     }();
   }
 
+  // custom layers go first (closest to the application), so the validation layer checks the calls they emit
+  std::vector<const char*> enabledLayers;
+  for (const char* layer : config_.layers) {
+    if (layer) {
+      enabledLayers.push_back(layer);
+    }
+  }
+  if (config_.enableValidation) {
+    enabledLayers.insert(enabledLayers.end(), std::begin(kDefaultValidationLayers), std::end(kDefaultValidationLayers));
+  }
+
   std::vector<VkExtensionProperties> allInstanceExtensions;
   {
     uint32_t count = 0;
@@ -7595,16 +7782,17 @@ lvk::Result lvk::VulkanContext::createInstance() {
     allInstanceExtensions.resize(count);
     VK_ASSERT(vkEnumerateInstanceExtensionProperties(nullptr, &count, allInstanceExtensions.data()));
   }
-  // collect instance extensions from all validation layers
-  if (config_.enableValidation) {
-    for (const char* layer : kDefaultValidationLayers) {
-      uint32_t count = 0;
-      VK_ASSERT(vkEnumerateInstanceExtensionProperties(layer, &count, nullptr));
-      if (count > 0) {
-        const size_t sz = allInstanceExtensions.size();
-        allInstanceExtensions.resize(sz + count);
-        VK_ASSERT(vkEnumerateInstanceExtensionProperties(layer, &count, allInstanceExtensions.data() + sz));
-      }
+  // collect instance extensions from all enabled layers
+  for (const char* layer : enabledLayers) {
+    uint32_t count = 0;
+    if (const VkResult result = vkEnumerateInstanceExtensionProperties(layer, &count, nullptr); result != VK_SUCCESS) {
+      LLOGW("Vulkan layer `%s` is not available (%s)\n", layer, lvk::getVulkanResultString(result));
+      continue; // vkCreateInstance() will fail
+    }
+    if (count > 0) {
+      const size_t sz = allInstanceExtensions.size();
+      allInstanceExtensions.resize(sz + count);
+      VK_ASSERT(vkEnumerateInstanceExtensionProperties(layer, &count, allInstanceExtensions.data() + sz));
     }
   }
 
@@ -7649,7 +7837,7 @@ lvk::Result lvk::VulkanContext::createInstance() {
     enabledInstanceExtensionNames_.push_back(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME);
   }
 
-  if (config_.enableHeadlessSurface) {
+  if (config_.enableHeadlessSurface && hasExtension(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME, allInstanceExtensions)) {
     enabledInstanceExtensionNames_.push_back(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME);
   }
 
@@ -7750,8 +7938,8 @@ lvk::Result lvk::VulkanContext::createInstance() {
       .pNext = hasExtension(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME, allInstanceExtensions) ? &layerSettingsCreateInfo : nullptr,
       .flags = hasPortabilityEnumeration ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR : 0u,
       .pApplicationInfo = &appInfo,
-      .enabledLayerCount = config_.enableValidation ? static_cast<uint32_t>(LVK_ARRAY_NUM_ELEMENTS(kDefaultValidationLayers)) : 0u,
-      .ppEnabledLayerNames = config_.enableValidation ? kDefaultValidationLayers : nullptr,
+      .enabledLayerCount = static_cast<uint32_t>(enabledLayers.size()),
+      .ppEnabledLayerNames = enabledLayers.data(),
       .enabledExtensionCount = static_cast<uint32_t>(enabledInstanceExtensionNames_.size()),
       .ppEnabledExtensionNames = enabledInstanceExtensionNames_.data(),
   };
@@ -7968,6 +8156,7 @@ bool lvk::VulkanContext::shouldEnableHostImageCopy(const VkImageCreateInfo& ci) 
 
 void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
                                           VkAccelerationStructureGeometryKHR& outGeometry,
+                                          VkAccelerationStructureTrianglesOpacityMicromapKHR& outOpacityMicromap,
                                           VkAccelerationStructureBuildSizesInfoKHR& outSizesInfo) const {
   LVK_ASSERT(desc.type == AccelStructType_BLAS);
   LVK_ASSERT(desc.geometryType == AccelStructGeomType_Triangles);
@@ -8009,6 +8198,31 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
           },
       .flags = geometryFlags,
   };
+
+  outOpacityMicromap = {};
+
+  if (desc.micromap.valid()) {
+    LVK_ASSERT(has_KHR_opacity_micromap_);
+    const AccelerationStructure* micromap = accelStructuresPool_.get(desc.micromap);
+    [[maybe_unused]] const lvk::VulkanBuffer* indexBuffer = buffersPool_.get(desc.micromapIndexBuffer);
+    LVK_ASSERT(micromap && micromap->vkHandle);
+    LVK_ASSERT(indexBuffer && (indexBuffer->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR));
+    const uint32_t indexStride = desc.micromapIndexFormat == IndexFormat_UI8    ? sizeof(uint8_t)
+                                 : desc.micromapIndexFormat == IndexFormat_UI16 ? sizeof(uint16_t)
+                                                                                : sizeof(uint32_t);
+    // VUID-vkCmdBuildAccelerationStructuresKHR-indexBuffer-11577
+    LVK_ASSERT(desc.micromapIndexOffset % indexStride == 0);
+    LVK_ASSERT(desc.micromapIndexOffset + static_cast<VkDeviceSize>(indexStride) * desc.buildRange.primitiveCount <=
+               indexBuffer->bufferSize_);
+    outOpacityMicromap = VkAccelerationStructureTrianglesOpacityMicromapKHR{
+        .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_TRIANGLES_OPACITY_MICROMAP_KHR,
+        .indexType = indexFormatToVkIndexType(desc.micromapIndexFormat),
+        .indexBuffer = gpuAddress(desc.micromapIndexBuffer) + desc.micromapIndexOffset,
+        .indexStride = indexStride,
+        .micromap = micromap->vkHandle,
+    };
+    outGeometry.geometry.triangles.pNext = &outOpacityMicromap;
+  }
 
   const VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
@@ -8084,6 +8298,86 @@ void lvk::VulkanContext::getBuildInfoTLAS(const AccelStructDesc& desc,
   outSizesInfo.buildScratchSize += alignment;
 }
 
+void lvk::VulkanContext::getBuildInfoOpacityMicromap(const AccelStructDesc& desc,
+                                                     VkAccelerationStructureGeometryKHR& outGeometry,
+                                                     VkAccelerationStructureGeometryMicromapDataKHR& outMicromapData,
+                                                     std::vector<VkMicromapUsageKHR>& outUsageCounts,
+                                                     VkAccelerationStructureBuildSizesInfoKHR& outSizesInfo) const {
+  LVK_ASSERT(desc.type == AccelStructType_OpacityMicromap);
+  LVK_ASSERT(desc.micromapData.valid());
+  LVK_ASSERT(desc.micromapTriangles.valid());
+  LVK_ASSERT(desc.micromapUsageCounts && desc.micromapNumUsageCounts);
+
+  [[maybe_unused]] const lvk::VulkanBuffer* dataBuffer = buffersPool_.get(desc.micromapData);
+  [[maybe_unused]] const lvk::VulkanBuffer* trianglesBuffer = buffersPool_.get(desc.micromapTriangles);
+
+  // VUID-vkCmdBuildAccelerationStructuresKHR-micromap-11551
+  LVK_ASSERT(dataBuffer->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+  LVK_ASSERT(trianglesBuffer->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+
+  const VkDeviceAddress data = gpuAddress(desc.micromapData);
+  const VkDeviceAddress triangleArray = gpuAddress(desc.micromapTriangles);
+
+  // VUID-vkCmdBuildAccelerationStructuresKHR-micromap-11552 (guaranteed by createBuffer())
+  LVK_ASSERT(data % 128 == 0 && triangleArray % 128 == 0);
+
+  outUsageCounts.clear();
+  outUsageCounts.reserve(desc.micromapNumUsageCounts);
+
+  [[maybe_unused]] uint64_t numTriangles = 0;
+
+  for (uint32_t i = 0; i != desc.micromapNumUsageCounts; i++) {
+    const OpacityMicromapUsage& usage = desc.micromapUsageCounts[i];
+    // VUID-VkAccelerationStructureGeometryMicromapDataKHR-subdivisionLevel-11645
+    // VUID-VkAccelerationStructureBuildGeometryInfoKHR-subdivisionLevel-11564
+    [[maybe_unused]] const uint32_t maxSubdivisionLevel = usage.format == OpacityMicromapFormat_2State
+                                                              ? opacityMicromapProperties_.maxOpacity2StateSubdivisionLevel
+                                                              : opacityMicromapProperties_.maxOpacity4StateSubdivisionLevel;
+    LVK_ASSERT_MSG(usage.subdivisionLevel <= maxSubdivisionLevel, "Opacity micromap subdivision level is not supported");
+    numTriangles += usage.count;
+    outUsageCounts.push_back(VkMicromapUsageKHR{
+        .count = usage.count,
+        .subdivisionLevel = usage.subdivisionLevel,
+        .format = static_cast<VkOpacityMicromapFormatKHR>(usage.format),
+    });
+  }
+
+  // VUID-VkAccelerationStructureGeometryMicromapDataKHR-count-11643
+  LVK_ASSERT(numTriangles <= opacityMicromapProperties_.maxMicromapTriangles);
+  // VUID-vkCmdBuildAccelerationStructuresKHR-micromap-11554
+  LVK_ASSERT(numTriangles * sizeof(VkMicromapTriangleKHR) <= trianglesBuffer->bufferSize_);
+
+  outMicromapData = VkAccelerationStructureGeometryMicromapDataKHR{
+      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_MICROMAP_DATA_KHR,
+      .usageCountsCount = static_cast<uint32_t>(outUsageCounts.size()),
+      .pUsageCounts = outUsageCounts.data(),
+      .data = data,
+      .triangleArray = triangleArray,
+      .triangleArrayStride = sizeof(VkMicromapTriangleKHR),
+  };
+
+  outGeometry = VkAccelerationStructureGeometryKHR{
+      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
+      .pNext = &outMicromapData,
+      .geometryType = VK_GEOMETRY_TYPE_MICROMAP_KHR,
+  };
+
+  const VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{
+      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
+      .type = VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR,
+      .flags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
+      .geometryCount = 1,
+      .pGeometries = &outGeometry,
+  };
+
+  outSizesInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+  vkGetAccelerationStructureBuildSizesKHR(
+      vkDevice_, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &accelerationBuildGeometryInfo, nullptr, &outSizesInfo);
+  const uint32_t alignment = accelerationStructureProperties_.minAccelerationStructureScratchOffsetAlignment;
+  outSizesInfo.accelerationStructureSize += alignment;
+  outSizesInfo.buildScratchSize += alignment;
+}
+
 lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   if (desc.guid == 0UL) {
     LLOGW("Invalid hardwareGuid(%lu)", desc.guid);
@@ -8097,6 +8391,11 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
 
   std::vector<VkExtensionProperties> allDeviceExtensions;
   getDeviceExtensionProps(vkPhysicalDevice_, allDeviceExtensions);
+  for (const char* layer : config_.layers) {
+    if (layer) {
+      getDeviceExtensionProps(vkPhysicalDevice_, allDeviceExtensions, layer);
+    }
+  }
   if (config_.enableValidation) {
     for (const char* layer : kDefaultValidationLayers) {
       getDeviceExtensionProps(vkPhysicalDevice_, allDeviceExtensions, layer);
@@ -8125,12 +8424,16 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     addNextPhysicalDeviceProperties(&vkFragmentShadingRateProperties_);
   }
   if (hasExtension(VK_ARM_TENSORS_EXTENSION_NAME, allDeviceExtensions)) {
+    addNextPhysicalDeviceProperties(&vkTensorProperties_);
     vkTensorFeatures_.pNext = vkFeatures10_.pNext;
     vkFeatures10_.pNext = &vkTensorFeatures_;
   }
   if (hasExtension(VK_ARM_DATA_GRAPH_EXTENSION_NAME, allDeviceExtensions)) {
     vkDataGraphFeatures_.pNext = vkFeatures10_.pNext;
     vkFeatures10_.pNext = &vkDataGraphFeatures_;
+  }
+  if (hasExtension(VK_KHR_OPACITY_MICROMAP_EXTENSION_NAME, allDeviceExtensions)) {
+    addNextPhysicalDeviceProperties(&opacityMicromapProperties_);
   }
 
   if (config_.vulkanVersion >= VulkanVersion_1_4) {
@@ -8157,6 +8460,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   workaround_fixedSizeAccelStructArray_ = std::strstr(vkPhysicalDeviceProperties2_.properties.deviceName, "Adreno") != nullptr;
   // Adreno 840 cannot handle arrays (of any size) of combined image samplers with YCbCr immutable samplers
   workaround_noYcbcrSamplerArray_ = std::strstr(vkPhysicalDeviceProperties2_.properties.deviceName, "Adreno (TM) 840") != nullptr;
+  workaround_noMultiInstanceTLASUpdate_ = std::strstr(vkPhysicalDeviceProperties2_.properties.deviceName, "Adreno (TM) 840") != nullptr;
   // Quest 3 does not advertise VK_KHR_maintenance5: cannot rely on the shader-module-identifier pipeline path
   // LVK must materialize a real VkShaderModule for each pipeline stage instead
   workaround_noMaintenance5_ = !hasExtension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME, allDeviceExtensions);
@@ -8344,9 +8648,21 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
       .rayQuery = VK_TRUE,
   };
+  VkPhysicalDeviceOpacityMicromapFeaturesKHR opacityMicromapFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_OPACITY_MICROMAP_FEATURES_KHR,
+      .micromap = VK_TRUE,
+  };
+  VkPhysicalDeviceDeviceAddressCommandsFeaturesKHR deviceAddressCommandsFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEVICE_ADDRESS_COMMANDS_FEATURES_KHR,
+      .deviceAddressCommands = VK_TRUE,
+  };
   VkPhysicalDeviceTensorFeaturesARM tensorFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TENSOR_FEATURES_ARM,
+      .tensorNonPacked = vkTensorFeatures_.tensorNonPacked,
       .shaderTensorAccess = VK_TRUE,
+      .shaderStorageTensorArrayDynamicIndexing = VK_TRUE,
+      .shaderStorageTensorArrayNonUniformIndexing = vkTensorFeatures_.shaderStorageTensorArrayNonUniformIndexing,
+      .descriptorBindingStorageTensorUpdateAfterBind = VK_TRUE,
       .tensors = VK_TRUE,
   };
   VkPhysicalDeviceDataGraphFeaturesARM dataGraphFeatures = {
@@ -8399,6 +8715,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   VkPhysicalDeviceProvokingVertexFeaturesEXT provokingVertexFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROVOKING_VERTEX_FEATURES_EXT,
       .provokingVertexLast = VK_TRUE,
+  };
+  VkPhysicalDeviceShaderReplicatedCompositesFeaturesEXT shaderReplicatedCompositesFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_REPLICATED_COMPOSITES_FEATURES_EXT,
+      .shaderReplicatedComposites = VK_TRUE,
   };
   VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT fragmentShaderInterlockFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT,
@@ -8495,11 +8815,30 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
                         has_KHR_acceleration_structure_,
                         &accelerationStructureFeatures);
   addOptionalExtension(VK_KHR_RAY_QUERY_EXTENSION_NAME, has_KHR_ray_query_, &rayQueryFeatures);
-  // only ask for the feature bits the device reports, otherwise vkCreateDevice() fails
-  if (vkTensorFeatures_.tensors && vkTensorFeatures_.shaderTensorAccess) {
-    addOptionalExtension(VK_ARM_TENSORS_EXTENSION_NAME, has_ARM_tensors_, &tensorFeatures);
+  addOptionalExtension(VK_KHR_DEVICE_ADDRESS_COMMANDS_EXTENSION_NAME, has_KHR_device_address_commands_, &deviceAddressCommandsFeatures);
+  if (has_KHR_acceleration_structure_ && has_KHR_device_address_commands_) {
+    // opacity micromaps only be created with vkCreateAccelerationStructure2KHR()
+    addOptionalExtension(VK_KHR_OPACITY_MICROMAP_EXTENSION_NAME, has_KHR_opacity_micromap_, &opacityMicromapFeatures);
   }
-  if (has_ARM_tensors_ && vkDataGraphFeatures_.dataGraph && vkDataGraphFeatures_.dataGraphShaderModule) {
+  // only ask for the feature bits the device reports, otherwise vkCreateDevice() fails
+  if (vkTensorFeatures_.tensors && vkTensorFeatures_.shaderTensorAccess && vkTensorFeatures_.shaderStorageTensorArrayDynamicIndexing &&
+      vkTensorFeatures_.descriptorBindingStorageTensorUpdateAfterBind && vkTensorProperties_.shaderTensorSupportedStages) {
+    addOptionalExtension(VK_ARM_TENSORS_EXTENSION_NAME, has_ARM_tensors_, &tensorFeatures);
+  } else if (hasExtension(VK_ARM_TENSORS_EXTENSION_NAME, allDeviceExtensions)) {
+    LLOGW("VK_ARM_tensors is present but lacks the features required for bindless tensors (update-after-bind, dynamic indexing)\n");
+  }
+  // data graphs are dispatched on the graphics queue, so its queue family has to support them
+  auto hasDataGraphQueue = [this]() -> bool {
+    uint32_t numQueueFamilies = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties2(vkPhysicalDevice_, &numQueueFamilies, nullptr);
+    std::vector<VkQueueFamilyProperties2> queueFamilies(numQueueFamilies, {.sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2});
+    vkGetPhysicalDeviceQueueFamilyProperties2(vkPhysicalDevice_, &numQueueFamilies, queueFamilies.data());
+    const uint32_t idx = deviceQueues_.graphicsQueueFamilyIndex;
+    return idx < numQueueFamilies && (queueFamilies[idx].queueFamilyProperties.queueFlags & VK_QUEUE_DATA_GRAPH_BIT_ARM);
+  };
+  if (has_ARM_tensors_ && vkDataGraphFeatures_.dataGraph && vkDataGraphFeatures_.dataGraphShaderModule && !hasDataGraphQueue()) {
+    LLOGW("VK_ARM_data_graph: the graphics queue family does not support data graph dispatches\n");
+  } else if (has_ARM_tensors_ && vkDataGraphFeatures_.dataGraph && vkDataGraphFeatures_.dataGraphShaderModule) {
     // data graphs consume tensors, and their pipelines are built through VK_KHR_deferred_host_operations
     bool hasDeferredHostOperations = has_KHR_acceleration_structure_;
     if (!hasDeferredHostOperations) {
@@ -8535,6 +8874,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
                        has_EXT_dynamic_rendering_unused_attachments_,
                        &dynamicRenderingUnusedAttachmentsFeatures);
   addOptionalExtension(VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME, has_EXT_provoking_vertex_, &provokingVertexFeatures);
+  addOptionalExtension(
+      VK_EXT_SHADER_REPLICATED_COMPOSITES_EXTENSION_NAME, has_EXT_shader_replicated_composites_, &shaderReplicatedCompositesFeatures);
   addOptionalExtension(
       VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME, has_EXT_fragment_shader_interlock_, &fragmentShaderInterlockFeatures);
   addOptionalExtension(VK_KHR_SHARED_PRESENTABLE_IMAGE_EXTENSION_NAME, has_KHR_shared_presentable_image_);
@@ -8959,7 +9300,6 @@ lvk::Result lvk::VulkanContext::initSwapchain(uint32_t width, uint32_t height) {
     // so does a pending acquire semaphore: drop it, otherwise the next submit() would wait on a destroyed semaphore
     immediate_->waitSemaphore_.semaphore = VK_NULL_HANDLE;
     swapchain_ = nullptr;
-    vkDestroySemaphore(vkDevice_, timelineSemaphore_, nullptr);
   }
 
   if (!width || !height) {
@@ -8968,9 +9308,31 @@ lvk::Result lvk::VulkanContext::initSwapchain(uint32_t width, uint32_t height) {
 
   swapchain_ = std::make_unique<lvk::VulkanSwapchain>(*this, width, height);
 
-  timelineSemaphore_ = lvk::createSemaphoreTimeline(vkDevice_, swapchain_->getNumSwapchainImages() - 1, "Semaphore: timelineSemaphore_");
-
   return swapchain_ ? Result() : Result(Result::Code::RuntimeError, "Failed to create swapchain");
+}
+
+lvk::Result lvk::VulkanContext::recreateSurface(void* window, void* display, uint32_t width, uint32_t height) {
+  if (!vkDevice_ || !immediate_) {
+    LLOGW("Call initContext() first");
+    return Result(Result::Code::RuntimeError, "Call initContext() first");
+  }
+
+  VK_ASSERT(vkDeviceWaitIdle(vkDevice_));
+
+  if (swapchain_) {
+    // the guard fence and any pending acquire belong to the swapchain that is going away
+    immediate_->setLastPresentSemaphore(VK_NULL_HANDLE, VK_NULL_HANDLE);
+    immediate_->waitSemaphore_.semaphore = VK_NULL_HANDLE;
+    swapchain_ = nullptr;
+  }
+
+  // the swapchain is gone, so the surface it was created from can go too
+  vkDestroySurfaceKHR(vkInstance_, vkSurface_, nullptr);
+  vkSurface_ = VK_NULL_HANDLE;
+
+  createSurface(window, display);
+
+  return initSwapchain(width, height);
 }
 
 lvk::Result lvk::VulkanContext::growDescriptorPool(VulkanContext::DescriptorSet& dset,
@@ -9185,7 +9547,15 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
     }
 
     vmaAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-    vmaAllocInfo.minAlignment = 16;
+    vmaAllocInfo.minAlignment = [usageFlags]() -> VkDeviceSize {
+      // VUID-VkAccelerationStructureCreateInfo2KHR-addressRange-11605: acceleration structure storage must be 256-byte aligned
+      if (usageFlags & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR)
+        return 256;
+      // VUID-vkCmdBuildAccelerationStructuresKHR-micromap-11552: opacity micromap build inputs must be 128-byte aligned
+      if (usageFlags & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR)
+        return 128;
+      return 16;
+    }();
 
     vmaCreateBuffer(static_cast<VmaAllocator>(getVmaAllocator()), &ci, &vmaAllocInfo, &buf.vkBuffer_, &buf.vmaAllocation_, nullptr);
 
@@ -9367,13 +9737,25 @@ void lvk::VulkanContext::createDummyTLAS() {
     return;
   }
 
-  const VkAccelerationStructureCreateInfoKHR ciAccelerationStructure = {
-      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
-      .buffer = getVkBuffer(this, buffer),
-      .size = kDummyTLASSize,
-      .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-  };
-  VK_ASSERT(vkCreateAccelerationStructureKHR(vkDevice_, &ciAccelerationStructure, nullptr, &dummyTLAS_));
+  if (has_KHR_device_address_commands_) {
+    // vkCreateAccelerationStructureKHR() is a legacy command when VK_KHR_device_address_commands is enabled
+    const lvk::VulkanBuffer* buf = buffersPool_.get(buffer);
+    const VkAccelerationStructureCreateInfo2KHR ciAccelerationStructure = {
+        .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_2_KHR,
+        .addressRange = {.address = buf->vkDeviceAddress_, .size = kDummyTLASSize},
+        .addressFlags = buf->getVkAddressCommandFlags(),
+        .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+    };
+    VK_ASSERT(vkCreateAccelerationStructure2KHR(vkDevice_, &ciAccelerationStructure, nullptr, &dummyTLAS_));
+  } else {
+    const VkAccelerationStructureCreateInfoKHR ciAccelerationStructure = {
+        .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
+        .buffer = getVkBuffer(this, buffer),
+        .size = kDummyTLASSize,
+        .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+    };
+    VK_ASSERT(vkCreateAccelerationStructureKHR(vkDevice_, &ciAccelerationStructure, nullptr, &dummyTLAS_));
+  }
 
   if (LVK_VERIFY(dummyTLAS_)) {
     dummyTLASBuffer_ = buffer.release();
@@ -9435,7 +9817,8 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
   if (const DescriptorSet& dset = DSets_[lastUpdatedDSet_]; dset.vkDSet) {
     // we can't reuse a dset that's either waiting to be submitted in a draw call
     // (which happens when textures are created mid-frame) or is still being processed
-    if (dset.handle_.empty() || !immediate_->isReady(dset.handle_)) {
+    // async-compute submits stamp dsets too, so the handle has to be checked against the queue which produced it
+    if (dset.handle_.empty() || !isReady(dset.handle_)) {
       // add a new empty dset to be populated right away
       lastUpdatedDSet_ = DSets_.size();
       DSets_.push_back({});
@@ -9747,11 +10130,14 @@ std::vector<uint8_t> lvk::VulkanContext::getPipelineCacheData() const {
 }
 
 void lvk::VulkanContext::deferredTask(std::packaged_task<void()>&& task, SubmitHandle handle) const {
-  if (handle.empty()) {
-    handle = immediate_->getNextSubmitHandle();
-  }
   // A resource can be in flight on either queue, and the two submit timelines are independent.
-  const SubmitHandle handleCompute = immediateCompute_ ? immediateCompute_->getNextSubmitHandle() : SubmitHandle();
+  // An idle queue may never submit again: wait for its next submit only while a command buffer is encoded on it.
+  if (handle.empty()) {
+    handle = pimpl_->currentCommandBuffer_.ctx_ ? immediate_->getNextSubmitHandle() : immediate_->getLastSubmitHandle();
+  }
+  const SubmitHandle handleCompute = !immediateCompute_                          ? SubmitHandle()
+                                     : pimpl_->currentComputeCommandBuffer_.ctx_ ? immediateCompute_->getNextSubmitHandle()
+                                                                                 : immediateCompute_->getLastSubmitHandle();
   pimpl_->deferredTasks_.emplace_back(std::move(task), handle, handleCompute);
 }
 
@@ -9762,8 +10148,8 @@ void* lvk::VulkanContext::getVmaAllocator() const {
 void lvk::VulkanContext::processDeferredTasks() const {
   std::vector<DeferredTask>::iterator it = pimpl_->deferredTasks_.begin();
 
-  while (it != pimpl_->deferredTasks_.end() && immediate_->isReady(it->handle_, true) &&
-         (!immediateCompute_ || immediateCompute_->isReady(it->handleCompute_, true))) {
+  while (it != pimpl_->deferredTasks_.end() && immediate_->isReady(it->handle_) &&
+         (!immediateCompute_ || immediateCompute_->isReady(it->handleCompute_))) {
     (it++)->task_();
   }
 
