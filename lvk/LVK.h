@@ -1445,6 +1445,11 @@ class IContext {
   [[nodiscard]] virtual uint32_t getMultiviewMaxViewCount() const = 0;
   [[nodiscard]] virtual uint32_t getMultiviewMaxMeshViewCount() const = 0;
 
+  // copies the pipeline cache (render, compute and ray tracing pipelines) to `outData` and returns the number of bytes written; with
+  // `outData == nullptr` returns the size needed. An app can save these bytes and pass them to ContextConfig::pipelineCacheData on the
+  // next run, so pipelines are not compiled again
+  [[nodiscard]] virtual size_t getPipelineCacheData(void* outData, size_t dataSize) const = 0;
+
 #pragma region Performance queries
   virtual double getTimestampPeriodToMs() const = 0;
   virtual bool getQueryPoolResults(QueryPoolHandle pool,
@@ -1489,6 +1494,7 @@ struct ContextConfig {
   lvk::ColorSpace swapchainRequestedColorSpace = lvk::ColorSpace_SRGB_NONLINEAR;
   bool swapchainUseSurfacePreTransform = false; // apps should rotate their own output based on getSwapchainSurfaceTransform()
   // owned by the application - should be alive until createVulkanContextWithSwapchain() returns
+  // (e.g. the bytes IContext::getPipelineCacheData() returned on the previous run)
   const void* pipelineCacheData = nullptr;
   size_t pipelineCacheDataSize = 0;
   uint32_t maxRayRecursionDepth = 0; // default for ray tracing pipelines (clamped to the device limit); 0 = device maximum

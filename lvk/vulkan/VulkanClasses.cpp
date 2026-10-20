@@ -6508,7 +6508,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
       .pDynamicState = rtps->stackSize_ ? &ciDynamicState : nullptr,
       .layout = rtps->pipelineLayout_,
   };
-  VK_ASSERT(vkCreateRayTracingPipelinesKHR(vkDevice_, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &ciRayTracingPipeline, nullptr, &rtps->pipeline_));
+  VK_ASSERT(vkCreateRayTracingPipelinesKHR(vkDevice_, VK_NULL_HANDLE, pipelineCache_, 1, &ciRayTracingPipeline, nullptr, &rtps->pipeline_));
 
   // shader binding table
   const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& props = rayTracingPipelineProperties_;
@@ -10116,17 +10116,16 @@ void lvk::VulkanContext::querySurfaceCapabilities() {
   }
 }
 
-std::vector<uint8_t> lvk::VulkanContext::getPipelineCacheData() const {
-  size_t size = 0;
-  vkGetPipelineCacheData(vkDevice_, pipelineCache_, &size, nullptr);
-
-  std::vector<uint8_t> data(size);
-
-  if (size) {
-    vkGetPipelineCacheData(vkDevice_, pipelineCache_, &size, data.data());
+size_t lvk::VulkanContext::getPipelineCacheData(void* outData, size_t dataSize) const {
+  if (!pipelineCache_) {
+    return 0;
   }
 
-  return data;
+  size_t size = outData ? dataSize : 0;
+  // VK_INCOMPLETE: `outData` was too small and holds only the cache entries that fit
+  const VkResult result = vkGetPipelineCacheData(vkDevice_, pipelineCache_, &size, outData);
+
+  return result == VK_SUCCESS || result == VK_INCOMPLETE ? size : 0;
 }
 
 void lvk::VulkanContext::deferredTask(std::packaged_task<void()>&& task, SubmitHandle handle) const {

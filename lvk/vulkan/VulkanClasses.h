@@ -728,6 +728,7 @@ class VulkanContext final : public IContext {
                ? vkMeshShaderProperties_.maxMeshMultiviewViewCount
                : 1u;
   }
+  [[nodiscard]] size_t getPipelineCacheData(void* outData, size_t dataSize) const override;
 
   double getTimestampPeriodToMs() const override;
   bool getQueryPoolResults(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount, size_t dataSize, void* outData, size_t stride)
@@ -790,8 +791,6 @@ class VulkanContext final : public IContext {
   VkPhysicalDevice getVkPhysicalDevice() const {
     return vkPhysicalDevice_;
   }
-
-  std::vector<uint8_t> getPipelineCacheData() const;
 
   // execute a task some time in the future after the submit handle finished processing
   void deferredTask(std::packaged_task<void()>&& task, SubmitHandle handle = SubmitHandle()) const;
